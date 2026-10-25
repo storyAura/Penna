@@ -251,8 +251,21 @@ class _MineCard extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        card.name,
+                      child: Text.rich(
+                        TextSpan(
+                          text: card.name,
+                          children: [
+                            if (card.alias.isNotEmpty)
+                              TextSpan(
+                                text: '  ${card.alias}',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w400,
+                                  color: PennaColors.slate400,
+                                ),
+                              ),
+                          ],
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -287,6 +300,13 @@ class _MineCard extends StatelessWidget {
                     ),
                   ],
                 ),
+                if (card.intro.isNotEmpty)
+                  Text(
+                    card.intro,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: PennaColors.slate500),
+                  ),
                 const SizedBox(height: 4),
                 Text(
                   card.prompt,
@@ -294,6 +314,23 @@ class _MineCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: monoStyle.copyWith(fontSize: 11.5),
                 ),
+                if (card.outfits.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      tr('服装:{0}', [
+                        card.outfits
+                            .map((o) => o.name.isEmpty ? tr('未命名') : o.name)
+                            .join(tr('、')),
+                      ]),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: PennaColors.slate500,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

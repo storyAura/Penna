@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/version-1.0.3--261026--1--dev-F26D7D" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.3--261026--2--dev-F26D7D" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-4F7CF7" alt="license">
 </p>
 
@@ -131,9 +131,9 @@ Agent 与润色的结果以待确认改动的形式提交。改动按行以红�
 
 - 内置约 7.4 万个 Danbooru 角色,按热门程度排列,可按英文名或中文、日文译名搜索,也可以按系列(作品)名搜索。
 - 每个角色的特征词分为「外貌」和「服装与其他」两组,可单独取用外貌特征。
-- 「我的」「内置」「收藏」分页显示。「我的」保存自己的角色(名称、提示词和一张图),可拖动排序。
+- 「我的」「内置」「收藏」分页显示。「我的」保存自己的角色(名称、别名、简介、提示词和一张图),每个角色可保存多套命名的服装,可拖动排序。
 - 内置的系列和角色都可以加入收藏,在「收藏」页集中查看。
-- Agent 在对话中可以查询角色库,也可以把角色存进去。
+- Agent 在对话中可以查询角色库(按名称或别名,连同简介和各套服装),也可以把角色存进去。
 
 ### 润色与翻译
 

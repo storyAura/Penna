@@ -129,9 +129,9 @@ A three-page comic laid out in Penna and rendered with MOSS-Image:
 
 - About 74,000 Danbooru characters built in, ordered by popularity and searchable by English name, Chinese and Japanese aliases, or series name.
 - Each character's feature tags are split into **Looks** and **Outfit and other**, so the appearance can be used on its own.
-- Separate **Mine**, **Built-in** and **Favorites** tabs. **Mine** holds your own characters (a name, a prompt and a picture) and can be reordered by dragging.
+- Separate **Mine**, **Built-in** and **Favorites** tabs. **Mine** holds your own characters (a name, aliases, a description, a prompt and a picture), each with any number of named outfits, and can be reordered by dragging.
 - Built-in series and characters can be added to **Favorites** for quick access.
-- The Agent can search the character library during a chat and save characters to it.
+- The Agent can search the character library during a chat (by name or alias, including descriptions and outfits) and save characters to it.
 
 ### Polish and translate
 

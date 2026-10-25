@@ -1,16 +1,22 @@
 part of 'characters_page.dart';
 
-/// 添加或修改一个角色:名字、提示词,图可以拖进来或点一下选。
+/// 添加或修改一个角色:名字、别名、简介、提示词、几套服装,图可以拖进来或点一下选。
 class _CharacterDialog extends StatefulWidget {
   const _CharacterDialog({
     required this.name,
     required this.prompt,
     required this.image,
     required this.editing,
+    this.alias = '',
+    this.intro = '',
+    this.outfits = const [],
   });
 
   final String name;
+  final String alias;
+  final String intro;
   final String prompt;
+  final List<CharacterOutfit> outfits;
 
   /// 现在的图(文件路径),没有就是空串。
   final String image;
@@ -22,7 +28,77 @@ class _CharacterDialog extends StatefulWidget {
 
 class _CharacterDialogState extends State<_CharacterDialog> {
   late var _name = widget.name;
+  late var _alias = widget.alias;
+  late var _intro = widget.intro;
   late var _prompt = widget.prompt;
+
+  /// 几套服装;[key] 让删掉中间一套时下面的输入框不串位。
+  late var _outfits = [
+    for (final (i, o) in widget.outfits.indexed)
+      (key: i, name: o.name, prompt: o.prompt),
+  ];
+  late var _nextKey = widget.outfits.length;
+
+  void _addOutfit() => setState(() {
+    _outfits = [..._outfits, (key: _nextKey++, name: '', prompt: '')];
+  });
+
+  void _editOutfit(int key, {String? name, String? prompt}) => setState(() {
+    _outfits = [
+      for (final o in _outfits)
+        o.key == key
+            ? (key: key, name: name ?? o.name, prompt: prompt ?? o.prompt)
+            : o,
+    ];
+  });
+
+  void _removeOutfit(int key) => setState(() {
+    _outfits = _outfits.where((o) => o.key != key).toList();
+  });
+
+  Widget _outfit(({int key, String name, String prompt}) o) => Container(
+    key: ValueKey(o.key),
+    margin: const EdgeInsets.only(top: 8),
+    padding: const EdgeInsets.fromLTRB(10, 8, 4, 10),
+    decoration: BoxDecoration(
+      color: PennaColors.slate50,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: PennaColors.border),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              PennaField(
+                label: tr('服装名'),
+                hint: tr('校服、泳装…'),
+                value: o.name,
+                onChanged: (v) => _editOutfit(o.key, name: v),
+              ),
+              const SizedBox(height: 6),
+              PennaField(
+                label: tr('服装提示词'),
+                maxLines: 3,
+                value: o.prompt,
+                onChanged: (v) => _editOutfit(o.key, prompt: v),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: tr('删除'),
+          iconSize: 16,
+          visualDensity: VisualDensity.compact,
+          color: PennaColors.slate400,
+          icon: const Icon(Icons.close),
+          onPressed: () => _removeOutfit(o.key),
+        ),
+      ],
+    ),
+  );
 
   /// 新选的图;没选就是 null,保存时留着原来的。
   CharacterImage? _image;
@@ -123,11 +199,35 @@ class _CharacterDialogState extends State<_CharacterDialog> {
                 ),
                 const SizedBox(height: 8),
                 PennaField(
+                  label: tr('别名'),
+                  hint: tr('多个用逗号隔开'),
+                  value: _alias,
+                  onChanged: (v) => _alias = v,
+                ),
+                const SizedBox(height: 8),
+                PennaField(
+                  label: tr('简介'),
+                  hint: tr('身份、性格'),
+                  maxLines: 2,
+                  value: _intro,
+                  onChanged: (v) => _intro = v,
+                ),
+                const SizedBox(height: 8),
+                PennaField(
                   label: tr('提示词'),
                   hint: tr('这个角色的长相和标志性的穿着'),
-                  maxLines: 7,
+                  maxLines: 5,
                   value: _prompt,
                   onChanged: (v) => setState(() => _prompt = v),
+                ),
+                for (final o in _outfits) _outfit(o),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _addOutfit,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: Text(tr('新增服装')),
+                  ),
                 ),
               ],
             ),
@@ -142,7 +242,13 @@ class _CharacterDialogState extends State<_CharacterDialog> {
             onPressed: ready
                 ? () => Navigator.pop<_Draft>(context, (
                     name: _name,
+                    alias: _alias,
+                    intro: _intro,
                     prompt: _prompt,
+                    outfits: [
+                      for (final o in _outfits)
+                        (name: o.name, prompt: o.prompt),
+                    ],
                     image: _image,
                   ))
                 : null,

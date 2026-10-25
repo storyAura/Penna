@@ -167,6 +167,33 @@ void main() {
       expect(File(first.image).existsSync(), isFalse);
     });
 
+    test('别名能搜到;简介和几套服装重开读得回来;只换提示词时服装留着', () async {
+      final dir = Directory.systemTemp.createTempSync('penna_chars');
+      final store = CharacterStore(dir);
+      store.put(
+        name: 'phoenix reffaella',
+        alias: '菲欧妮,小菲',
+        intro: '王女',
+        prompt: 'blonde hair',
+        outfits: [
+          (name: '礼服', prompt: 'white dress'),
+          (name: '空的', prompt: ' '),
+        ],
+      );
+      expect(store.find('画小菲').single.name, 'phoenix reffaella');
+      // Agent 存同名角色只换提示词,别名、简介、服装不丢。
+      store.put(name: 'phoenix reffaella', prompt: 'long blonde hair');
+
+      final again = CharacterStore(dir);
+      await again.load();
+      final card = again.cards.single;
+      expect(
+        (card.alias, card.intro, card.prompt),
+        ('菲欧妮,小菲', '王女', 'long blonde hair'),
+      );
+      expect(card.outfits, [(name: '礼服', prompt: 'white dress')]);
+    });
+
     test('拖着换顺序;改一个不挪位置;只换图时存成 WebP', () {
       final dir = Directory.systemTemp.createTempSync('penna_chars');
       final store = CharacterStore(dir);
@@ -259,7 +286,14 @@ void main() {
   group('Agent 用角色库', () {
     test('查:结果交还给模型,外貌和服装分开,自己存的排在前面', () async {
       final seen = <LlmRequest>[];
-      final store = CharacterStore()..put(name: 'ganyu', prompt: 'my ganyu');
+      final store = CharacterStore()
+        ..put(
+          name: 'ganyu',
+          alias: '小甘',
+          intro: '秘书',
+          prompt: 'my ganyu',
+          outfits: [(name: '泳装', prompt: 'blue bikini')],
+        );
       final vm = _studio(
         ['<search-character>ganyu</search-character>', '好了'],
         seen: seen,
@@ -271,9 +305,11 @@ void main() {
 
       expect(seen, hasLength(2));
       // 自己存了哪些角色,一开始就告诉了模型。
-      expect(seen.first.messages.first['content'], contains('【角色库】'));
+      expect(seen.first.messages.first['content'], contains('ganyu(又叫 小甘)'));
       final handed = seen.last.messages.last['content']!;
       expect(handed, contains('提示词:my ganyu'));
+      expect(handed, contains('简介:秘书'));
+      expect(handed, contains('服装·泳装:blue bikini'));
       expect(handed, contains('触发词:ganyu (genshin impact), genshin impact'));
       expect(handed, contains('外貌:1girl, goat horns, blue hair'));
       expect(handed, contains('服装:neck bell'));

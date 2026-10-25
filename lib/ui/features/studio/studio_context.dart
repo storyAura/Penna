@@ -167,7 +167,9 @@ extension StudioContext on StudioViewModel {
         looks: '',
         outfit: '',
         prompt: c.prompt,
-        alias: '',
+        intro: c.intro,
+        outfits: c.outfits,
+        alias: c.alias,
       ),
     ...?characterDict?.search(name),
   ];
@@ -410,11 +412,14 @@ extension StudioContext on StudioViewModel {
 
   /// 告诉模型用户自己存了哪些角色,它才知道提到这些名字时该去查。
   String get _characterPrompt {
+    String oneLine(String s) => s.replaceAll(RegExp(r'\s+'), ' ');
     final names = [
       for (final c
           in characters?.cards.take(_maxCharacterNames) ??
               const <CharacterCard>[])
-        c.name.replaceAll(RegExp(r'\s+'), ' '),
+        c.alias.isEmpty
+            ? oneLine(c.name)
+            : '${oneLine(c.name)}(又叫 ${oneLine(c.alias)})',
     ];
     if (names.isEmpty) return '';
     return '【角色库】用户自己存了这些角色,提到它们时先用 <search-character> 查出提示词再写:'

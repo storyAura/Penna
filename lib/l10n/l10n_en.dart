@@ -1012,4 +1012,12 @@ const en = <String, String>{
   '这个系列的页都已经存过了': 'Every page in this series is already saved',
   '「{0}」新存了 {1} 页,{2} 页之前存过':
       'Saved {1} new pages of "{0}"; {2} were already saved',
+  '服装:{0}': 'Outfits: {0}',
+  '服装名': 'Outfit name',
+  '校服、泳装…': 'School uniform, swimsuit…',
+  '服装提示词': 'Outfit prompt',
+  '别名': 'Aliases',
+  '多个用逗号隔开': 'Separate with commas',
+  '身份、性格': 'Role, personality',
+  '新增服装': 'Add outfit',
 };

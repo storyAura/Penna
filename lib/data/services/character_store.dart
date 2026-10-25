@@ -5,11 +5,18 @@ import 'package:flutter/foundation.dart';
 
 import '../../l10n/l10n.dart';
 
+/// 角色的一套服装:名字和这套衣服的提示词。
+typedef CharacterOutfit = ({String name, String prompt});
+
 /// 角色库里用户自己存的一个角色:名字、提示词,和一张图([image] 是文件路径,没有就是空串)。
+/// [alias] 是别的叫法(逗号隔开),[intro] 是简介,[outfits] 是另存的几套服装。
 typedef CharacterCard = ({
   String id,
   String name,
+  String alias,
+  String intro,
   String prompt,
+  List<CharacterOutfit> outfits,
   String image,
   DateTime time,
 });
@@ -78,22 +85,32 @@ class CharacterStore extends ChangeNotifier {
 
   String _key(String name) => name.trim().toLowerCase();
 
-  /// 按名字找:名字里有 [query],或 [query] 里提到了名字。不分大小写。
+  /// 按名字或别名找:名字里有 [query],或 [query] 里提到了名字。不分大小写。
   List<CharacterCard> find(String query) {
     final q = _key(query);
     if (q.isEmpty) return const [];
+    bool hit(String n) => n.isNotEmpty && (n.contains(q) || q.contains(n));
     return [
       for (final c in _cards)
-        if (_key(c.name).contains(q) || q.contains(_key(c.name))) c,
+        if (hit(_key(c.name)) || aliasesOf(c).map(_key).any(hit)) c,
     ];
   }
 
+  /// [c] 的几个别名(中英文逗号、顿号都算分隔)。
+  static List<String> aliasesOf(CharacterCard c) => [
+    for (final a in c.alias.split(RegExp('[,,、]')))
+      if (a.trim().isNotEmpty) a.trim(),
+  ];
+
   /// 存一个角色。给了 [id] 就是改那一个;没给时同名的算同一个(换掉提示词),否则新增。
-  /// [image] 不给就留着原来的图。名字或提示词是空的不存,返回 null。
+  /// [image]、[alias]、[intro]、[outfits] 不给就留着原来的。名字或提示词是空的不存,返回 null。
   CharacterCard? put({
     String? id,
     required String name,
     required String prompt,
+    String? alias,
+    String? intro,
+    List<CharacterOutfit>? outfits,
     CharacterImage? image,
     DateTime? now,
   }) {
@@ -106,7 +123,12 @@ class CharacterStore extends ChangeNotifier {
     final card = (
       id: cardId,
       name: name.trim(),
+      alias: (alias ?? old?.alias ?? '').trim(),
+      intro: (intro ?? old?.intro ?? '').trim(),
       prompt: prompt.trim(),
+      outfits: outfits == null
+          ? old?.outfits ?? const <CharacterOutfit>[]
+          : _cleanOutfits(outfits),
       image: image == null
           ? old?.image ?? ''
           : _saveImage(cardId, image, time, replacing: old?.image ?? ''),
@@ -120,6 +142,14 @@ class CharacterStore extends ChangeNotifier {
     );
     return card;
   }
+
+  /// 去掉没写提示词的服装,其余去掉首尾空白。
+  static List<CharacterOutfit> _cleanOutfits(List<CharacterOutfit> outfits) =>
+      List.unmodifiable([
+        for (final o in outfits)
+          if (o.prompt.trim().isNotEmpty)
+            (name: o.name.trim(), prompt: o.prompt.trim()),
+      ]);
 
   /// 把 [id] 挪到 [before] 前面(拖着换顺序)。
   void move(String id, String before) {
@@ -203,7 +233,13 @@ class CharacterStore extends ChangeNotifier {
       {
         'id': c.id,
         'name': c.name,
+        if (c.alias.isNotEmpty) 'alias': c.alias,
+        if (c.intro.isNotEmpty) 'intro': c.intro,
         'prompt': c.prompt,
+        if (c.outfits.isNotEmpty)
+          'outfits': [
+            for (final o in c.outfits) {'name': o.name, 'prompt': o.prompt},
+          ],
         'image': c.image,
         'time': c.time.toIso8601String(),
       },
@@ -230,7 +266,15 @@ class CharacterStore extends ChangeNotifier {
           (
             id: c['id'] as String,
             name: c['name'] as String,
+            alias: c['alias'] as String? ?? '',
+            intro: c['intro'] as String? ?? '',
             prompt: c['prompt'] as String,
+            outfits: List<CharacterOutfit>.unmodifiable([
+              for (final o
+                  in (c['outfits'] as List? ?? const [])
+                      .cast<Map<String, dynamic>>())
+                (name: o['name'] as String, prompt: o['prompt'] as String),
+            ]),
             image: c['image'] as String? ?? '',
             time: DateTime.parse(c['time'] as String),
           ),

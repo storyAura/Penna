@@ -20,7 +20,14 @@ part 'character_cards.dart';
 part 'character_dialog.dart';
 
 /// 添加或修改角色的窗口交回来的内容;[image] 为 null 表示图没动。
-typedef _Draft = ({String name, String prompt, CharacterImage? image});
+typedef _Draft = ({
+  String name,
+  String alias,
+  String intro,
+  String prompt,
+  List<CharacterOutfit> outfits,
+  CharacterImage? image,
+});
 
 /// 内置角色一次最多列出几个。
 const _maxBuiltin = 30;
@@ -165,7 +172,10 @@ class _CharactersPageState extends State<CharactersPage> {
       context: context,
       builder: (_) => _CharacterDialog(
         name: card?.name ?? from?.name ?? '',
+        alias: card?.alias ?? from?.alias ?? '',
+        intro: card?.intro ?? '',
         prompt: card?.prompt ?? (from == null ? '' : _fullPrompt(from)),
+        outfits: card?.outfits ?? const [],
         image: card?.image ?? '',
         editing: card != null,
       ),
@@ -180,7 +190,10 @@ class _CharactersPageState extends State<CharactersPage> {
     final saved = widget.store.put(
       id: card?.id,
       name: draft.name,
+      alias: draft.alias,
+      intro: draft.intro,
       prompt: draft.prompt,
+      outfits: draft.outfits,
       image: webp == null ? picked : (bytes: webp, ext: 'webp'),
     );
     if (saved != null) showToast(context, tr('已存进角色库'));
