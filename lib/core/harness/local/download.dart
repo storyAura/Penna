@@ -33,6 +33,26 @@ class DownloadCancel {
   }
 }
 
+/// GitHub 文件的国内加速前缀(2026-10-25 测过能用),按顺序试,都不行再直连。
+const githubProxies = [
+  'https://gh-proxy.com/',
+  'https://ghfast.top/',
+  'https://ghproxy.net/',
+  'https://gh.llkk.cc/',
+];
+
+/// 下 [f] 时依次试的地址:GitHub 上的文件先走加速前缀,最后是原地址。
+/// 没有 SHA256 的不走加速:那是别人的服务器,内容被换了校验不出来。
+List<String> downloadUrls(RemoteFile f) {
+  final host = Uri.tryParse(f.url)?.host;
+  final github = host == 'github.com' || host == 'raw.githubusercontent.com';
+  return [
+    if (github && f.sha256 != null)
+      for (final p in githubProxies) '$p${f.url}',
+    f.url,
+  ];
+}
+
 /// 文件已经在了(知道大小时大小也对得上)。
 bool isDownloaded(RemoteFile f) {
   final file = File(f.path);
@@ -42,26 +62,66 @@ bool isDownloaded(RemoteFile f) {
 /// 把 [f] 下载到它的 [RemoteFile.path]:先写进旁边的 `.part`,
 /// 下完并校验通过才改成正式的名字,所以半截文件不会被当成下好了。
 /// 已经下好的直接返回;`.part` 还在时从断开的地方接着下。
-/// 停下([cancel])时抛 [DownloadException],`.part` 留着。
+/// 地址按 [urls](默认 [downloadUrls])依次试:一个下不了就换下一个,从头下;
+/// 都不行报最后一个的错。停下([cancel])时抛 [DownloadException],`.part` 留着。
 Future<void> downloadFile(
   RemoteFile f, {
   DownloadProgress? onProgress,
   DownloadCancel? cancel,
   Map<String, String> headers = const {},
+  List<String>? urls,
 }) async {
   if (isDownloaded(f)) return;
   final part = File('${f.path}.part');
   await part.parent.create(recursive: true);
+  final tries = urls ?? downloadUrls(f);
+  for (var i = 0; ; i++) {
+    try {
+      return await _downloadFrom(
+        tries[i],
+        f,
+        part,
+        onProgress,
+        cancel,
+        headers,
+      );
+    } on DownloadException {
+      if ((cancel?.cancelled ?? false) || i == tries.length - 1) rethrow;
+      // 换个地址从头下:不同服务器给的半截不一定接得上。
+      if (part.existsSync()) await part.delete();
+    }
+  }
+}
+
+Future<void> _downloadFrom(
+  String url,
+  RemoteFile f,
+  File part,
+  DownloadProgress? onProgress,
+  DownloadCancel? cancel,
+  Map<String, String> headers,
+) async {
   var have = part.existsSync() ? part.lengthSync() : 0;
   if (f.size != null && have > f.size!) {
     await part.delete();
     have = 0;
   }
-  final client = HttpClient()..userAgent = 'Penna';
+  final client = HttpClient()
+    ..userAgent = 'Penna'
+    ..connectionTimeout = const Duration(seconds: 15);
   unawaited(cancel?.whenCancelled.then((_) => client.close(force: true)));
   try {
     if (f.size == null || have < f.size!) {
-      have = await _fetch(client, f, part, have, onProgress, cancel, headers);
+      have = await _fetch(
+        client,
+        url,
+        f,
+        part,
+        have,
+        onProgress,
+        cancel,
+        headers,
+      );
     }
   } on Object catch (e) {
     if (cancel?.cancelled ?? false) throw DownloadException(tr('已停止下载'));
@@ -89,9 +149,13 @@ Future<void> downloadFile(
   await part.rename(f.path);
 }
 
+/// 等响应、等两段数据之间最多这么久,卡住就算这个地址下不了。
+const _stall = Duration(seconds: 30);
+
 /// 从第 [have] 个字节接着下到 [part],返回下完后一共有多少字节。
 Future<int> _fetch(
   HttpClient client,
+  String url,
   RemoteFile f,
   File part,
   int have,
@@ -99,10 +163,10 @@ Future<int> _fetch(
   DownloadCancel? cancel,
   Map<String, String> headers,
 ) async {
-  final request = await client.getUrl(Uri.parse(f.url));
+  final request = await client.getUrl(Uri.parse(url));
   headers.forEach(request.headers.set);
   if (have > 0) request.headers.set(HttpHeaders.rangeHeader, 'bytes=$have-');
-  final response = await request.close();
+  final response = await request.close().timeout(_stall);
   final status = response.statusCode;
   // 416:要的那一段已经超出文件末尾,说明其实已经下完了。
   if (status == HttpStatus.requestedRangeNotSatisfiable) {
@@ -125,7 +189,7 @@ Future<int> _fetch(
     mode: have > 0 ? FileMode.writeOnlyAppend : FileMode.writeOnly,
   );
   try {
-    await for (final chunk in response) {
+    await for (final chunk in response.timeout(_stall)) {
       if (cancel?.cancelled ?? false) break;
       sink.add(chunk);
       have += chunk.length;

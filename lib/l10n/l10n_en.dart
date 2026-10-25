@@ -358,6 +358,7 @@ const en = <String, String>{
   'Agent 对话': 'Agent chat',
   '润色': 'Polish',
   '添加模型': 'Add model',
+  '常用服务': 'Providers',
   '按顺序': 'In order',
   '已保存': 'Saved',
   '接口没有返回模型': 'The API returned no models',

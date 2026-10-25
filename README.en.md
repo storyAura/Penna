@@ -150,6 +150,7 @@ A Skill is a writing guide (`SKILL.md`) that decides how the Agent writes prompt
 ### API Management
 
 - Supports OpenAI-compatible APIs and the Google API (including Vertex AI).
+- **Providers** prefills the URL and model for DeepSeek, Zhipu GLM, Kimi, Alibaba Cloud Model Studio and their Coding Plans; add the key to start.
 - Name, URL, models and key take effect after clicking **Save**.
 - One API can hold several models; all models form a fallback chain in order and switch automatically.
 - The Agent and Polish can each have a preferred model.
@@ -171,7 +172,7 @@ A Skill is a writing guide (`SKILL.md`) that decides how the Agent writes prompt
 
 ### Updates
 
-Penna checks GitHub for new versions on every start, and you can also check by hand in **Settings → App settings**. When a new version is found, its release notes are shown; after you confirm, it downloads, replaces itself and restarts.
+Penna checks GitHub for new versions on every start, and you can also check by hand in **Settings → App settings**. When a new version is found, its release notes are shown; after you confirm, it downloads, replaces itself and restarts. The package is fetched through mirror nodes in mainland China first and verified by SHA256.
 
 ### MCP
 
@@ -267,7 +268,7 @@ Every part of Penna is built on the work of the open-source community.
 | [SmilingWolf WD14 Tagger](https://huggingface.co/SmilingWolf) | Local taggers (downloaded on use) | Apache-2.0 |
 | [PixAI Tagger](https://huggingface.co/deepghs/pixai-tagger-v0.9-onnx), [CL Tagger](https://huggingface.co/Nonene/cl_tagger), [OppaiOracle](https://huggingface.co/Grio43/OppaiOracle) | Local taggers (downloaded on use) | See each model page |
 | [Gemma 4](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF), [ToriiGate](https://huggingface.co/DraconicDragon/ToriiGate-0.5-GGUF), [JoyCaption](https://huggingface.co/concedo/llama-joycaption-beta-one-hf-llava-mmproj-gguf), [Florence-2](https://huggingface.co/onnx-community/Florence-2-base-ft) | Local vision models (downloaded on use) | See each model page |
-| lighting-kit (provided by 韶韵, ported from MOSS Prompt Studio) | Region Control lighting assistant: lighting presets, light direction math, lighting phrases and shading preview | — |
+| [lighting-kit](https://github.com/xiang6150592/-moss-prompt-editor) (provided by 韶韵, ported from MOSS Prompt Studio) | Region Control lighting assistant: lighting presets, light direction math, lighting phrases and shading preview | — |
 
 ### Fonts
 

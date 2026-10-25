@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/version-1.0.2--261025--12--dev-F26D7D" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.3--261026--1--dev-F26D7D" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-4F7CF7" alt="license">
 </p>
 
@@ -152,6 +152,7 @@ Skill 是一份写法说明(`SKILL.md`),决定 Agent 按什么方式写提示词
 ### API 管理
 
 - 支持 OpenAI 兼容接口和 Google 接口(含 Vertex AI)。
+- 「常用服务」预填 DeepSeek、智谱 GLM、Kimi、阿里云百炼及其 Coding Plan 的地址与模型,填入 Key 即可使用。
 - 接口的名称、地址、模型与 Key 修改后点「保存」生效。
 - 一个接口可以配置多个模型,所有模型按顺序组成后备链,自动切换。
 - Agent 和润色可以分别指定首选模型。
@@ -173,7 +174,7 @@ Skill 是一份写法说明(`SKILL.md`),决定 Agent 按什么方式写提示词
 
 ### 检查更新
 
-每次启动时自动检查 GitHub 上的新版本,也可以在「设置 → 软件设置」中手动检查。发现新版本时显示更新说明,确认后自动下载、替换并重新启动。
+每次启动时自动检查 GitHub 上的新版本,也可以在「设置 → 软件设置」中手动检查。发现新版本时显示更新说明,确认后自动下载、替换并重新启动;安装包优先经国内加速节点下载,下载后按 SHA256 校验。
 
 ### MCP
 
@@ -265,7 +266,7 @@ Penna 的每一部分都建立在开源社区的成果之上。
 | [SmilingWolf WD14 Tagger](https://huggingface.co/SmilingWolf) | 本地打标模型(使用时下载) | Apache-2.0 |
 | [PixAI Tagger](https://huggingface.co/deepghs/pixai-tagger-v0.9-onnx)、[CL Tagger](https://huggingface.co/Nonene/cl_tagger)、[OppaiOracle](https://huggingface.co/Grio43/OppaiOracle) | 本地打标模型(使用时下载) | 见各模型页 |
 | [Gemma 4](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF)、[ToriiGate](https://huggingface.co/DraconicDragon/ToriiGate-0.5-GGUF)、[JoyCaption](https://huggingface.co/concedo/llama-joycaption-beta-one-hf-llava-mmproj-gguf)、[Florence-2](https://huggingface.co/onnx-community/Florence-2-base-ft) | 本地看图模型(使用时下载) | 见各模型页 |
-| lighting-kit(韶韵提供,迁移自 MOSS Prompt Studio) | 区域控制的打光辅助:打光预设、灯光方向换算、光影描述与光影预览 | — |
+| [lighting-kit](https://github.com/xiang6150592/-moss-prompt-editor)(韶韵提供,迁移自 MOSS Prompt Studio) | 区域控制的打光辅助:打光预设、灯光方向换算、光影描述与光影预览 | — |
 
 ### 字体
 

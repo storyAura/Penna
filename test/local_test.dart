@@ -273,6 +273,31 @@ void main() {
       expect(isDownloaded(file()), isTrue);
     });
 
+    test('GitHub 上校验得了的文件先走加速,都不行再直连;别处和不校验的直连', () {
+      const url = 'https://github.com/o/r/releases/download/v1/a.zip';
+      RemoteFile at(String u, String? sha) =>
+          (url: u, path: 'x', size: null, sha256: sha);
+      expect(downloadUrls(at(url, 'ab')), [
+        for (final p in githubProxies) '$p$url',
+        url,
+      ]);
+      expect(downloadUrls(at(url, null)), [url]);
+      expect(downloadUrls(at('https://hf-mirror.com/a', 'ab')), [
+        'https://hf-mirror.com/a',
+      ]);
+    });
+
+    test('一个地址下不了就换下一个,从头下', () async {
+      File('${tmp.path}/out.bin.part').writeAsBytesSync([1, 2, 3]);
+      final good = file(sha: '${sha256.convert(body)}');
+      await downloadFile(
+        good,
+        urls: ['http://127.0.0.1:${http.port}/missing', good.url],
+      );
+      expect(File('${tmp.path}/out.bin').readAsBytesSync(), body);
+      expect(ranges, ['bytes=3-', null]);
+    });
+
     test('校验不对就删掉;找不到文件说人话', () async {
       await expectLater(
         downloadFile(file(sha: '00')),

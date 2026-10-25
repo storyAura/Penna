@@ -14,23 +14,70 @@ import '../../../l10n/l10n.dart';
 
 const _protocolLabels = {protocolOpenAi: 'OpenAI', protocolGoogle: 'Google'};
 
+/// 「常用服务」里预填的接口(地址和模型取自各家 2026-10 的文档)。名字存进设置,不翻译。
+const llmProviders = [
+  (
+    name: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-flash',
+  ),
+  (
+    name: '智谱 GLM',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    model: 'glm-5.2',
+  ),
+  (
+    name: '智谱 GLM Coding Plan',
+    baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+    model: 'glm-5.2',
+  ),
+  (name: 'Kimi', baseUrl: 'https://api.moonshot.cn/v1', model: 'kimi-k3.1-pro'),
+  (
+    name: 'Kimi Code',
+    baseUrl: 'https://api.kimi.com/coding/v1',
+    model: 'kimi-for-coding',
+  ),
+  (
+    name: '阿里云百炼',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    model: 'qwen-plus',
+  ),
+  (
+    name: '阿里云百炼 Coding Plan',
+    baseUrl: 'https://coding.dashscope.aliyuncs.com/v1',
+    model: 'qwen3.7-plus',
+  ),
+];
+
 /// API 管理:多个接口按顺序使用,失败自动换下一个;Agent 和润色可各自指定。
 class LlmSection extends StatelessWidget {
   const LlmSection({super.key, required this.service});
 
   final ConfigService service;
 
-  void _add() {
+  void _add({String? name, String? baseUrl, String model = ''}) {
     service.update(
       service.config.putLlm(
         LlmProfile(
           id: '${DateTime.now().microsecondsSinceEpoch}',
-          name: tr('新模型'),
-          baseUrl: defaultBaseUrls[protocolOpenAi]!,
-          model: '',
+          name: name ?? tr('新模型'),
+          baseUrl: baseUrl ?? defaultBaseUrls[protocolOpenAi]!,
+          model: model,
         ),
       ),
     );
+  }
+
+  /// 在按钮下面弹出常用服务,选一个就加一张填好地址和模型的卡片(Key 自己填)。
+  Future<void> _addProvider(BuildContext context) async {
+    final box = context.findRenderObject() as RenderBox;
+    final picked = await popMenu(
+      context,
+      box.localToGlobal(box.size.bottomLeft(Offset.zero)),
+      [for (final p in llmProviders) p.name],
+    );
+    final p = llmProviders.where((p) => p.name == picked).firstOrNull;
+    if (p != null) _add(name: p.name, baseUrl: p.baseUrl, model: p.model);
   }
 
   @override
@@ -83,15 +130,26 @@ class LlmSection extends StatelessWidget {
               ),
           ],
         ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: PennaButton(
-            label: tr('添加模型'),
-            icon: Icons.add,
-            background: PennaColors.primary,
-            foreground: Colors.white,
-            onPressed: _add,
-          ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            PennaButton(
+              label: tr('添加模型'),
+              icon: Icons.add,
+              background: PennaColors.primary,
+              foreground: Colors.white,
+              onPressed: _add,
+            ),
+            Builder(
+              builder: (context) => PennaButton(
+                label: tr('常用服务'),
+                icon: Icons.expand_more,
+                borderColor: PennaColors.border,
+                onPressed: () => _addProvider(context),
+              ),
+            ),
+          ],
         ),
       ],
     );

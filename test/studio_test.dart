@@ -223,6 +223,14 @@ void main() {
     await tester.tap(find.text('添加模型'));
     await tester.pump();
     expect(config.config.agentChain.firstOrNull?.name, '新模型');
+    await tester.tap(find.text('常用服务'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('DeepSeek').last);
+    await tester.pumpAndSettle();
+    final added = config.config.llms.last;
+    expect(added.name, 'DeepSeek');
+    expect(added.baseUrl, 'https://api.deepseek.com/v1');
+    expect(added.model, 'deepseek-flash');
 
     await tester.tap(find.text('翻译').last);
     await tester.pump();
