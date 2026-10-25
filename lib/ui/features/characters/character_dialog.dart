@@ -56,48 +56,40 @@ class _CharacterDialogState extends State<_CharacterDialog> {
     _outfits = _outfits.where((o) => o.key != key).toList();
   });
 
-  Widget _outfit(({int key, String name, String prompt}) o) => Container(
+  /// 一套服装:和上面的名字、提示词同样的输入框,名字那行右边是删除。
+  Widget _outfit(({int key, String name, String prompt}) o) => Column(
     key: ValueKey(o.key),
-    margin: const EdgeInsets.only(top: 8),
-    padding: const EdgeInsets.fromLTRB(10, 8, 4, 10),
-    decoration: BoxDecoration(
-      color: PennaColors.slate50,
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: PennaColors.border),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              PennaField(
-                label: tr('服装名'),
-                hint: tr('校服、泳装…'),
-                value: o.name,
-                onChanged: (v) => _editOutfit(o.key, name: v),
-              ),
-              const SizedBox(height: 6),
-              PennaField(
-                label: tr('服装提示词'),
-                maxLines: 3,
-                value: o.prompt,
-                onChanged: (v) => _editOutfit(o.key, prompt: v),
-              ),
-            ],
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const SizedBox(height: 8),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: PennaField(
+              label: tr('服装名'),
+              hint: tr('校服、泳装…'),
+              value: o.name,
+              onChanged: (v) => _editOutfit(o.key, name: v),
+            ),
           ),
-        ),
-        IconButton(
-          tooltip: tr('删除'),
-          iconSize: 16,
-          visualDensity: VisualDensity.compact,
-          color: PennaColors.slate400,
-          icon: const Icon(Icons.close),
-          onPressed: () => _removeOutfit(o.key),
-        ),
-      ],
-    ),
+          IconButton(
+            tooltip: tr('删除'),
+            iconSize: 16,
+            color: PennaColors.slate400,
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _removeOutfit(o.key),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      PennaField(
+        label: tr('服装提示词'),
+        maxLines: 5,
+        value: o.prompt,
+        onChanged: (v) => _editOutfit(o.key, prompt: v),
+      ),
+    ],
   );
 
   /// 新选的图;没选就是 null,保存时留着原来的。

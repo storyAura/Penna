@@ -177,7 +177,8 @@ void main() {
         prompt: 'blonde hair',
         outfits: [
           (name: '礼服', prompt: 'white dress'),
-          (name: '空的', prompt: ' '),
+          (name: '原装', prompt: ''),
+          (name: ' ', prompt: ' '),
         ],
       );
       expect(store.find('画小菲').single.name, 'phoenix reffaella');
@@ -191,7 +192,10 @@ void main() {
         (card.alias, card.intro, card.prompt),
         ('菲欧妮,小菲', '王女', 'long blonde hair'),
       );
-      expect(card.outfits, [(name: '礼服', prompt: 'white dress')]);
+      expect(card.outfits, [
+        (name: '礼服', prompt: 'white dress'),
+        (name: '原装', prompt: ''),
+      ]);
     });
 
     test('拖着换顺序;改一个不挪位置;只换图时存成 WebP', () {
@@ -305,9 +309,10 @@ void main() {
 
       expect(seen, hasLength(2));
       // 自己存了哪些角色,一开始就告诉了模型。
-      expect(seen.first.messages.first['content'], contains('ganyu(又叫 小甘)'));
+      expect(seen.first.messages.first['content'], contains('ganyu(别名:小甘)'));
       final handed = seen.last.messages.last['content']!;
       expect(handed, contains('提示词:my ganyu'));
+      expect(handed, contains('别名:小甘'));
       expect(handed, contains('简介:秘书'));
       expect(handed, contains('服装·泳装:blue bikini'));
       expect(handed, contains('触发词:ganyu (genshin impact), genshin impact'));

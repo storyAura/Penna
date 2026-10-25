@@ -419,10 +419,11 @@ extension StudioContext on StudioViewModel {
               const <CharacterCard>[])
         c.alias.isEmpty
             ? oneLine(c.name)
-            : '${oneLine(c.name)}(又叫 ${oneLine(c.alias)})',
+            : '${oneLine(c.name)}(别名:${oneLine(c.alias)})',
     ];
     if (names.isEmpty) return '';
-    return '【角色库】用户自己存了这些角色,提到它们时先用 <search-character> 查出提示词再写:'
+    return '【角色库】用户自己存了这些角色(括号里是别名,说名字或别名都是指它),'
+        '提到它们时先用 <search-character> 查出提示词再写:'
         '${names.join('、')}';
   }
 

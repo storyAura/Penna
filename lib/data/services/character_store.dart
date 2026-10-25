@@ -143,11 +143,11 @@ class CharacterStore extends ChangeNotifier {
     return card;
   }
 
-  /// 去掉没写提示词的服装,其余去掉首尾空白。
+  /// 去掉名字和提示词都没写的服装,其余去掉首尾空白。
   static List<CharacterOutfit> _cleanOutfits(List<CharacterOutfit> outfits) =>
       List.unmodifiable([
         for (final o in outfits)
-          if (o.prompt.trim().isNotEmpty)
+          if (o.name.trim().isNotEmpty || o.prompt.trim().isNotEmpty)
             (name: o.name.trim(), prompt: o.prompt.trim()),
       ]);
 
