@@ -561,14 +561,21 @@ class _ChatPaneState extends State<ChatPane> {
                   top: 8,
                   right: 12,
                   bottom: 8,
-                  width: _sideWidth,
-                  child: PopIn(
-                    child: _SidePanel(
-                      chat: side,
-                      pane: this,
-                      config: widget.config,
-                      onClose: () => setState(() => _sideOpen = false),
-                      onOpenSettings: widget.onOpenSettings,
+                  // 区域控制那边的对话栏比浮窗窄:最多占满,两边留出空隙。
+                  left: 12,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: SizedBox(
+                      width: _sideWidth,
+                      child: PopIn(
+                        child: _SidePanel(
+                          chat: side,
+                          pane: this,
+                          config: widget.config,
+                          onClose: () => setState(() => _sideOpen = false),
+                          onOpenSettings: widget.onOpenSettings,
+                        ),
+                      ),
                     ),
                   ),
                 ),

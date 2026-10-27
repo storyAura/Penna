@@ -27,9 +27,8 @@ extension StudioContext on StudioViewModel {
     final asks = layoutAgent == null || layoutOnly
         ? const <({String name, String brief})>[]
         : splitAskLayout(prose).asks.take(1).toList();
-    // 要看副聊天的记录:本机的,不用等。布局页的对话不管。
-    final peek =
-        side != null && !layoutOnly && splitPeek(prose, readSideChat).asked;
+    // 要看副聊天的记录:本机的,不用等。
+    final peek = side != null && splitPeek(prose, readSideChat).asked;
     if (queries.isEmpty &&
             names.isEmpty &&
             calls.isEmpty &&
@@ -419,6 +418,7 @@ extension StudioContext on StudioViewModel {
       _characterPrompt,
     ],
     _layoutPagesPrompt,
+    if (side?.messages.isNotEmpty ?? false) sideNoteForMain,
     _namingNote('layout'),
     _layoutPrompt,
   ].where((s) => s.isNotEmpty).join('\n\n');
@@ -494,6 +494,10 @@ extension StudioContext on StudioViewModel {
       piercing: cfg.sidePiercing ? cfg.piercingPrompt.trim() : '',
     );
   }
+
+  /// 区域控制那边的副聊天照着排布局的要求(和布局页的 Agent 同一份,带着画板现在的样子)。
+  String get layoutGuide =>
+      _layoutSystemPrompt(config.config, config.config.activePreset);
 
   /// 成稿的写法(`<draft>` 的格式),副聊天也照它写。
   String get draftFormat => _draftFormatPrompt(config.config.glossLanguage);

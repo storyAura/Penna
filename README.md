@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/version-1.0.3--261028--5--dev-F26D7D" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.3--261028--6--dev-F26D7D" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-4F7CF7" alt="license">
 </p>
 
@@ -68,7 +68,7 @@ Agent 与润色的结果以待确认改动的形式提交。改动按行以红�
 
 - 回复流式输出,可随时停止或重新运行。
 - 生成期间继续发送的消息进入队列,依次自动发出,也可以插队立刻发送。
-- **副聊天**:点快捷操作一栏右侧的「副聊天」,在对话上方弹出半透明浮窗,另开一场对话。它使用单独指定的模型和单独的穿甲弹开关,读取工作区的提示词,写出的新成稿同样放进工作区,与主聊天的对话互不干扰;两边可以按需读取对方的对话记录。
+- **副聊天**:点快捷操作一栏右侧的「副聊天」,在对话上方弹出半透明浮窗,另开一场对话。它使用单独指定的模型和单独的穿甲弹开关,读取工作区的提示词,写出的新成稿同样放进工作区,与主聊天的对话互不干扰;两边可以按需读取对方的对话记录。区域控制工作台的对话同样带有副聊天,它写出的布局放到画板上。
 - Agent 的提问以竖排选项列出,支持单选和多选;选择成稿中的段落时,直接列出当前页的各段。
 - 要求 Tag 反推或指定本地模型反推时,Agent 调用本机模型处理对话中的图片;所需模型尚未安装时,由用户选择下载或改用已安装的模型。
 - 要求把成稿转成 JSON 或按位置排版时,Agent 把任务交给区域控制工作台的 Agent;布局写好后显示在区域控制工作台,JSON 同时放入成稿区新建的系列。

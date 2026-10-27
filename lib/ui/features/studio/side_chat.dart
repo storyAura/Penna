@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/draft_block.dart';
+import '../../../core/harness/layout.dart';
 import '../../../core/harness/providers/llm_router.dart';
 import '../../../l10n/l10n.dart';
 import 'studio_view_model.dart';
@@ -122,7 +123,19 @@ class SideChat extends ChangeNotifier {
     return _start(_messages.sublist(0, at + 1), DateTime.now());
   }
 
-  String get _systemPrompt => [
+  String get _systemPrompt => main.layoutOnly ? _layoutPrompt : _draftPrompt;
+
+  /// 区域控制那边:看画板、改布局,交的是完整的 `<layout>`。
+  String get _layoutPrompt => [
+    '你是 Penna 区域控制工作台的副聊天助手:用户在主聊天里和另一个 Agent 排区域控制的布局,'
+        '在这里和你另开一场对话,让你帮着看、帮着改:回答问题、点评、出主意;要改布局时照下面的要求写出完整的 <layout>,'
+        '程序会把它放到画板上用户眼前那一页。不写 <draft>。',
+    '用户要你参考主聊天里说过的话、或问主聊天的 Agent 说了什么时,只输出 <$readMainChat></$readMainChat>,'
+        '程序把主聊天最近的记录交给你,你再接着回答。',
+    main.layoutGuide,
+  ].join('\n\n');
+
+  String get _draftPrompt => [
     '你是 Penna 的副聊天助手。Penna 是写文生图提示词的工作台:用户在主聊天里和另一个 Agent 写提示词,'
         '在这里和你另开一场对话,让你帮着看、帮着改:回答问题、点评、出主意,要改提示词时直接写好放进 <draft>,'
         '程序会把它放进工作区(用户眼前那一页;已有内容时变成待确认的改动)。不写 <layout>。',
@@ -135,6 +148,7 @@ class SideChat extends ChangeNotifier {
 
   /// 回复里的成稿放进工作区,和主聊天的一样;放不上的记在这条回复上。
   void _deliver() {
+    if (main.layoutOnly) return _deliverLayout();
     final drafts = splitDrafts(_messages.last.text).drafts;
     final written = <int>{};
     for (final d in drafts) {
@@ -160,6 +174,17 @@ class SideChat extends ChangeNotifier {
     }
     // 自己的成稿开了新页、新系列:是这场对话做的事,不用从头开始。
     _seen = _workspace;
+  }
+
+  /// 区域控制那边:写完的 `<layout>` 放到画板上眼前那一页(和布局卡片上的按钮一样)。
+  // ponytail: 只收布局本身;<perspective>、<lighting> 这些只有主聊天会放,要的话照 _deliverLayout 补。
+  void _deliverLayout() {
+    final laid = splitLayout(_messages.last.text);
+    final json = laid.json;
+    if (!laid.complete || json == null || main.adoptLayout(json)) return;
+    _update(
+      (m) => m.copyWith(toolSummary: [?m.toolSummary, tr('布局读不了')].join(' · ')),
+    );
   }
 
   /// 以 [history](最后一条是用户消息)为上文开始一条回复。

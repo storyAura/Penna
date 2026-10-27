@@ -6,7 +6,9 @@ import 'package:penna/core/harness/providers/openai_provider.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/ui/core/theme.dart';
 import 'package:penna/ui/core/widgets.dart';
+import 'package:penna/ui/features/layout/layout_board.dart';
 import 'package:penna/ui/features/studio/side_chat.dart';
+import 'package:penna/ui/features/studio/studio_page.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 import 'package:penna/ui/shell.dart';
 
@@ -17,6 +19,7 @@ import 'fixtures.dart';
   List<String> replies,
   List<LlmRequest> seen, {
   bool sidePiercing = false,
+  LayoutBoard? layout,
 }) {
   final service = tempConfig();
   service.update(
@@ -35,6 +38,8 @@ import 'fixtures.dart';
   );
   final vm = StudioViewModel(
     config: service,
+    layout: layout,
+    layoutOnly: layout != null,
     streamChat: (req) {
       seen.add(req);
       return Stream.value(replies[seen.length - 1]);
@@ -126,6 +131,34 @@ void main() {
     expect(side.messages, isEmpty);
   });
 
+  test('区域控制的副聊天照排布局的要求写,<layout> 放到画板上;那边的主聊天也读得到它', () async {
+    const json =
+        '{"width": 832, "height": 1216, "summary": {"canvas": "single", '
+        '"caption": "Scene."}, "items": [{"name": "凛·1", "label": "character", '
+        '"caption": "Waves.", "bbox": [100, 100, 500, 1100]}], '
+        '"bbox_coord_space": "abs", "bbox_format": "xyxy"}';
+    final board = LayoutBoard();
+    final seen = <LlmRequest>[];
+    final (vm, side) = _chats(
+      ['挪好了。<layout>$json</layout>', '<read-side-chat/>', '照副聊天的看过了'],
+      seen,
+      layout: board,
+    );
+
+    side.send('把凛放左边');
+    await pumpEventQueue();
+    final system = seen.single.messages.first['content']!;
+    expect(system, contains('区域控制工作台的副聊天助手'));
+    expect(system, contains('<layout>'));
+    expect(board.layout.boxes.single.name, '凛·1');
+
+    vm.send('看看副聊天');
+    await pumpEventQueue();
+    expect(seen, hasLength(3));
+    expect(seen.last.messages.last['content'], contains('【副聊天的记录】'));
+    expect(vm.messages.last.text, '照副聊天的看过了');
+  });
+
   test('主聊天写 <read-side-chat> 时读到副聊天的记录,再接着写', () async {
     final seen = <LlmRequest>[];
     final (vm, side) = _chats([
@@ -161,7 +194,11 @@ void main() {
         home: AppShell(vm: vm, config: vm.config, skills: tempSkills()),
       ),
     );
-    final toggle = find.widgetWithText(PennaButton, '副聊天');
+    // 区域控制页(也常驻在 Stack 里)也有一个,找工作台的。
+    final toggle = find.descendant(
+      of: find.byType(StudioPage),
+      matching: find.widgetWithText(PennaButton, '副聊天'),
+    );
     expect(toggle, findsOneWidget);
     expect(vm.side, isNotNull);
 

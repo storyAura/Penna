@@ -78,6 +78,7 @@ class _AppShellState extends State<AppShell> {
     widget.vm.local ??= _local;
     widget.vm.layoutAgent ??= _layoutChat;
     widget.vm.side ??= SideChat(widget.vm);
+    _layoutChat.side ??= SideChat(_layoutChat);
     if (widget.checkUpdates) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => checkForUpdate(
