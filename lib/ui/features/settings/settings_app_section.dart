@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../data/models/app_config.dart';
 import '../../../data/services/config_service.dart';
@@ -154,7 +155,7 @@ class AppSection extends StatelessWidget {
 /// 建好仓库后改成 true 就回来了,设置里的值和译文都还留着。
 const _characterPreviewsReady = false;
 
-/// 对话相关的开关:压缩大图、自动审批(内置角色预览图先藏着)。
+/// 右栏:对话相关的开关(压缩大图、自动审批,内置角色预览图先藏着)和区域控制的分辨率对齐。
 class _ChatOptions extends StatelessWidget {
   const _ChatOptions({required this.service});
 
@@ -213,7 +214,120 @@ class _ChatOptions extends StatelessWidget {
                 service.update(service.config.copyWith(characterPreviews: v)),
           ),
         ],
+        gap,
+        SectionHeading(tr('区域控制'), tr('画布尺寸')),
+        _LayoutSnapCard(
+          value: cfg.layoutSnap,
+          onChanged: (v) =>
+              service.update(service.config.copyWith(layoutSnap: v)),
+        ),
       ],
+    );
+  }
+}
+
+/// 分辨率对齐:几个常用的倍数点一下就换,也能自己填(1 到 [maxLayoutSnap])。
+class _LayoutSnapCard extends StatefulWidget {
+  const _LayoutSnapCard({required this.value, required this.onChanged});
+
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_LayoutSnapCard> createState() => _LayoutSnapCardState();
+}
+
+class _LayoutSnapCardState extends State<_LayoutSnapCard> {
+  static const _common = [8, 16, 32, 64];
+
+  late final _controller = TextEditingController(text: '${widget.value}');
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _submit();
+    });
+  }
+
+  @override
+  void didUpdateWidget(_LayoutSnapCard old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value) _controller.text = '${widget.value}';
+  }
+
+  /// 填的数读不了时放回原来的,超出范围的截到范围里。
+  void _submit() {
+    final v = int.tryParse(_controller.text.trim());
+    if (v == null) {
+      _controller.text = '${widget.value}';
+      return;
+    }
+    final got = v.clamp(minLayoutSnap, maxLayoutSnap);
+    _controller.text = '$got';
+    if (got != widget.value) widget.onChanged(got);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(6),
+      borderSide: BorderSide(color: PennaColors.border),
+    );
+    return PennaCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(tr('分辨率对齐'), style: titleStyle),
+          Text(tr('画布宽高取它的倍数'), style: hintStyle),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final n in _common)
+                PennaChip(
+                  label: '$n px',
+                  selected: widget.value == n,
+                  onTap: () => widget.onChanged(n),
+                ),
+              Tooltip(
+                message: tr('1 为不对齐'),
+                child: SizedBox(
+                  width: 64,
+                  child: TextField(
+                    contextMenuBuilder: pennaTextMenu,
+                    controller: _controller,
+                    focusNode: _focus,
+                    textAlign: TextAlign.center,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onSubmitted: (_) => _submit(),
+                    style: const TextStyle(fontSize: 12.5),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      filled: true,
+                      fillColor: PennaColors.card,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                      border: border,
+                      enabledBorder: border,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

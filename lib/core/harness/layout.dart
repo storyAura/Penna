@@ -576,9 +576,13 @@ List<LayoutBox> inheritNames(
   ];
 }
 
-/// MOSS-Image 要画布的宽高都是 16 的倍数:取最近的一个,并留在边长范围里。
-int snapLayoutSide(int v) =>
-    ((v / 16).round() * 16).clamp(minLayoutSide, maxLayoutSide);
+/// 画布边长取 [step] 的倍数(MOSS-Image 要 16,用户在设置里能改):取最近的一个,
+/// 并留在 [minLayoutSide] 到 [max] 之间,贴着两头时也取范围里的倍数。
+int snapLayoutSide(int v, int step, {int max = maxLayoutSide}) {
+  final lo = (minLayoutSide + step - 1) ~/ step * step;
+  final hi = max ~/ step * step;
+  return ((v / step).round() * step).clamp(lo, hi);
+}
 
 /// 模型写的 JSON 常差一点:从第一个 `{` 开始取,去掉 `}`、`]` 前多余的逗号,
 /// 末尾缺的右括号按顺序补上。字符串里的字一个不动。

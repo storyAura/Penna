@@ -281,6 +281,7 @@ class _LayoutPageState extends State<LayoutPage> {
               board: board,
               archive: widget.archive,
               title: () => widget.chat.pageName,
+              snap: () => widget.config.config.layoutSnap,
               onToggle3D: _toggle3D,
             ),
             Expanded(
@@ -481,6 +482,7 @@ class _TopBar extends StatelessWidget {
     required this.board,
     required this.archive,
     required this.title,
+    required this.snap,
     required this.onToggle3D,
   });
 
@@ -489,6 +491,9 @@ class _TopBar extends StatelessWidget {
 
   /// 眼前这页的名字,存档案库时先填进名称。
   final String Function() title;
+
+  /// 画布宽高取它的倍数(「设置 → 软件设置」的分辨率对齐)。
+  final int Function() snap;
   final VoidCallback onToggle3D;
 
   /// 把整张布局(连同画布尺寸和各块的名字)存进档案库的「区域控制」分区。
@@ -524,14 +529,18 @@ class _TopBar extends StatelessWidget {
         );
         return;
       }
-      // MOSS-Image 要 16 的倍数:对齐到最近的一个,并说一声。
+      // 对齐到设置里的倍数(默认 16,MOSS-Image 的要求),并说一声。
+      final step = snap();
       final got = (
-        width: snapLayoutSide(want.width),
-        height: snapLayoutSide(want.height),
+        width: snapLayoutSide(want.width, step),
+        height: snapLayoutSide(want.height, step),
       );
       board.setSize(got.width, got.height);
       if (got != want) {
-        showToast(context, tr('已对齐到 16 的倍数:{0}×{1}', [got.width, got.height]));
+        showToast(
+          context,
+          tr('已对齐到 {0} 的倍数:{1}×{2}', [step, got.width, got.height]),
+        );
       }
     }
 
@@ -566,7 +575,7 @@ class _TopBar extends StatelessWidget {
           icon: const Icon(Icons.swap_horiz),
           onPressed: board.swap,
         ),
-        LayoutSizePicker(board: board),
+        LayoutSizePicker(board: board, snap: snap),
         const SizedBox(width: 4),
         _PerspectiveButton(board: board),
         const SizedBox(width: 4),

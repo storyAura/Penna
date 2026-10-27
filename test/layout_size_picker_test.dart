@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:penna/data/models/app_config.dart';
 import 'package:penna/ui/features/layout/layout_board.dart';
 import 'package:penna/ui/features/layout/layout_size_picker.dart';
 
@@ -10,6 +11,14 @@ void main() {
     expect(aspectLabel(1000, 997), '1.00:1');
   });
 
+  test('分辨率对齐默认 16,存下读回,超出范围的截到 1 到 256', () {
+    expect(const AppConfig().layoutSnap, 16);
+    final c = const AppConfig().copyWith(layoutSnap: 64);
+    expect(AppConfig.fromJson(c.toJson()).layoutSnap, 64);
+    expect(AppConfig.fromJson({'layoutSnap': 999}).layoutSnap, 256);
+    expect(AppConfig.fromJson({'layoutSnap': 0}).layoutSnap, 1);
+  });
+
   testWidgets('拖右上角松手才换画布,存下的尺寸点一下换过去', (tester) async {
     final board = LayoutBoard();
     await tester.pumpWidget(
@@ -17,7 +26,7 @@ void main() {
         home: Scaffold(
           body: Align(
             alignment: Alignment.topLeft,
-            child: LayoutSizePicker(board: board),
+            child: LayoutSizePicker(board: board, snap: () => 16),
           ),
         ),
       ),

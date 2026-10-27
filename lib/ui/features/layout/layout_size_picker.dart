@@ -19,9 +19,12 @@ const _gridStep = 256;
 /// 顶栏的「分辨率」按钮:点开是一块拖动板(左下角是原点,拖右上角定宽高,
 /// 拖上边只改高、拖右边只改宽)和存下的常用尺寸。
 class LayoutSizePicker extends StatelessWidget {
-  const LayoutSizePicker({super.key, required this.board});
+  const LayoutSizePicker({super.key, required this.board, required this.snap});
 
   final LayoutBoard board;
+
+  /// 宽高取它的倍数(设置里的分辨率对齐)。
+  final int Function() snap;
 
   @override
   Widget build(BuildContext context) => MenuAnchor(
@@ -39,7 +42,7 @@ class LayoutSizePicker extends StatelessWidget {
     menuChildren: [
       ListenableBuilder(
         listenable: board,
-        builder: (context, _) => _SizePanel(board: board),
+        builder: (context, _) => _SizePanel(board: board, snap: snap),
       ),
     ],
     builder: (context, menu, _) => IconButton(
@@ -54,9 +57,10 @@ class LayoutSizePicker extends StatelessWidget {
 }
 
 class _SizePanel extends StatefulWidget {
-  const _SizePanel({required this.board});
+  const _SizePanel({required this.board, required this.snap});
 
   final LayoutBoard board;
+  final int Function() snap;
 
   @override
   State<_SizePanel> createState() => _SizePanelState();
@@ -92,7 +96,7 @@ class _SizePanelState extends State<_SizePanel> {
   }
 
   int _side(double v) =>
-      snapLayoutSide((v / _scale).round()).clamp(minLayoutSide, _range);
+      snapLayoutSide((v / _scale).round(), widget.snap(), max: _range);
 
   void _drag(Offset p) {
     final s = _shown;

@@ -737,7 +737,7 @@ const en = <String, String>{
   '物体': 'Object',
   '照布局画板完善整体描述和每个框的描述,框的位置不动': 'Refine the overall caption and each box caption on the layout board, keeping the boxes where they are',
   '边长要在 {0} 到 {1} 之间': 'Sides must be between {0} and {1}',
-  '已对齐到 16 的倍数:{0}×{1}': 'Rounded to multiples of 16: {0}×{1}',
+  '已对齐到 {0} 的倍数:{1}×{2}': 'Rounded to multiples of {0}: {1}×{2}',
   '宽': 'Width',
   '高': 'Height',
   '横竖对调': 'Swap width and height',
@@ -1023,4 +1023,8 @@ const en = <String, String>{
   '分辨率': 'Resolution',
   '拖动范围': 'Drag range',
   '常用尺寸': 'Saved sizes',
+  '分辨率对齐': 'Resolution snap',
+  '画布宽高取它的倍数': 'Canvas sides snap to multiples of this',
+  '画布尺寸': 'Canvas size',
+  '1 为不对齐': '1 turns snapping off',
 };

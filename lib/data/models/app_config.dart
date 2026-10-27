@@ -101,6 +101,11 @@ const maxMtTimeoutSeconds = 120;
 const defaultMtAttempts = 3;
 const defaultMtTimeoutSeconds = 25;
 
+/// 区域控制的画布宽高取它的倍数(MOSS-Image 要 16);1 是不对齐。
+const defaultLayoutSnap = 16;
+const minLayoutSnap = 1;
+const maxLayoutSnap = 256;
+
 /// 「界面大小」能选的倍数。
 const uiScales = [1.0, 1.25, 1.5, 1.75, 2.0];
 const minUiScale = 1.0;
@@ -395,6 +400,7 @@ class AppConfig {
     this.piercing = false,
     this.piercingPrompt = '',
     this.layoutQuality = defaultLayoutQuality,
+    this.layoutSnap = defaultLayoutSnap,
     this.compressImages = true,
     this.autoApprove = false,
     this.characterPreviews = false,
@@ -446,6 +452,9 @@ class AppConfig {
       piercing: m['piercing'] as bool? ?? false,
       piercingPrompt: m['piercingPrompt'] as String? ?? '',
       layoutQuality: m['layoutQuality'] as String? ?? defaultLayoutQuality,
+      layoutSnap: ((m['layoutSnap'] as num?) ?? defaultLayoutSnap)
+          .clamp(minLayoutSnap, maxLayoutSnap)
+          .toInt(),
       compressImages: m['compressImages'] as bool? ?? true,
       autoApprove: m['autoApprove'] as bool? ?? false,
       characterPreviews: m['characterPreviews'] as bool? ?? false,
@@ -555,6 +564,9 @@ class AppConfig {
   /// 区域控制交出去的 JSON 里 summary.caption 最前面的质量词;空串是不加。
   final String layoutQuality;
 
+  /// 区域控制的画布宽高对齐到它的倍数(见 [defaultLayoutSnap])。
+  final int layoutSnap;
+
   /// 要注入的穿甲弹文字;关着或没填为空串。
   String get piercingText => piercing ? piercingPrompt.trim() : '';
 
@@ -600,6 +612,7 @@ class AppConfig {
     'piercing': piercing,
     'piercingPrompt': piercingPrompt,
     'layoutQuality': layoutQuality,
+    'layoutSnap': layoutSnap,
     'compressImages': compressImages,
     'autoApprove': autoApprove,
     'characterPreviews': characterPreviews,
@@ -648,6 +661,7 @@ class AppConfig {
     bool? piercing,
     String? piercingPrompt,
     String? layoutQuality,
+    int? layoutSnap,
     bool? compressImages,
     bool? autoApprove,
     bool? characterPreviews,
@@ -679,6 +693,7 @@ class AppConfig {
     piercing: piercing ?? this.piercing,
     piercingPrompt: piercingPrompt ?? this.piercingPrompt,
     layoutQuality: layoutQuality ?? this.layoutQuality,
+    layoutSnap: layoutSnap ?? this.layoutSnap,
     compressImages: compressImages ?? this.compressImages,
     autoApprove: autoApprove ?? this.autoApprove,
     characterPreviews: characterPreviews ?? this.characterPreviews,

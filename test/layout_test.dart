@@ -161,12 +161,18 @@ void main() {
     expect(own.map((x) => x.layer), ['middle', 'middle']);
   });
 
-  test('画布边长对齐到 16 的倍数,并留在范围里', () {
-    expect(snapLayoutSide(830), 832);
-    expect(snapLayoutSide(1200), 1200);
-    expect(snapLayoutSide(1207), 1200);
-    expect(snapLayoutSide(10), minLayoutSide);
-    expect(snapLayoutSide(5000), maxLayoutSide);
+  test('画布边长对齐到设置的倍数,并留在范围里', () {
+    expect(snapLayoutSide(830, 16), 832);
+    expect(snapLayoutSide(1200, 16), 1200);
+    expect(snapLayoutSide(1207, 16), 1200);
+    expect(snapLayoutSide(1207, 1), 1207);
+    expect(snapLayoutSide(830, 64), 832);
+    // 贴着两头时也取范围里的倍数。
+    expect(snapLayoutSide(10, 100), 100);
+    expect(snapLayoutSide(5000, 100), 4000);
+    expect(snapLayoutSide(2100, 16, max: 2048), 2048);
+    expect(snapLayoutSide(10, 16), minLayoutSide);
+    expect(snapLayoutSide(5000, 16), maxLayoutSide);
   });
 
   test('画板:放上去时改掉的地方写进给 Agent 的系统提示,画板再改过就不提了', () {
