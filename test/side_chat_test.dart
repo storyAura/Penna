@@ -78,6 +78,25 @@ void main() {
     expect(vm.messages.where((m) => !m.fromUser).single.text, '主');
   });
 
+  test('副聊天写的 <draft> 放进工作区:空页直接填,有内容时是待确认改动', () async {
+    final seen = <LlmRequest>[];
+    final (vm, side) = _chats([
+      '写好了。<draft>【主体】a bathroom</draft>',
+      '<draft replace>【主体】a garden</draft>',
+    ], seen);
+
+    side.send('帮我写一张浴室');
+    await pumpEventQueue();
+    expect(seen.single.messages.first['content'], contains('<draft>'));
+    expect(vm.body, '【主体】a bathroom');
+
+    side.send('整篇换成花园');
+    await pumpEventQueue();
+    expect(vm.pending?.added, '【主体】a garden');
+    vm.acceptDiff();
+    expect(vm.body, '【主体】a garden');
+  });
+
   test('主聊天写 <read-side-chat> 时读到副聊天的记录,再接着写', () async {
     final seen = <LlmRequest>[];
     final (vm, side) = _chats([

@@ -67,7 +67,7 @@ Each page is a separate prompt, and pages can be grouped into series. There can 
 
 - Replies stream in and can be stopped or run again at any time.
 - Messages sent while a reply is generating are queued and sent in order; a queued message can also skip the line and be sent right away.
-- **Side chat**: click **Side chat** at the right end of the quick actions row to open a translucent floating panel over the conversation. It runs a separate conversation with its own model and its own Armor-Piercing switch, reads the prompts in the workspace and leaves the main chat untouched; each chat can read the other's conversation when asked.
+- **Side chat**: click **Side chat** at the right end of the quick actions row to open a translucent floating panel over the conversation. It runs a separate conversation with its own model and its own Armor-Piercing switch, reads the prompts in the workspace and puts its new drafts into the workspace just like the main chat, while the two conversations stay separate; each chat can read the other's conversation when asked.
 - Questions from the Agent appear as stacked options with single or multiple choice; when the choice is about sections of the draft, the sections of the current page are listed directly.
 - When asked for tag interrogation or a specific local model, the Agent runs the model on this PC against the image in the chat; when the model is not installed yet, you choose whether to download it or use an installed one instead.
 - When asked to turn the draft into JSON or lay it out by position, the Agent hands the task to the Region Control Agent. The finished layout appears in Region Control, and the JSON is also placed into a new series in the draft.

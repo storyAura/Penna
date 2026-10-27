@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:pasteboard/pasteboard.dart';
 
 import '../../../core/harness/attachment.dart';
-import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../data/models/app_config.dart';
 import '../../../data/services/config_service.dart';
@@ -20,7 +19,6 @@ import '../../../data/services/skill_store.dart';
 import 'attachment_view.dart';
 import 'chat_message_view.dart';
 import 'chat_tabs.dart';
-import 'markdown_text.dart';
 import 'mention.dart';
 import 'side_chat.dart';
 import 'studio_view_model.dart';
@@ -567,6 +565,7 @@ class _ChatPaneState extends State<ChatPane> {
                   child: PopIn(
                     child: _SidePanel(
                       chat: side,
+                      pane: this,
                       config: widget.config,
                       onClose: () => setState(() => _sideOpen = false),
                       onOpenSettings: widget.onOpenSettings,

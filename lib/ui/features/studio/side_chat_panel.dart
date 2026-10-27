@@ -1,10 +1,11 @@
 part of 'chat_pane.dart';
 
 // 副聊天的浮窗:盖在对话右边,底色半透明,看得见后面的对话;关掉不丢记录。
+// 气泡和主聊天的是同一个 ChatMessageView,回复里的成稿一样放进工作区。
 
 /// 浮窗底色的不透明度:后面的对话透得出来,字也看得清。
 const _sideOpacity = 0.9;
-const _sideWidth = 380.0;
+const _sideWidth = 440.0;
 
 /// 快捷操作那一排最右边的开关。
 class _SideToggle extends StatelessWidget {
@@ -27,12 +28,16 @@ class _SideToggle extends StatelessWidget {
 class _SidePanel extends StatefulWidget {
   const _SidePanel({
     required this.chat,
+    required this.pane,
     required this.config,
     required this.onClose,
     required this.onOpenSettings,
   });
 
   final SideChat chat;
+
+  /// 主聊天那一栏:成稿卡片的「放到成稿」、状态,和主聊天的走同一套。
+  final _ChatPaneState pane;
   final ConfigService config;
   final VoidCallback onClose;
   final VoidCallback onOpenSettings;
@@ -82,7 +87,12 @@ class _SidePanelState extends State<_SidePanel> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([widget.chat, widget.config]),
+      // 主聊天的工作台变了(成稿放进去了)卡片上的状态也要跟着变。
+      listenable: Listenable.merge([
+        widget.chat,
+        widget.config,
+        widget.pane.widget.vm,
+      ]),
       builder: (context, _) {
         final rows = foldLookups(widget.chat.messages).reversed.toList();
         return Material(
@@ -209,54 +219,42 @@ class _SidePanelState extends State<_SidePanel> {
     );
   }
 
+  /// 和主聊天一样的气泡:成稿卡片、选项、工具记录都有;成稿放进工作区。
   Widget _row(ChatRow row, {required bool last}) {
-    final m = row.message;
-    final body = TextStyle(fontSize: 13, height: 1.6, color: PennaColors.text);
-    if (m.fromUser) {
-      return Align(
-        alignment: Alignment.centerRight,
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: _sideWidth * 0.8),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: PennaColors.primaryBg,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: SelectableText(
-            m.text,
-            style: body,
-            contextMenuBuilder: pennaTextMenu,
-          ),
-        ),
-      );
-    }
-    final text = splitPeek(m.text, readMainChat).prose;
-    final note = TextStyle(fontSize: 11, color: PennaColors.slate500);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final l in row.lookups)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(
-              children: [
-                Icon(Icons.check_circle_outline, size: 13, color: note.color),
-                const SizedBox(width: 4),
-                Text(l.toolSummary ?? '', style: note),
-              ],
-            ),
-          ),
-        if (m.by != null) Text(m.by!, style: note),
-        // 等第一个字时和主聊天一样是三个依次浮起的小点。
-        if (text.isEmpty && last && widget.chat.isStreaming)
-          const TypingDots()
-        else
-          SelectableText.rich(
-            markdownSpan(text, body),
-            contextMenuBuilder: pennaTextMenu,
-          ),
+    final chat = widget.chat;
+    final pane = widget.pane;
+    final vm = pane.widget.vm;
+    final cfg = widget.config.config;
+    return ChatMessageView(
+      message: row.message,
+      lookups: row.lookups,
+      agentAvatar: cfg.agentAvatar,
+      userAvatar: cfg.userAvatar,
+      onAdoptDraft: (draft) => pane._adoptDraft(draft, null),
+      draftStatus: pane._draftStatus,
+      userSkills: vm.skills?.skills ?? const [],
+      onAddSkill: pane._addSkill,
+      onAdoptLayout: pane._adoptLayout,
+      streaming: chat.isStreaming && last,
+      onRetry: !chat.isStreaming && last && !row.message.fromUser
+          ? _retry
+          : null,
+      onOption: !chat.isStreaming && last ? _answer : null,
+      draftSections: [
+        for (final s in vm.sectionsHere)
+          (label: s.label, detail: s.text.trim()),
       ],
     );
+  }
+
+  void _retry() {
+    final problem = widget.chat.regenerate();
+    if (problem != null) showToast(context, problem, warn: true);
+  }
+
+  void _answer(String option) {
+    final problem = widget.chat.send(option);
+    if (problem != null) showToast(context, problem, warn: true);
   }
 
   Widget _composer() {

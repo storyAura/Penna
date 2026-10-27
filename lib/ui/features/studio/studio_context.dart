@@ -495,6 +495,9 @@ extension StudioContext on StudioViewModel {
     );
   }
 
+  /// 成稿的写法(`<draft>` 的格式),副聊天也照它写。
+  String get draftFormat => _draftFormatPrompt(config.config.glossLanguage);
+
   /// 给副聊天看的工作区:当前系列的每一页(带分段标注),标出眼前是哪一页。
   String get workspaceText {
     final shown = [

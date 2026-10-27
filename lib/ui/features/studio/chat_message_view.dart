@@ -101,7 +101,9 @@ class ChatMessageView extends StatelessWidget {
     // 先拆新 Skill:它正文里举例用的成稿标签不能被当成成稿。
     final tools = splitLocalTools(
       splitCharacterTags(
-        splitTagSearch(splitPeek(m.text, readSideChat).prose).prose,
+        splitTagSearch(
+          splitPeek(splitPeek(m.text, readSideChat).prose, readMainChat).prose,
+        ).prose,
       ).prose,
     );
     final made = splitNewSkill(splitAskLayout(tools.prose).prose);
