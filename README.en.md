@@ -150,7 +150,7 @@ A Skill is a writing guide (`SKILL.md`) that decides how the Agent writes prompt
 ### API Management
 
 - Supports OpenAI-compatible APIs and the Google API (including Vertex AI).
-- **Providers** prefills the URL and model for DeepSeek, Zhipu GLM, Kimi, Alibaba Cloud Model Studio and their Coding Plans; add the key to start.
+- **Providers** prefills the URL and model for DeepSeek, Zhipu GLM, Kimi, Alibaba Cloud Model Studio; add the key to start.
 - Name, URL, models and key take effect after clicking **Save**.
 - One API can hold several models; all models form a fallback chain in order and switch automatically.
 - The Agent and Polish can each have a preferred model.

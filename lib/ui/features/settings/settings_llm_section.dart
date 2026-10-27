@@ -26,26 +26,11 @@ const llmProviders = [
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     model: 'glm-5.2',
   ),
-  (
-    name: '智谱 GLM Coding Plan',
-    baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
-    model: 'glm-5.2',
-  ),
   (name: 'Kimi', baseUrl: 'https://api.moonshot.cn/v1', model: 'kimi-k3.1-pro'),
-  (
-    name: 'Kimi Code',
-    baseUrl: 'https://api.kimi.com/coding/v1',
-    model: 'kimi-for-coding',
-  ),
   (
     name: '阿里云百炼',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     model: 'qwen-plus',
-  ),
-  (
-    name: '阿里云百炼 Coding Plan',
-    baseUrl: 'https://coding.dashscope.aliyuncs.com/v1',
-    model: 'qwen3.7-plus',
   ),
 ];
 

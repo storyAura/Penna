@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/version-1.0.3--261027--4--dev-F26D7D" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.3--261027--5--dev-F26D7D" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-4F7CF7" alt="license">
 </p>
 
@@ -152,7 +152,7 @@ Skill 是一份写法说明(`SKILL.md`),决定 Agent 按什么方式写提示词
 ### API 管理
 
 - 支持 OpenAI 兼容接口和 Google 接口(含 Vertex AI)。
-- 「常用服务」预填 DeepSeek、智谱 GLM、Kimi、阿里云百炼及其 Coding Plan 的地址与模型,填入 Key 即可使用。
+- 「常用服务」预填 DeepSeek、智谱 GLM、Kimi、阿里云百炼的地址与模型,填入 Key 即可使用。
 - 接口的名称、地址、模型与 Key 修改后点「保存」生效。
 - 一个接口可以配置多个模型,所有模型按顺序组成后备链,自动切换。
 - Agent 和润色可以分别指定首选模型。

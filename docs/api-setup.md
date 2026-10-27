@@ -55,11 +55,8 @@ Penna 左侧图标栏最下方的齿轮 →「设置」→「**API 管理**」�
 | 硅基流动 SiliconFlow | OpenAI | `https://api.siliconflow.cn/v1` | |
 | OpenRouter | OpenAI | `https://openrouter.ai/api/v1` | 模型名带厂商前缀,如 `vendor/model` |
 | 阿里云百炼 | OpenAI | `https://dashscope.aliyuncs.com/compatible-mode/v1` | |
-| 阿里云百炼 Coding Plan | OpenAI | `https://coding.dashscope.aliyuncs.com/v1` | 套餐专属 Key;模型如 `qwen3.7-plus`;使用范围以套餐条款为准 |
 | 月之暗面 Kimi | OpenAI | `https://api.moonshot.cn/v1` | 模型如 `kimi-k3.1-pro` |
-| Kimi Code(会员) | OpenAI | `https://api.kimi.com/coding/v1` | 会员专属 Key;模型如 `kimi-for-coding` |
 | 智谱 GLM | OpenAI | `https://open.bigmodel.cn/api/paas/v4` | 版本层是 `v4`;模型如 `glm-5.2` |
-| 智谱 GLM Coding Plan | OpenAI | `https://open.bigmodel.cn/api/coding/paas/v4` | 套餐专属地址,与上一行不能混用 |
 | 火山方舟 | OpenAI | `https://ark.cn-beijing.volces.com/api/v3` | 模型名称可填接入点 ID |
 | Google Gemini | Google | `https://generativelanguage.googleapis.com/v1beta` | |
 | Google Vertex AI | Google | `https://aiplatform.googleapis.com/v1` | 模型名称手动填写 |
