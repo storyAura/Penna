@@ -754,6 +754,8 @@ const en = <String, String>{
   '画风': 'Art style',
   '角色卡': 'Character cards',
   '一行一个 · 名字: 英文外貌和服装': 'One per line · Name: looks and outfit in English',
+  '{0} 个人物块没对上角色卡,已让 Agent 补上':
+      '{0} character blocks didn\'t match a card; asked the Agent to fix them',
   '{0} 个人物块没对上角色卡': '{0} character blocks don\'t match a card',
   '画法、线条、上色、配色': 'Medium, linework, coloring, palette',
   '类型': 'Type',

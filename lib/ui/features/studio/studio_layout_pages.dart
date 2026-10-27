@@ -114,6 +114,47 @@ extension StudioLayoutPages on StudioViewModel {
     );
   }
 
+  /// 这条回复交出的布局里有人物块对不上角色卡时,程序自己让 Agent 改一次(算一轮工具),
+  /// 不等出图时特征串了才发现。返回是否接手了。
+  bool _fixCast() {
+    final board = layout;
+    if (board == null || _toolRounds >= _maxToolRounds) return false;
+    if (!splitLayout(splitNewSkill(_messages.last.text).prose).complete) {
+      return false;
+    }
+    final misses = castMisses(board.layout);
+    if (misses.isEmpty) return false;
+    _toolRounds++;
+    final names = misses
+        .map((b) => '「${b.name.isEmpty ? '(没起名)' : b.name}」')
+        .join('、');
+    final time = DateTime.now();
+    final problem = _startReply([
+      ..._messages,
+      ChatMessage(
+        fromUser: true,
+        tool: true,
+        time: time,
+        text:
+            '【程序检查:角色卡没对上】刚交出的布局里,人物块 $names 的名字对不上【本系列角色卡】'
+            '(现有:${board.layout.cast.keys.join('、')}),程序没法给它们接上角色卡,出图时特征会串到别人身上。'
+            '改好后重新给出完整的 <layout>:已有角色卡的人,name 改成那张卡的名字(「名字·格号」);'
+            '新出场的角色在 summary 的 "cast" 里各加一张卡,长相照角色库查到的写,和别人分得开;'
+            '一个人物块只放一个角色;路人这类不进角色卡的,label 改成 object。正文只写一句话。',
+        toolSummary: tr('{0} 个人物块没对上角色卡,已让 Agent 补上', [misses.length]),
+      ),
+    ], time);
+    if (problem != null) {
+      _updateReply(
+        (m) => m.copyWith(
+          text: tr('{0}\n[出错] {1}', [m.text, problem]),
+          failed: true,
+        ),
+      );
+    }
+    return true;
+  }
+
   /// 这条回复答的是哪句话:「按视角改描述」「估体块」时只收那一样(见 [LayoutKeep])。
   LayoutKeep get _layoutKeep {
     final asked = _messages.lastWhere(

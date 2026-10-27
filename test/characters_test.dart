@@ -318,9 +318,26 @@ void main() {
       expect(handed, contains('触发词:ganyu (genshin impact), genshin impact'));
       expect(handed, contains('外貌:1girl, goat horns, blue hair'));
       expect(handed, contains('服装:neck bell'));
+      // 自己存的和内置的撞了名:要先问用户是哪一个。
+      expect(handed, contains('先用 <options> 问用户指的是哪一个'));
       expect(vm.messages[2].toolSummary, '查了角色库 · 3 个');
       expect(vm.messages.last.text, '好了');
       expect(vm.isStreaming, isFalse);
+    });
+
+    test('只查到内置的:不用问', () async {
+      final seen = <LlmRequest>[];
+      final vm = _studio([
+        '<search-character>miku</search-character>',
+        '好了',
+      ], seen: seen);
+
+      vm.send('画初音');
+      await pumpEventQueue();
+
+      final handed = seen.last.messages.last['content']!;
+      expect(handed, contains('hatsune miku'));
+      expect(handed, isNot(contains('<options> 问用户')));
     });
 
     test('存:写进角色库,用户这次发来的图一起存;回复上记一笔', () async {

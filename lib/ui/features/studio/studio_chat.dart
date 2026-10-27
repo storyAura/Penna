@@ -241,6 +241,8 @@ extension StudioChat on StudioViewModel {
             // 放在布局后面:换布局时灯光照旧,这条回复写的灯光才不会被盖回去。
             _deliverLighting();
             unawaited(_deliverSkill());
+            // 人物块对不上角色卡:让 Agent 接着改,改完那一条再发排着的消息。
+            if (_fixCast()) return;
             _sendNext();
           },
           cancelOnError: true,

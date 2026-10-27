@@ -195,9 +195,15 @@ String formatCharacterResults(Map<String, List<CharacterHit>> results) => [
   '<character-results>',
   for (final MapEntry(key: query, value: hits) in results.entries)
     '查「${_plain(query, 80)}」:\n'
-        '${hits.isEmpty ? '没有找到' : hits.map(_describe).join('\n')}',
+        '${hits.isEmpty ? '没有找到' : hits.map(_describe).join('\n')}'
+        '${_mixed(hits) ? '\n这个名字同时对上了用户自己存的角色和内置的角色:先用 <options> 问用户指的是哪一个'
+                  '(用户存的写它的名字,内置的写触发词),不要自己挑;问清楚之前不写 <draft> 和 <layout>。' : ''}',
   '</character-results>',
 ].join('\n\n');
+
+/// 用户自己存的(有提示词)和内置的都有:同一个叫法指的可能是两个人。
+bool _mixed(List<CharacterHit> hits) =>
+    hits.any((h) => h.prompt.isNotEmpty) && hits.any((h) => h.prompt.isEmpty);
 
 String _describe(CharacterHit c) => [
   '- ${_plain(c.name, 80)}'

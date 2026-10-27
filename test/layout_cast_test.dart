@@ -103,6 +103,45 @@ void main() {
     expect(board.prompt, contains('两人组·1'));
   });
 
+  test('交出的人物块没对上角色卡:程序自己让 Agent 改,最多三轮', () async {
+    final service = tempConfig();
+    service.update(
+      service.config.putLlm(
+        const LlmProfile(id: 'a', name: 'A', baseUrl: 'http://a', model: 'm'),
+      ),
+    );
+    final seen = <List<Map<String, String>>>[];
+    var replies = [_layout('小葱·1'), _layout('凛·1')];
+    final board = LayoutBoard()..setCast({'凛': _rin});
+    final chat = StudioViewModel(
+      config: service,
+      layout: board,
+      layoutOnly: true,
+      streamChat: (request) {
+        seen.add(request.messages);
+        return Stream.value(replies[seen.length - 1]);
+      },
+    );
+
+    chat.send('画凛');
+    await pumpEventQueue();
+    expect(seen, hasLength(2));
+    final fix = seen.last.last['content']!;
+    expect(fix, contains('【程序检查:角色卡没对上】'));
+    expect(fix, contains('「小葱·1」'));
+    expect(fix, contains('现有:凛'));
+    expect(castMisses(board.layout), isEmpty);
+    expect(chat.isStreaming, isFalse);
+
+    // 一直改不对也会停:一条消息最多再要三轮。
+    seen.clear();
+    replies = List.filled(10, _layout('小葱·1'));
+    chat.send('再画一张');
+    await pumpEventQueue();
+    expect(seen, hasLength(4));
+    expect(chat.isStreaming, isFalse);
+  });
+
   test('角色卡跟着系列:同系列新开一页沿用,另起系列不带过去', () async {
     final board = LayoutBoard();
     final service = tempConfig();
