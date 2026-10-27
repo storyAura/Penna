@@ -8,7 +8,6 @@ import '../../../core/harness/attachment.dart';
 import '../../../core/harness/layout.dart';
 import '../../../data/services/archive_store.dart';
 import '../../../data/services/config_service.dart';
-import '../../core/scroll_strip.dart';
 import '../../core/smooth_scroll.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
@@ -24,6 +23,7 @@ import 'layout_canvas.dart';
 import 'layout_canvas_tools.dart';
 import 'layout_fullscreen.dart';
 import 'layout_scene_view.dart';
+import 'layout_size_picker.dart';
 import 'layout_json_view.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
@@ -35,9 +35,6 @@ const _propsWidth = 340.0;
 /// 镜头停下这么久才算"调好了",提醒按视角改描述。
 const _settleDelay = Duration(milliseconds: 1200);
 const _chatWidth = 420.0;
-
-/// 顶栏存的画布尺寸最多露出几个(也最多只能存这么多)。
-const _maxSizes = LayoutBoard.maxSizes;
 
 /// 区域控制工作台:左边写各块的属性,中间在画布上画框,右边和布局 Agent 对话,
 /// 得到 MOSS-Image 的布局 JSON。能存进档案库的「区域控制」分区。
@@ -569,21 +566,7 @@ class _TopBar extends StatelessWidget {
           icon: const Icon(Icons.swap_horiz),
           onPressed: board.swap,
         ),
-        IconButton(
-          tooltip: tr('存下这个尺寸'),
-          iconSize: 16,
-          visualDensity: VisualDensity.compact,
-          icon: const Icon(Icons.bookmark_add_outlined),
-          onPressed: () {
-            if (!board.saveSize()) {
-              showToast(
-                context,
-                tr('最多存 {0} 个尺寸', [LayoutBoard.maxSizes]),
-                warn: true,
-              );
-            }
-          },
-        ),
+        LayoutSizePicker(board: board),
         const SizedBox(width: 4),
         _PerspectiveButton(board: board),
         const SizedBox(width: 4),
@@ -595,30 +578,7 @@ class _TopBar extends StatelessWidget {
             onTap: onToggle3D,
           ),
         ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: ScrollStrip(
-              visible: _maxSizes,
-              bar: false,
-              children: [
-                for (final s in board.sizes)
-                  Tooltip(
-                    message: tr('右键删除'),
-                    child: GestureDetector(
-                      onSecondaryTap: () => board.removeSize(s),
-                      child: PennaChip(
-                        label: '${s.width}×${s.height}',
-                        selected: s.width == l.width && s.height == l.height,
-                        onTap: () => board.setSize(s.width, s.height),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
+        const Spacer(),
         const SizedBox(width: 6),
         PennaButton(
           label: tr('保存'),

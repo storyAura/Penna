@@ -314,7 +314,7 @@ class LayoutBoard extends ChangeNotifier {
     return true;
   }
 
-  /// 最多存几个常用的画布尺寸(顶栏一排正好放得下)。
+  /// 最多存几个常用的画布尺寸(分辨率面板里两排)。
   static const maxSizes = 8;
 
   void removeSize(LayoutSize size) {

@@ -1020,4 +1020,7 @@ const en = <String, String>{
   '多个用逗号隔开': 'Separate with commas',
   '身份、性格': 'Role, personality',
   '新增服装': 'Add outfit',
+  '分辨率': 'Resolution',
+  '拖动范围': 'Drag range',
+  '常用尺寸': 'Saved sizes',
 };
