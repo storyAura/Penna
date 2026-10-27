@@ -16,11 +16,14 @@ class _SummarySection extends StatelessWidget {
         // 页签留着:以后这里还会加别的分页。
         PennaBar(
           children: [
-            _Tab(
-              icon: Icons.inventory_2_outlined,
-              label: tr('成稿汇总'),
-              selected: true,
-              onTap: () {},
+            Tooltip(
+              message: tr('放大查看'),
+              child: _Tab(
+                icon: Icons.inventory_2_outlined,
+                label: tr('成稿汇总'),
+                selected: true,
+                onTap: () => _showSummary(context, vm),
+              ),
             ),
           ],
         ),
@@ -256,7 +259,11 @@ class _CopyCard extends StatelessWidget {
     required this.text,
     required this.toast,
     this.onCopied,
+    this.fontSize = 11.5,
   });
+
+  /// 正文字号:放大查看的窗口里大一号。
+  final double fontSize;
 
   /// 点了复制之后顺带做的事(记进历史提示词)。
   final VoidCallback? onCopied;
@@ -308,7 +315,7 @@ class _CopyCard extends StatelessWidget {
             child: SelectableText(
               contextMenuBuilder: pennaTextMenu,
               text,
-              style: monoStyle.copyWith(fontSize: 11.5),
+              style: monoStyle.copyWith(fontSize: fontSize),
             ),
           ),
         ],
@@ -316,3 +323,105 @@ class _CopyCard extends StatelessWidget {
     );
   }
 }
+
+/// 点「成稿汇总」弹出的大窗口:眼前这页完整的最终提示词(有 Tag 时连 Tag 汇总),
+/// 跟着成稿实时变。
+Future<void> _showSummary(BuildContext context, StudioViewModel vm) =>
+    showDialog<void>(
+      context: context,
+      builder: (context) {
+        final screen = MediaQuery.sizeOf(context);
+        return Dialog(
+          backgroundColor: PennaColors.bg,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: SizedBox(
+            width: (screen.width * 0.8).clamp(360, 1000),
+            height: screen.height * 0.8,
+            child: ListenableBuilder(
+              listenable: vm,
+              builder: (context, _) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 10, 8, 4),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.inventory_2_outlined,
+                          size: 16,
+                          color: PennaColors.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            tr('成稿汇总'),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: tr('关闭'),
+                          iconSize: 18,
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: vm.finalPrompt.isEmpty && vm.tags.isEmpty
+                        ? Center(
+                            child: Text(
+                              tr('暂无内容'),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: PennaColors.slate400,
+                              ),
+                            ),
+                          )
+                        : SmoothScroller(
+                            builder: (controller) => ListView(
+                              controller: controller,
+                              padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
+                              children: [
+                                if (vm.tags.isNotEmpty) ...[
+                                  _CopyCard(
+                                    icon: Icons.sell_outlined,
+                                    iconColor: PennaColors.amber,
+                                    title: tr('Danbooru 风格 Tag 汇总'),
+                                    text: vm.tags,
+                                    toast: tr('已复制全部 Tag'),
+                                    fontSize: 13,
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                                if (vm.finalPrompt.isNotEmpty)
+                                  _CopyCard(
+                                    icon: Icons.verified_outlined,
+                                    iconColor: PennaColors.accent,
+                                    title: vm.pages.length > 1
+                                        ? tr('最终提示词 · {0} · 第 {1} 页', [
+                                            vm.seriesName(vm.series),
+                                            vm.pageNumber(vm.pageIndex),
+                                          ])
+                                        : tr('最终提示词'),
+                                    text: vm.finalPrompt,
+                                    toast: tr('已复制'),
+                                    onCopied: vm.recordPrompt,
+                                    fontSize: 13,
+                                  ),
+                              ],
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );

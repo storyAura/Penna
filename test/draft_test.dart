@@ -470,5 +470,31 @@ void main() {
       expect(system, contains('<draft>'));
       expect(system, contains('【当前成稿】\n【主体】a fox'));
     });
+
+    test('页或系列还没名字时,系统提示要它这次起上;都起了就不提', () async {
+      final seen = <String>[];
+      final vm = _studio(
+        streamChat: (req) {
+          seen.add(req.messages.first['content']!);
+          return const Stream.empty();
+        },
+      );
+
+      vm.send('画一只狐狸');
+      await pumpEventQueue();
+      expect(seen.last, contains('【还没起名】这一页和这个系列还没有名字'));
+      expect(seen.last, contains('name="两到六个字的页名" series="两到六个字的系列名"'));
+
+      vm.renamePage(vm.pageIndex, '狐狸');
+      vm.send('再来');
+      await pumpEventQueue();
+      expect(seen.last, contains('【还没起名】这个系列还没有名字'));
+      expect(seen.last, isNot(contains('name="两到六个字的页名"')));
+
+      vm.renameSeries(vm.series, '森林');
+      vm.send('再来');
+      await pumpEventQueue();
+      expect(seen.last, isNot(contains('【还没起名】')));
+    });
   });
 }

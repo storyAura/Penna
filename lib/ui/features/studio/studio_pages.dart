@@ -481,6 +481,21 @@ extension StudioPages on StudioViewModel {
     });
   }
 
+  /// 眼前这页或这个系列还没名字时,要 Agent 这次写 `<[tag]>` 时起上;都有名字时是空串。
+  /// 用户反馈:写单页时常只剩「系列 N」和页码,存进档案库时名称是空的。
+  String _namingNote(String tag) {
+    final noPage = pageName.isEmpty;
+    final noSeries = !_seriesNames.containsKey(series);
+    if (!noPage && !noSeries) return '';
+    final what = [if (noPage) '这一页', if (noSeries) '这个系列'].join('和');
+    final attrs = [
+      if (noPage) 'name="两到六个字的页名"',
+      if (noSeries) 'series="两到六个字的系列名"',
+    ].join(' ');
+    return '【还没起名】$what还没有名字:这次写 <$tag> 时一定带上 $attrs,'
+        '概括画的是什么(用户存进档案库时当名称)。';
+  }
+
   /// 发给 Agent 看的同系列其他页;只有一页时是空串。
   String get _siblingPages {
     final others = [

@@ -1027,4 +1027,5 @@ const en = <String, String>{
   '画布宽高取它的倍数': 'Canvas sides snap to multiples of this',
   '画布尺寸': 'Canvas size',
   '1 为不对齐': '1 turns snapping off',
+  '放大查看': 'View larger',
 };

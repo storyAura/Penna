@@ -385,6 +385,7 @@ extension StudioContext on StudioViewModel {
         '【当前系列】「${seriesName(series)}」,共 $seriesLength 页\n'
             '【当前成稿】\n$draft',
       _siblingPages,
+      _namingNote('draft'),
       if (_blocks.any((b) => b.pinned))
         '【固定区】成稿里下面这些片段由用户固定,一个字都不能改,也不能挪走:\n'
             '${_blocks.where((b) => b.pinned).map((b) => b.text).join('\n')}\n'
@@ -407,6 +408,7 @@ extension StudioContext on StudioViewModel {
       _characterPrompt,
     ],
     _layoutPagesPrompt,
+    _namingNote('layout'),
     _layoutPrompt,
   ].where((s) => s.isNotEmpty).join('\n\n');
 
@@ -674,7 +676,7 @@ const _draftFormatRest =
     '写进第几页就用 <draft page="页码">(页码从 1 数,还没有那一页会自动新开),'
     '一条回复里可以有好几个 <draft>。只要一条提示词时不要分页。'
     '每个 <draft> 都起个名字 name="两到六个字",概括这一页画的是什么(用户存进档案库时当名称);'
-    '一次写出一组页时第一个再加 series="这一组的名字",例如 <draft page="1" name="玩耍" series="午后客厅">。'
+    '系列还没名字、或一次写出一组页时,第一个再加 series="这一组的名字",例如 <draft page="1" name="玩耍" series="午后客厅">。'
     '用户换了一个新主题时不要盖掉原来的页,在当前系列里新开一页:<draft page="新" name="页名">。'
     '只有用户明说要新建系列、另起一组时,第一个 <draft> 才写成 <draft page="新系列" name="页名" series="系列名">'
     '(程序会另起一个系列,对话跟着过去),这条回复里后面的页接着用 page="2"、page="3"。'
