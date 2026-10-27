@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
@@ -195,7 +197,11 @@ class _Runtime extends StatelessWidget {
   Future<void> _pick() async {
     final picked = await openFile(
       acceptedTypeGroups: [
-        const XTypeGroup(label: 'llama-server', extensions: ['exe']),
+        XTypeGroup(
+          label: 'llama-server',
+          // Windows 上选 .exe;别的平台的可执行文件没有后缀,不设过滤。
+          extensions: Platform.isWindows ? ['exe'] : null,
+        ),
       ],
     );
     if (picked != null) local.update(() => local.exePath = picked.path);
@@ -242,14 +248,16 @@ class _Runtime extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        tr(
-                          'llama.cpp {0} · Vulkan 版 · '
-                          '{1} MB',
-                          [
-                            llamaCppTag,
-                            (llamaRuntimeSize / (1 << 20)).toStringAsFixed(1),
-                          ],
-                        ),
+                        Platform.isWindows
+                            ? tr('llama.cpp {0} · Vulkan 版 · {1} MB', [
+                                llamaCppTag,
+                                (llamaRuntimeSize / (1 << 20)).toStringAsFixed(
+                                  1,
+                                ),
+                              ])
+                            : tr(
+                                '这个平台请自行下载 llama.cpp 运行时,再用「选择 llama-server」指过来',
+                              ),
                         style: const TextStyle(fontSize: 12),
                       ),
                       if (progress != null) ...[
@@ -270,7 +278,7 @@ class _Runtime extends StatelessWidget {
                     background: PennaColors.slate100,
                     onPressed: () => local.cancelDownload('runtime'),
                   )
-                else
+                else if (Platform.isWindows)
                   PennaButton(
                     label: tr('下载'),
                     icon: Icons.download,

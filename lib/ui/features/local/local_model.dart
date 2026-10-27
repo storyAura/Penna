@@ -333,6 +333,11 @@ class LocalModel extends ChangeNotifier {
 
   /// 下载并解开 llama.cpp 运行时。
   Future<String?> downloadRuntime() async {
+    // 固定下的是 Windows 的 Vulkan 版(见 llama_server.dart 的 llamaRuntimeUrl),
+    // 别的平台没有对应的包,得自己装 llama.cpp 再指过来。
+    if (!Platform.isWindows) {
+      return tr('这个平台请自行下载 llama.cpp 运行时,再用「选择 llama-server」指过来');
+    }
     final zip = _runtimeZip;
     final problem = await download('runtime', [zip]);
     if (problem != null) return problem;

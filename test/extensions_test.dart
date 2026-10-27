@@ -57,7 +57,8 @@ void main() {
       final names = first.dir.listSync().map((f) => f.path);
       expect(names.where((p) => p.contains('keys.dat.bad-')), hasLength(1));
     });
-  });
+    // DPAPI 和 keys.dat 都是 Windows 上的做法;别的平台上机密在系统钥匙串里。
+  }, skip: Platform.isWindows ? null : 'DPAPI 与 keys.dat 只在 Windows 上');
 
   group('从旧位置搬迁', () {
     setUp(TestWidgetsFlutterBinding.ensureInitialized);
@@ -80,7 +81,11 @@ void main() {
       expect(service.config.llmKey('a'), 'sk-old');
       expect(service.file.existsSync(), isTrue);
       expect(old.existsSync(), isFalse);
-      expect(await const FlutterSecureStorage().readAll(), isEmpty);
+      // 旧凭据只有 Windows 上是另一个地方;别的平台上系统钥匙串就是 Key 现在的
+      // 存放处,搬完 Key 还得留在里面。
+      if (Platform.isWindows) {
+        expect(await const FlutterSecureStorage().readAll(), isEmpty);
+      }
     });
 
     test('新位置已有设置时不碰旧的', () async {

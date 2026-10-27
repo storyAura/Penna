@@ -49,6 +49,9 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # 在真实桌面上跑真应用、真插件(integration_test/ 下的用例)。
+  integration_test:
+    sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

@@ -67,6 +67,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
   bool _busy = false;
 
   Future<void> _update() async {
+    // 换文件靠一个 PowerShell 脚本(见 updater.dart),只有 Windows 上能跑。
+    if (!Platform.isWindows) {
+      _fail(tr('这个平台不能自动更新,请到 GitHub 下载新版本覆盖本目录'));
+      return;
+    }
     final release = widget.release;
     setState(() {
       _busy = true;
@@ -197,7 +202,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
           },
           child: Text(_busy ? tr('取消') : tr('稍后')),
         ),
-        TextButton(onPressed: _busy ? null : _update, child: Text(tr('更新并重启'))),
+        TextButton(
+          onPressed: Platform.isWindows && !_busy ? _update : null,
+          child: Text(Platform.isWindows ? tr('更新并重启') : tr('请到 GitHub 手动更新')),
+        ),
       ],
     );
   }

@@ -2,12 +2,12 @@
   <img src="assets/wordmark.png" height="80" alt="Penna">
 </p>
 
-<p align="center"><b>Penna</b> · A text-to-image prompt workbench for Windows</p>
+<p align="center"><b>Penna</b> · A text-to-image prompt workbench for Windows and Linux</p>
 
 <p align="center"><b>English</b> · <a href="README.md">简体中文</a></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-4F7CF7" alt="platform">
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
   <img src="https://img.shields.io/badge/license-MIT-4F7CF7" alt="license">
@@ -186,21 +186,22 @@ On first launch the interface is in Simplified Chinese. Click the gear icon at t
 
 Then fill in the Base URL and API key of your model API in **Settings → API Management**. The [API setup guide](docs/api-setup.md) explains each service and can be handed straight to an AI assistant to help with the setup.
 
-To build from source: Windows 10 / 11 and [Flutter](https://flutter.dev) (Dart 3.13 or later).
+To build from source: Windows 10 / 11, or a Linux desktop, and [Flutter](https://flutter.dev) (Dart 3.13 or later).
 
 ```bash
 flutter pub get
-flutter run -d windows
+flutter run -d windows     # Windows
+flutter run -d linux       # Linux
 ```
 
 ## Data and privacy
 
-All data is stored on this PC in `Documents\Penna`.
+All data is stored on this PC in `Documents\Penna` (`~/Documents/Penna` on Linux).
 
 | Category | File | Contents |
 | --- | --- | --- |
 | Settings | `config.json` | Models, translation, appearance and other settings |
-| Secrets | `keys.dat` | All API keys, encrypted with Windows DPAPI; only the current user on this PC can decrypt them |
+| Secrets | `keys.dat` / system keyring | All API keys: encrypted with Windows DPAPI into `keys.dat` on Windows, kept in the system keyring (libsecret) on Linux; only the current user on this PC can read them |
 | Workspace | `workspace.json` | Drafts, conversations, prompt history |
 | Archive | `archive.json` | The Archive |
 | Notes | `notebooks.json` | Notebooks and their entries |
@@ -215,10 +216,17 @@ All data is stored on this PC in `Documents\Penna`.
 dart analyze lib test            # static analysis
 flutter test                     # all tests
 dart format lib test             # formatting
-pwsh tool/build_release.ps1      # release build
+pwsh tool/build_release.ps1      # release build (Windows)
+bash tool/build_release.sh       # release build (Linux AppImage)
 ```
 
 > These commands work with project paths that contain non-ASCII characters.
+
+The integration tests open a real window and really read and write the system keyring (Linux):
+
+```bash
+PENNA_HOME=/tmp/penna-it flutter test integration_test/linux_settings_test.dart -d linux
+```
 
 Regenerate the built-in data (only when the source tables or the classification rules change):
 
@@ -237,11 +245,13 @@ lib/
   data/            settings, storage, translation, encryption
   l10n/            interface translations, keyed by the Simplified Chinese source text
 test/              tests
+integration_test/  integration tests (run a real window on a real desktop)
 assets/            shipped with the app: wordmark, avatar, built-in tag dictionary and character library
 font/              fonts shipped with the app
 docs/              promotional images
 tool/              build script, data and icon generators
 windows/           Windows platform project
+linux/             Linux platform project
 ```
 
 Dependencies point downward: `ui` → `core/harness` → `data`; `l10n` depends on nothing else and can be used by every layer.

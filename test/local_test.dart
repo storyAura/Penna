@@ -210,13 +210,13 @@ void main() {
       );
     });
 
-    test('在解开的运行时里找最浅的 llama-server.exe', () {
+    test('在解开的运行时里找最浅的 llama-server', () {
       Directory('${tmp.path}/a/b').createSync(recursive: true);
-      File('${tmp.path}/a/b/llama-server.exe').writeAsStringSync('');
-      File('${tmp.path}/a/llama-server.exe').writeAsStringSync('');
+      File('${tmp.path}/a/b/$llamaServerFileName').writeAsStringSync('');
+      File('${tmp.path}/a/$llamaServerFileName').writeAsStringSync('');
       expect(
         findServerExe(tmp)!.path.replaceAll('\\', '/'),
-        endsWith('/a/llama-server.exe'),
+        endsWith('/a/$llamaServerFileName'),
       );
       expect(findServerExe(Directory('${tmp.path}/none')), isNull);
     });
@@ -362,7 +362,7 @@ void main() {
         'llm/qwen/qwen-vl.gguf',
         'llm/qwen/mmproj-qwen.gguf',
         'llm/text-only.gguf',
-        'bin/llama-server.exe',
+        'bin/$llamaServerFileName',
         // 跳过的文件夹
         'node_modules/x/model.gguf',
       ]);
@@ -437,7 +437,7 @@ void main() {
         },
         {'qwen-vl.gguf': 'mmproj-qwen.gguf', 'text-only.gguf': ''},
       );
-      expect(model.serverExe, endsWith('llama-server.exe'));
+      expect(model.serverExe, endsWith(llamaServerFileName));
 
       // 文件夹存盘后还在,重开时自动再扫一遍。
       final again = LocalModel(

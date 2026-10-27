@@ -11,6 +11,9 @@ import '../../l10n/l10n.dart';
 /// 读写用户设置,都放在 [dir](「文档\Penna」)下:
 /// - `config.json`:普通设置,明文,可以直接打开看;
 /// - `keys.dat`:API Key 等机密,用 Windows 数据保护加密,只有本机本用户能解开。
+///
+/// Windows 以外的平台没有 DPAPI,机密改放系统钥匙串(libsecret / Secret Service),
+/// 同样是「只有本机本用户能解开」,也不落 `keys.dat`。
 class ConfigService extends ChangeNotifier {
   ConfigService({required this.dir, this.legacyFile});
 
@@ -82,13 +85,25 @@ class ConfigService extends ChangeNotifier {
       await old.copy(file.path);
       // 新位置都写好了,才清掉旧的,免得 Key 留在两个地方。
       await old.rename('${old.path}.migrated');
-      await storage.deleteAll();
+      // 旧凭据只有 Windows 上是另一个地方(keys.dat 之外的系统凭据)。别的平台上
+      // 系统钥匙串就是 Key 现在的存放处,清掉会把刚搬过去的 Key 一起删了。
+      if (Platform.isWindows) await storage.deleteAll();
     } on Object catch (e) {
       _loadError = tr('搬迁旧设置时出错:{0}。', [e.runtimeType]);
     }
   }
 
+  /// 非 Windows 平台上机密在系统钥匙串里的条目名。
+  static const _secretKey = 'penna.keys';
+
   Future<Map<String, String>> _readSecrets() async {
+    if (!Platform.isWindows) {
+      final stored = await const FlutterSecureStorage().read(key: _secretKey);
+      if (stored == null || stored.isEmpty) return const {};
+      return Map.unmodifiable(
+        (jsonDecode(stored) as Map).cast<String, String>(),
+      );
+    }
     if (!await keysFile.exists()) return const {};
     final cipher = base64.decode((await keysFile.readAsString()).trim());
     final json = jsonDecode(utf8.decode(dpapiUnprotect(cipher)));
@@ -96,6 +111,13 @@ class ConfigService extends ChangeNotifier {
   }
 
   Future<void> _writeSecrets(Map<String, String> secrets) async {
+    if (!Platform.isWindows) {
+      await const FlutterSecureStorage().write(
+        key: _secretKey,
+        value: jsonEncode(secrets),
+      );
+      return;
+    }
     final plain = Uint8List.fromList(utf8.encode(jsonEncode(secrets)));
     await _replace(keysFile, base64.encode(dpapiProtect(plain)));
   }

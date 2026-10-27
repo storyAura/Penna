@@ -367,8 +367,12 @@ class _About extends StatelessWidget {
             icon: Icons.open_in_new,
             borderColor: PennaColors.border,
             // 交给系统用默认浏览器打开。
-            onPressed: () =>
-                Process.run('rundll32', ['url.dll,FileProtocolHandler', _repo]),
+            onPressed: () => Process.run(
+              Platform.isWindows ? 'rundll32' : 'xdg-open',
+              Platform.isWindows
+                  ? ['url.dll,FileProtocolHandler', _repo]
+                  : [_repo],
+            ),
           ),
         ],
       ),

@@ -17,7 +17,11 @@ const llamaRuntimeSha256 =
 const llamaRuntimeUrl =
     'https://github.com/ggml-org/llama.cpp/releases/download/$llamaCppTag/$llamaRuntimeFile';
 
-/// 在解开的运行时文件夹里找 llama-server.exe;有好几个时取层级最浅的。
+/// llama.cpp 发布包里的服务程序叫什么:Windows 上带 .exe,别的平台没有后缀。
+String get llamaServerFileName =>
+    Platform.isWindows ? 'llama-server.exe' : 'llama-server';
+
+/// 在解开的运行时文件夹里找 llama-server;有好几个时取层级最浅的。
 File? findServerExe(Directory dir) {
   if (!dir.existsSync()) return null;
   final found =
@@ -25,7 +29,7 @@ File? findServerExe(Directory dir) {
           .listSync(recursive: true)
           .whereType<File>()
           .where(
-            (f) => f.uri.pathSegments.last.toLowerCase() == 'llama-server.exe',
+            (f) => f.uri.pathSegments.last.toLowerCase() == llamaServerFileName,
           )
           .toList()
         ..sort((a, b) => a.uri.pathSegments.length - b.uri.pathSegments.length);

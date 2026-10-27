@@ -384,6 +384,8 @@ const zhHant = <String, String>{
   '(文件太多,只查了一部分)': '(檔案太多,只查了一部分)',
   'llama.cpp 运行时': 'llama.cpp 執行時',
   '选择 llama-server.exe': '選擇 llama-server.exe',
+  '这个平台请自行下载 llama.cpp 运行时,再用「选择 llama-server」指过来':
+      '這個平台請自行下載 llama.cpp 執行時,再用「選擇 llama-server」指過來',
   '不用这个': '不用這個',
   'llama.cpp {0} · Vulkan 版 · {1} MB': 'llama.cpp {0} · Vulkan 版 · {1} MB',
   '看图描述的要求': '看圖描述的要求',
@@ -625,6 +627,8 @@ const zhHant = <String, String>{
   '暂无更新说明': '暫無更新說明',
   '稍后': '稍後',
   '更新并重启': '更新並重啟',
+  '请到 GitHub 手动更新': '請到 GitHub 手動更新',
+  '这个平台不能自动更新,请到 GitHub 下载新版本覆盖本目录': '這個平台不能自動更新,請到 GitHub 下載新版本覆蓋本目錄',
   '版本与更新': '版本與更新',
   '当前版本 v{0} · 每次启动自动检查': '當前版本 v{0} · 每次啟動自動檢查',
   '检查中…': '檢查中…',

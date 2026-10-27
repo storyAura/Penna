@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'caption_catalog.dart';
 import 'florence.dart';
+import 'llama_server.dart';
 import 'tagger.dart';
 
 // 在用户指定的文件夹(连同子文件夹)里找已经有的模型,免得同一个模型反复下载。
@@ -92,7 +93,7 @@ FoundModels scanModelFolders(
         files.add(name);
         if (name.endsWith('.gguf')) {
           (isMmproj(name) ? mmprojs : ggufs).add(e.path);
-        } else if (name == 'llama-server.exe') {
+        } else if (name == llamaServerFileName) {
           servers.add(e.path);
         }
       }

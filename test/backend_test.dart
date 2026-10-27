@@ -160,7 +160,10 @@ void main() {
       expect(second.config.activePreset.name, '自由改稿');
       expect(second.config.mtEnabled, {'baidu'});
       expect(first.file.readAsStringSync(), isNot(contains('sk-secret')));
-      expect(first.keysFile.readAsStringSync(), isNot(contains('sk-secret')));
+      // Key 在 Windows 上放 keys.dat;别的平台在系统钥匙串里,没有这个文件。
+      if (Platform.isWindows) {
+        expect(first.keysFile.readAsStringSync(), isNot(contains('sk-secret')));
+      }
     });
 
     test('删除模型会连同它的 Key 一起清掉', () async {

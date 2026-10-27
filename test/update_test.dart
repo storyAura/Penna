@@ -71,50 +71,55 @@ void main() {
     expect(File('$dir/data/app.so').existsSync(), isTrue);
   });
 
-  test('更新脚本:等 Penna 退出后覆盖文件(含子文件夹),再清掉临时文件', () async {
-    // 路径里有中文、空格和单引号,看引号写对没有。
-    final root = Directory.systemTemp.createTempSync('penna 更新 it\'s ');
-    addTearDown(() {
-      if (root.existsSync()) root.deleteSync(recursive: true);
-    });
-    final from = Directory('${root.path}/new')..createSync();
-    final to = Directory('${root.path}/装在这里')..createSync();
-    final cleanup = Directory('${root.path}/temp')..createSync();
-    File('${from.path}/penna.exe').writeAsStringSync('new exe');
-    File('${from.path}/data/app.so')
-      ..createSync(recursive: true)
-      ..writeAsStringSync('new so');
-    File('${to.path}/penna.exe').writeAsStringSync('old exe');
-    File('${to.path}/data/app.so')
-      ..createSync(recursive: true)
-      ..writeAsStringSync('old so');
-    File('${to.path}/keep.txt').writeAsStringSync('user file');
+  test(
+    '更新脚本:等 Penna 退出后覆盖文件(含子文件夹),再清掉临时文件',
+    () async {
+      // 路径里有中文、空格和单引号,看引号写对没有。
+      final root = Directory.systemTemp.createTempSync('penna 更新 it\'s ');
+      addTearDown(() {
+        if (root.existsSync()) root.deleteSync(recursive: true);
+      });
+      final from = Directory('${root.path}/new')..createSync();
+      final to = Directory('${root.path}/装在这里')..createSync();
+      final cleanup = Directory('${root.path}/temp')..createSync();
+      File('${from.path}/penna.exe').writeAsStringSync('new exe');
+      File('${from.path}/data/app.so')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('new so');
+      File('${to.path}/penna.exe').writeAsStringSync('old exe');
+      File('${to.path}/data/app.so')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('old so');
+      File('${to.path}/keep.txt').writeAsStringSync('user file');
 
-    final script = await writeUpdateScript(
-      updateScript(
-        // 一个已经不在的进程:不用等。
-        pid: 999999,
-        from: from.path,
-        to: to.path,
-        cleanup: cleanup.path,
-        restart: false,
-      ),
-      root.path,
-    );
-    final run = await Process.run('powershell.exe', [
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      script.path,
-    ]);
+      final script = await writeUpdateScript(
+        updateScript(
+          // 一个已经不在的进程:不用等。
+          pid: 999999,
+          from: from.path,
+          to: to.path,
+          cleanup: cleanup.path,
+          restart: false,
+        ),
+        root.path,
+      );
+      final run = await Process.run('powershell.exe', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        script.path,
+      ]);
 
-    expect(run.exitCode, 0, reason: '${run.stdout}${run.stderr}');
-    expect(File('${to.path}/penna.exe').readAsStringSync(), 'new exe');
-    expect(File('${to.path}/data/app.so').readAsStringSync(), 'new so');
-    expect(File('${to.path}/keep.txt').readAsStringSync(), 'user file');
-    expect(cleanup.existsSync(), isFalse);
-  }, timeout: const Timeout(Duration(minutes: 1)));
+      expect(run.exitCode, 0, reason: '${run.stdout}${run.stderr}');
+      expect(File('${to.path}/penna.exe').readAsStringSync(), 'new exe');
+      expect(File('${to.path}/data/app.so').readAsStringSync(), 'new so');
+      expect(File('${to.path}/keep.txt').readAsStringSync(), 'user file');
+      expect(cleanup.existsSync(), isFalse);
+    },
+    skip: Platform.isWindows ? null : '更新脚本是 PowerShell 的,只在 Windows 上跑',
+    timeout: const Timeout(Duration(minutes: 1)),
+  );
 
   group('检查更新的弹窗', () {
     Future<void> pump(WidgetTester tester, Future<Release?> Function() fetch) =>
@@ -142,7 +147,10 @@ void main() {
       expect(find.text('发现新版本 v1.0.2'), findsOneWidget);
       expect(find.text('当前版本 v1.0.1'), findsOneWidget);
       expect(find.textContaining('本地反推', findRichText: true), findsOneWidget);
-      expect(find.text('更新并重启'), findsOneWidget);
+      expect(
+        find.text(Platform.isWindows ? '更新并重启' : '请到 GitHub 手动更新'),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('稍后'));
       await tester.pumpAndSettle();

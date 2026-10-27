@@ -2,12 +2,12 @@
   <img src="assets/wordmark.png" height="80" alt="Penna">
 </p>
 
-<p align="center"><b>羽毛笔</b> · Windows 桌面端的文生图提示词工作台</p>
+<p align="center"><b>羽毛笔</b> · Windows / Linux 桌面端的文生图提示词工作台</p>
 
 <p align="center"><a href="README.en.md">English</a> · <b>简体中文</b></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-4F7CF7" alt="platform">
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
   <img src="https://img.shields.io/badge/version-1.0.3--261027--6--dev-F26D7D" alt="version">
@@ -182,23 +182,24 @@ Skill 是一份写法说明(`SKILL.md`),决定 Agent 按什么方式写提示词
 
 ## 快速开始
 
-环境要求:Windows 10 / 11,[Flutter](https://flutter.dev)(Dart 3.13 及以上)。
+环境要求:Windows 10 / 11,或 Linux 桌面,[Flutter](https://flutter.dev)(Dart 3.13 及以上)。
 
 ```bash
 flutter pub get
-flutter run -d windows
+flutter run -d windows     # Windows
+flutter run -d linux       # Linux
 ```
 
 首次启动后,在「设置 → API 管理」中填入模型接口的 Base URL 与 API Key 即可使用。各服务的填写方法见 [API 配置指南](docs/api-setup.md),该文档可直接交给 AI 助手,由它协助完成配置。
 
 ## 数据与隐私
 
-所有数据保存在本机「文档\Penna」。
+所有数据保存在本机「文档\Penna」(Linux 上为 `~/Documents/Penna`)。
 
 | 类别 | 文件 | 内容 |
 | --- | --- | --- |
 | 设置 | `config.json` | 模型、翻译、外观等配置 |
-| 机密 | `keys.dat` | 全部 API Key,经 Windows DPAPI 加密,仅本机当前用户可解 |
+| 机密 | `keys.dat` / 系统钥匙串 | 全部 API Key:Windows 上经 DPAPI 加密写入 `keys.dat`,Linux 上存入系统钥匙串(libsecret);都只有本机当前用户能解 |
 | 工作台 | `workspace.json` | 成稿、对话、历史提示词 |
 | 档案 | `archive.json` | 档案库 |
 | 记事本 | `notebooks.json` | 记事本的本子与记录 |
@@ -213,10 +214,17 @@ flutter run -d windows
 dart analyze lib test            # 静态检查
 flutter test                     # 全部测试
 dart format lib test             # 格式化
-pwsh tool/build_release.ps1      # 打包正式版
+pwsh tool/build_release.ps1      # 打包正式版(Windows)
+bash tool/build_release.sh       # 打包正式版(Linux AppImage)
 ```
 
 > 以上命令适用于含中文的项目路径。
+
+集成测试会在真实桌面上开一个窗口、并真的读写系统钥匙串(Linux):
+
+```bash
+PENNA_HOME=/tmp/penna-it flutter test integration_test/linux_settings_test.dart -d linux
+```
 
 重新生成内置数据(仅在原始表或分类规则变动时需要):
 
@@ -235,11 +243,13 @@ lib/
   data/            配置、存盘、翻译、加密
   l10n/            界面多语言:以简体中文原文为键的译文表
 test/              测试
+integration_test/  集成测试(在真实桌面上跑真窗口)
 assets/            随程序分发:字标、头像、内置标签词库与角色库
 font/              随程序分发的字体
 docs/              宣传图
 tool/              打包脚本、数据与图标生成脚本
 windows/           Windows 平台工程
+linux/             Linux 平台工程
 ```
 
 依赖方向自上而下:`ui` → `core/harness` → `data`;`l10n` 不依赖其他代码,各层均可使用。
