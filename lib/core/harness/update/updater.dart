@@ -70,11 +70,17 @@ int compareVersions(String a, String b) {
 /// (测试版和正式版都算),取最新的。
 const updateChannels = ['main', 'dev'];
 
-/// 从 GitHub 的发行版 JSON 里取出版本号、说明和 Windows 安装包;没有安装包时为 null。
-Release? parseRelease(Map<String, dynamic> j) {
+/// 这个平台的安装包名字的结尾:Windows 是 zip,Linux 是 AppImage。
+String get releaseAssetSuffix =>
+    Platform.isWindows ? '-windows-x64.zip' : '-linux-x86_64.AppImage';
+
+/// 从 GitHub 的发行版 JSON 里取出版本号、说明和这个平台的安装包(名字以 [suffix] 结尾,
+/// 默认 [releaseAssetSuffix]);没有安装包时为 null。
+Release? parseRelease(Map<String, dynamic> j, {String? suffix}) {
+  final end = suffix ?? releaseAssetSuffix;
   final asset = (j['assets'] as List? ?? const [])
       .cast<Map<String, dynamic>>()
-      .where((a) => '${a['name']}'.endsWith('-windows-x64.zip'))
+      .where((a) => '${a['name']}'.endsWith(end))
       .firstOrNull;
   if (asset == null) return null;
   final digest = '${asset['digest'] ?? ''}';
@@ -204,6 +210,21 @@ Future<void> launchUpdater(String script, String dir) async {
     '-File',
     file.path,
   ]);
+}
+
+/// Linux:AppImage 是单个文件。把下好的 [next] 设成可执行、换掉 [target](正在跑的文件
+/// 在 Linux 上也能直接换),再在后台等 Penna([pid])退出后打开新的。之后调用方要尽快退出。
+Future<void> swapAppImage(String next, String target, {int? pid}) async {
+  final chmod = await Process.run('chmod', ['+x', next]);
+  if (chmod.exitCode != 0) {
+    throw UpdateException(tr('更新失败({0})', ['chmod']));
+  }
+  await File(next).rename(target);
+  await Process.start('sh', [
+    '-c',
+    'while kill -0 ${pid ?? 0} 2>/dev/null; do sleep 0.2; done; exec "\$0"',
+    target,
+  ], mode: ProcessStartMode.detached);
 }
 
 /// 删掉临时文件夹里一小时前留下的 `penna-update-*`(更新没走完时脚本删不到它们)。

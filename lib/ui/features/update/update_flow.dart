@@ -67,51 +67,14 @@ class _UpdateDialogState extends State<UpdateDialog> {
   bool _busy = false;
 
   Future<void> _update() async {
-    // 换文件靠一个 PowerShell 脚本(见 updater.dart),只有 Windows 上能跑。
-    if (!Platform.isWindows) {
-      _fail(tr('这个平台不能自动更新,请到 GitHub 下载新版本覆盖本目录'));
-      return;
-    }
-    final release = widget.release;
     setState(() {
       _busy = true;
       _progress = 0;
       _status = tr('下载中…');
     });
     try {
-      final temp = await Directory.systemTemp.createTemp('penna-update-');
-      final zip = '${temp.path}${Platform.pathSeparator}update.zip';
-      await downloadFile(
-        (
-          url: release.url,
-          path: zip,
-          size: release.size,
-          sha256: release.sha256,
-        ),
-        cancel: _cancel,
-        onProgress: (got, total) {
-          if (mounted && total != null && total > 0) {
-            setState(() => _progress = got / total);
-          }
-        },
-      );
-      if (!mounted) return;
-      setState(() => _status = tr('正在解压…'));
-      final from = await unpackUpdate(
-        zip,
-        '${temp.path}${Platform.pathSeparator}new',
-      );
-      setState(() => _status = tr('即将重启…'));
-      await launchUpdater(
-        updateScript(
-          pid: pid,
-          from: from,
-          to: File(Platform.resolvedExecutable).parent.path,
-          cleanup: temp.path,
-        ),
-        temp.path,
-      );
-      // 走正常的关窗流程:先停掉本地反推的服务,再退出;脚本等 Penna 退出后换文件、重新打开。
+      await (Platform.isWindows ? _updateZip() : _updateAppImage());
+      // 走正常的关窗流程:先停掉本地反推的服务,再退出;等 Penna 退出后换文件、重新打开。
       await windowManager.close();
     } on DownloadException catch (e) {
       _fail(e.message);
@@ -120,6 +83,63 @@ class _UpdateDialogState extends State<UpdateDialog> {
     } on Object catch (e) {
       _fail(tr('更新失败({0})', [e.runtimeType]));
     }
+  }
+
+  Future<void> _download(String path) {
+    final release = widget.release;
+    return downloadFile(
+      (
+        url: release.url,
+        path: path,
+        size: release.size,
+        sha256: release.sha256,
+      ),
+      cancel: _cancel,
+      onProgress: (got, total) {
+        if (mounted && total != null && total > 0) {
+          setState(() => _progress = got / total);
+        }
+      },
+    );
+  }
+
+  void _say(String status) {
+    if (mounted) setState(() => _status = status);
+  }
+
+  /// Windows:下 zip、解开,交给 PowerShell 脚本等 Penna 退出后盖到 exe 所在的文件夹。
+  Future<void> _updateZip() async {
+    final temp = await Directory.systemTemp.createTemp('penna-update-');
+    final zip = '${temp.path}${Platform.pathSeparator}update.zip';
+    await _download(zip);
+    _say(tr('正在解压…'));
+    final from = await unpackUpdate(
+      zip,
+      '${temp.path}${Platform.pathSeparator}new',
+    );
+    _say(tr('即将重启…'));
+    await launchUpdater(
+      updateScript(
+        pid: pid,
+        from: from,
+        to: File(Platform.resolvedExecutable).parent.path,
+        cleanup: temp.path,
+      ),
+      temp.path,
+    );
+  }
+
+  /// Linux:新的 AppImage 下到正在用的那个旁边,再换掉它。
+  /// APPIMAGE 是 AppImage 启动时给的自身路径。
+  Future<void> _updateAppImage() async {
+    final target = Platform.environment['APPIMAGE'];
+    if (target == null || target.isEmpty) {
+      throw UpdateException(tr('不是从 AppImage 启动的,请到 GitHub 下载新版本'));
+    }
+    final next = '$target.new';
+    await _download(next);
+    _say(tr('即将重启…'));
+    await swapAppImage(next, target, pid: pid);
   }
 
   void _fail(String message) {
@@ -202,10 +222,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
           },
           child: Text(_busy ? tr('取消') : tr('稍后')),
         ),
-        TextButton(
-          onPressed: Platform.isWindows && !_busy ? _update : null,
-          child: Text(Platform.isWindows ? tr('更新并重启') : tr('请到 GitHub 手动更新')),
-        ),
+        TextButton(onPressed: _busy ? null : _update, child: Text(tr('更新并重启'))),
       ],
     );
   }

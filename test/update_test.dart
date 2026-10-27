@@ -47,13 +47,39 @@ void main() {
           'size': 42,
           'digest': 'sha256:abc',
         },
+        {
+          'name': 'Penna-v1.0.2-linux-x86_64.AppImage',
+          'browser_download_url': 'https://github.com/x.AppImage',
+          'size': 43,
+        },
       ],
-    })!;
+    }, suffix: '-windows-x64.zip')!;
     expect(r.version, '1.0.2');
     expect(r.url, 'https://github.com/x.zip');
     expect((r.size, r.sha256), (42, 'abc'));
     expect(r.notes, '# 更新\n\n- 新功能');
     expect(parseRelease({'tag_name': 'v1', 'assets': []}), isNull);
+  });
+
+  test('发行版:Linux 挑 AppImage,没有 AppImage 的发行版不算', () {
+    const linux = '-linux-x86_64.AppImage';
+    Map<String, dynamic> release(String asset) => {
+      'tag_name': 'v1.0.3',
+      'assets': [
+        {'name': asset, 'browser_download_url': 'https://github.com/$asset'},
+      ],
+    };
+    expect(
+      parseRelease(
+        release('Penna-v1.0.3-linux-x86_64.AppImage'),
+        suffix: linux,
+      )!.url,
+      'https://github.com/Penna-v1.0.3-linux-x86_64.AppImage',
+    );
+    expect(
+      parseRelease(release('Penna-v1.0.3-windows-x64.zip'), suffix: linux),
+      isNull,
+    );
   });
 
   test('解开安装包:找到 penna.exe 所在的文件夹', () async {
@@ -147,10 +173,7 @@ void main() {
       expect(find.text('发现新版本 v1.0.2'), findsOneWidget);
       expect(find.text('当前版本 v1.0.1'), findsOneWidget);
       expect(find.textContaining('本地反推', findRichText: true), findsOneWidget);
-      expect(
-        find.text(Platform.isWindows ? '更新并重启' : '请到 GitHub 手动更新'),
-        findsOneWidget,
-      );
+      expect(find.text('更新并重启'), findsOneWidget);
 
       await tester.tap(find.text('稍后'));
       await tester.pumpAndSettle();

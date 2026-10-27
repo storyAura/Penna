@@ -640,8 +640,9 @@ const en = <String, String>{
   '暂无更新说明': 'No release notes',
   '稍后': 'Later',
   '更新并重启': 'Update and restart',
-  '请到 GitHub 手动更新': 'Update manually from GitHub',
-  '这个平台不能自动更新,请到 GitHub 下载新版本覆盖本目录': 'Auto-update is not available on this platform. Download the new version from GitHub and overwrite this folder',
+  '不是从 AppImage 启动的,请到 GitHub 下载新版本':
+      'Not started from an AppImage. Download the new version from GitHub',
+  '{0}读不了系统钥匙串,请装好 gnome-keyring 或 KWallet': '{0}Can\'t open the system keyring. Please install gnome-keyring or KWallet',
   '版本与更新': 'Version & updates',
   '当前版本 v{0} · 每次启动自动检查': 'Current version v{0} · checks on every launch',
   '检查中…': 'Checking…',

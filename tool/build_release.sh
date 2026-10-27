@@ -6,8 +6,8 @@
 # 与 Windows 的 tool/build_release.ps1 对应:同样从 pubspec.yaml 读版本号、同样分 main/dev 两个频道、
 # 产物同样落在 dist/ 下,两个平台互不覆盖。
 #
-# AppImage 需要 appimagetool:脚本会自己下到 dist/cache(只下一次),和 Windows 那边把
-# onnxruntime 压缩包缓存在 dist/cache 的做法一致。
+# AppImage 需要 appimagetool(固定版本、核对 SHA256):脚本会自己下到 dist/cache(只下一次),
+# 和 Windows 那边把 onnxruntime 压缩包缓存在 dist/cache 的做法一致。还要 patchelf。
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,7 +22,7 @@ case "$version" in
   *-dev | *-dev+*) channel=dev ;;
   *) channel=main ;;
 esac
-# 文件名不带构建号:发版产物是 Penna-v1.0.2-windows-x64.zip 这种写法,AppImage 跟着来。
+# 文件名不带构建号,和 Penna-v1.0.2-windows-x64.zip 对齐;自动更新认 -linux-x86_64.AppImage 结尾。
 short="${version%%+*}"
 
 dist="$root/dist"
@@ -35,6 +35,10 @@ if ! command -v flutter >/dev/null 2>&1; then
   echo "找不到 flutter,请先装 Flutter SDK 并把它加进 PATH" >&2
   exit 1
 fi
+if ! command -v patchelf >/dev/null 2>&1; then
+  echo "找不到 patchelf,请先装上(比如 sudo apt install patchelf)" >&2
+  exit 1
+fi
 if [ ! -f "$icon" ]; then
   echo "找不到图标 $icon" >&2
   exit 1
@@ -44,14 +48,21 @@ echo "打包 Penna v$version($channel)..."
 flutter build linux --release
 
 # appimagetool:缓存一份在 dist/cache,之后直接用。
-tool="$dist/cache/appimagetool-x86_64.AppImage"
+tool_version=1.9.1
+tool_sha256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+tool="$dist/cache/appimagetool-$tool_version-x86_64.AppImage"
 if [ ! -x "$tool" ]; then
   mkdir -p "$dist/cache"
   echo "下载 appimagetool(只下这一次,之后用 dist/cache 里的)"
   if ! curl -fL --retry 3 -o "$tool.part" \
-    https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage; then
+    "https://github.com/AppImage/appimagetool/releases/download/$tool_version/appimagetool-x86_64.AppImage"; then
     rm -f "$tool.part"
     echo "下载 appimagetool 失败。可以自己下一份放到 $tool 再重试。" >&2
+    exit 1
+  fi
+  if ! echo "$tool_sha256  $tool.part" | sha256sum -c --quiet; then
+    rm -f "$tool.part"
+    echo "appimagetool 的 SHA256 对不上" >&2
     exit 1
   fi
   mv "$tool.part" "$tool"
@@ -64,6 +75,36 @@ rm -rf "$appdir"
 mkdir -p "$appdir/usr/bin" "$appdir/usr/share/applications" \
   "$appdir/usr/share/icons/hicolor/256x256/apps"
 cp -a "$bundle/." "$appdir/usr/bin/"
+
+# 插件的 .so 记着编译机上的绝对路径(RUNPATH),onnxruntime 的库也只按不带版本号的名字打进来:
+# 把插件要的 onnxruntime 按它要的名字补进 lib/,再让带 RUNPATH 的库只在自己旁边找。
+lib="$appdir/usr/bin/lib"
+for so in "$lib"/*.so*; do
+  for need in $(patchelf --print-needed "$so" 2>/dev/null || true); do
+    case "$need" in
+      libonnxruntime*)
+        if [ ! -e "$lib/$need" ]; then
+          src="$(find "$root/build/linux" -name "$need" -path '*onnxruntime*' | head -1)"
+          if [ -z "$src" ]; then
+            echo "找不到 $need" >&2
+            exit 1
+          fi
+          cp -L "$src" "$lib/$need"
+        fi
+        ;;
+    esac
+  done
+  if [ -n "$(patchelf --print-rpath "$so" 2>/dev/null || true)" ]; then
+    patchelf --set-rpath '$ORIGIN' "$so"
+  fi
+done
+missing="$(ldd "$appdir/usr/bin/penna" "$lib"/*.so* 2>&1 | grep 'not found' || true)"
+if [ -n "$missing" ]; then
+  echo "AppDir 里有库找不到依赖:" >&2
+  echo "$missing" >&2
+  exit 1
+fi
+
 cp "$icon" "$appdir/penna.png"
 cp "$icon" "$appdir/usr/share/icons/hicolor/256x256/apps/penna.png"
 cp "$icon" "$appdir/.DirIcon"
@@ -82,7 +123,7 @@ Icon=penna
 Categories=Graphics;Utility;
 Keywords=prompt;image;caption;
 Terminal=false
-StartupWMClass=com.example.penna
+StartupWMClass=io.github.storyaura.penna
 DESKTOP
 cp "$appdir/penna.desktop" "$appdir/usr/share/applications/penna.desktop"
 
@@ -97,7 +138,7 @@ chmod +x "$appdir/AppRun"
 
 echo "生成 AppImage..."
 mkdir -p "$out"
-name="Penna-$short-x86_64.AppImage"
+name="Penna-v$short-linux-x86_64.AppImage"
 ARCH=x86_64 "$tool" "$appdir" "$out/$name"
 
 echo

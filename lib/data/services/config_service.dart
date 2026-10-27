@@ -29,6 +29,8 @@ class ConfigService extends ChangeNotifier {
 
   /// 旧版的设置文件:%APPDATA%\Penna\config.json
   static File? defaultLegacyFile() {
+    // 旧版只在 Windows 上有(%APPDATA%\Penna)。
+    if (!Platform.isWindows) return null;
     final base = Platform.environment['APPDATA'];
     final sep = Platform.pathSeparator;
     return base == null ? null : File('$base${sep}Penna${sep}config.json');
@@ -62,9 +64,9 @@ class ConfigService extends ChangeNotifier {
     try {
       _savedSecrets = await _readSecrets();
     } on Object {
-      _loadError = tr('{0}已保存的 Key 读不出来(可能不是在这台电脑上保存的),请重新填写', [
-        _loadError ?? '',
-      ]);
+      _loadError = Platform.isWindows
+          ? tr('{0}已保存的 Key 读不出来(可能不是在这台电脑上保存的),请重新填写', [_loadError ?? ''])
+          : tr('{0}读不了系统钥匙串,请装好 gnome-keyring 或 KWallet', [_loadError ?? '']);
       // 留底:否则下次填 Key 时会把这份读不了的文件直接覆盖掉。
       await _setAside(keysFile);
     }
@@ -85,16 +87,15 @@ class ConfigService extends ChangeNotifier {
       await old.copy(file.path);
       // 新位置都写好了,才清掉旧的,免得 Key 留在两个地方。
       await old.rename('${old.path}.migrated');
-      // 旧凭据只有 Windows 上是另一个地方(keys.dat 之外的系统凭据)。别的平台上
-      // 系统钥匙串就是 Key 现在的存放处,清掉会把刚搬过去的 Key 一起删了。
-      if (Platform.isWindows) await storage.deleteAll();
+      await storage.deleteAll();
     } on Object catch (e) {
       _loadError = tr('搬迁旧设置时出错:{0}。', [e.runtimeType]);
     }
   }
 
-  /// 非 Windows 平台上机密在系统钥匙串里的条目名。
-  static const _secretKey = 'penna.keys';
+  /// 非 Windows 平台上机密在系统钥匙串里的条目名。带着数据文件夹的路径:
+  /// 用 PENNA_HOME 换了文件夹(试用、测试)时不碰真实的 Key。
+  String get _secretKey => 'penna.keys:${dir.absolute.path}';
 
   Future<Map<String, String>> _readSecrets() async {
     if (!Platform.isWindows) {

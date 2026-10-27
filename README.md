@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/version-1.0.3--261027--6--dev-F26D7D" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.3--261027--7--dev-F26D7D" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-4F7CF7" alt="license">
 </p>
 
@@ -182,7 +182,9 @@ Skill 是一份写法说明(`SKILL.md`),决定 Agent 按什么方式写提示词
 
 ## 快速开始
 
-环境要求:Windows 10 / 11,或 Linux 桌面,[Flutter](https://flutter.dev)(Dart 3.13 及以上)。
+从 [Releases](https://github.com/storyAura/Penna/releases) 下载:Windows 版 `Penna-v<版本>-windows-x64.zip`,解压后运行 `penna.exe`;Linux 版 `Penna-v<版本>-linux-x86_64.AppImage`,赋予执行权限(`chmod +x`)后直接运行,API Key 存入系统钥匙串(gnome-keyring、KWallet 等)。
+
+从源码运行的环境要求:Windows 10 / 11,或 Linux 桌面,[Flutter](https://flutter.dev)(Dart 3.13 及以上)。
 
 ```bash
 flutter pub get

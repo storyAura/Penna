@@ -182,6 +182,8 @@ Add MCP servers over HTTP or stdio, test the connection and list their tools.
 
 Download `Penna-v<version>-windows-x64.zip` from [Releases](https://github.com/storyAura/Penna/releases), unzip it and run `penna.exe`.
 
+On Linux, download `Penna-v<version>-linux-x86_64.AppImage`, make it executable (`chmod +x`) and run it. API keys are stored in the system keyring (gnome-keyring, KWallet or another Secret Service provider).
+
 On first launch the interface is in Simplified Chinese. Click the gear icon at the bottom left, open **软件设置** (App settings) and set **界面语言** (Language) to **English**.
 
 Then fill in the Base URL and API key of your model API in **Settings → API Management**. The [API setup guide](docs/api-setup.md) explains each service and can be handed straight to an AI assistant to help with the setup.
