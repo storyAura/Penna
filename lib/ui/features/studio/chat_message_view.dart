@@ -139,7 +139,7 @@ class ChatMessageView extends StatelessWidget {
           drafts.isEmpty &&
           newSkill == null &&
           laid.json == null)
-        const _TypingDots()
+        const TypingDots()
       else if (drafts.isEmpty &&
           newSkill == null &&
           laid.json == null &&
@@ -342,14 +342,14 @@ class ChatMessageView extends StatelessWidget {
 const _bodyStyle = TextStyle(fontSize: 14, height: 1.6);
 
 /// 等第一个字出来时的三个小点:慢慢地依次亮起、浮起再暗下去,安静不抢眼。
-class _TypingDots extends StatefulWidget {
-  const _TypingDots();
+class TypingDots extends StatefulWidget {
+  const TypingDots({super.key});
 
   @override
-  State<_TypingDots> createState() => _TypingDotsState();
+  State<TypingDots> createState() => _TypingDotsState();
 }
 
-class _TypingDotsState extends State<_TypingDots>
+class _TypingDotsState extends State<TypingDots>
     with SingleTickerProviderStateMixin {
   late final _controller = AnimationController(
     vsync: this,

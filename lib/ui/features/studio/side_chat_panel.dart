@@ -247,8 +247,9 @@ class _SidePanelState extends State<_SidePanel> {
             ),
           ),
         if (m.by != null) Text(m.by!, style: note),
+        // 等第一个字时和主聊天一样是三个依次浮起的小点。
         if (text.isEmpty && last && widget.chat.isStreaming)
-          Text('…', style: body)
+          const TypingDots()
         else
           SelectableText.rich(
             markdownSpan(text, body),

@@ -444,7 +444,7 @@ extension StudioPages on StudioViewModel {
   /// 把一份新成稿放到它该去的那一页:那页是空的直接填,有内容就提出待确认改动。
   /// [replacing] 只对眼前这页有用(用户选来讨论的那一段)。放不了时返回原因。
   /// [name] 是 Agent 给这页起的名字,[seriesTitle] 是它给这个系列起的名字;
-  /// 已经有名字的不改。
+  /// 已经有名字的不改。[replace] 为真时整篇换掉,不按标注并进去(固定区照旧留着)。
   String? placeDraft(
     String text, {
     String? page,
@@ -452,6 +452,7 @@ extension StudioPages on StudioViewModel {
     Set<int>? written,
     String? name,
     String? seriesTitle,
+    bool replace = false,
   }) {
     if (_wantsNewSeries(page)) {
       final failed = _startSeries(seriesTitle?.trim() ?? '');
@@ -474,7 +475,8 @@ extension StudioPages on StudioViewModel {
       final wasEmpty = body.trim().isEmpty;
       final failed = proposeDraft(
         text,
-        replacing: page == null ? replacing : null,
+        replacing: page == null && !replace ? replacing : null,
+        merge: !replace,
       );
       if (failed == null && wasEmpty) acceptDiff();
       return failed;

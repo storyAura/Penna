@@ -337,6 +337,7 @@ class _ChatPaneState extends State<ChatPane> {
       draft.text,
       page: draft.page,
       replacing: replacing,
+      replace: draft.replace,
     );
     showToast(context, problem ?? tr('已放到左侧'), warn: problem != null);
   }

@@ -76,6 +76,41 @@ void main() {
       expect(drafts.single.text, 'a fox');
       expect(prose, contains('我放进'));
     });
+
+    test('<draft replace> 是整篇重写;名字里的 replace 不算', () {
+      final d = splitDrafts('<draft replace name="浴室">【主体】a</draft>').drafts;
+      expect((d.single.replace, d.single.name), (true, '浴室'));
+      expect(
+        splitDrafts('<draft name="replace">【主体】a</draft>')
+            .drafts
+            .single
+            .replace,
+        isFalse,
+      );
+    });
+
+    test('整篇重写换掉没写到的旧段;不带 replace 时旧段留着', () async {
+      const old = [(text: '【主体】two girls\n【希罗】hiro\n【艾玛】emma', pinned: false)];
+      const draft = '【主体】a bathroom\n【维尔汀】vertin';
+
+      final merged = _studio(
+        reply: (_) => '<draft>$draft</draft>',
+        blocks: old,
+      );
+      merged.send('换成维尔汀');
+      await pumpEventQueue();
+      merged.acceptDiff();
+      expect(merged.body, contains('【希罗】'));
+
+      final replaced = _studio(
+        reply: (_) => '<draft replace>$draft</draft>',
+        blocks: old,
+      );
+      replaced.send('换成维尔汀');
+      await pumpEventQueue();
+      replaced.acceptDiff();
+      expect(replaced.body, '【主体】a bathroom\n【维尔汀】vertin');
+    });
   });
 
   group('分页', () {

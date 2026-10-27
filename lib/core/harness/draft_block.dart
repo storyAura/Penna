@@ -10,9 +10,13 @@ class AgentDraft {
     this.page,
     this.name,
     this.series,
+    this.replace = false,
   });
 
   final List<DraftSection> sections;
+
+  /// `<draft replace>`:整篇重写,放进去时整篇换掉,没写到的旧段都删掉(不按标注并进去)。
+  final bool replace;
 
   /// 这份成稿要去哪一页:null 是当前页,数字是系列里的第几页,别的(如「新」)是新开一页。
   final String? page;
@@ -45,7 +49,7 @@ final _zhLine = RegExp(r'^(?:〔译〕|译[::])[ \t]*');
 
 /// 成稿的开始标签,可以带页码和名字:
 /// `<draft>`、`<draft page="3">`、`<draft page="新" name="远景" series="午后客厅">`。
-final _open = RegExp(r'<draft((?:\s+[a-z]+\s*=\s*"[^"\n]*")*)\s*>');
+final _open = RegExp(r'<draft((?:\s+(?:[a-z]+\s*=\s*"[^"\n]*"|replace))*)\s*>');
 final _attr = RegExp(r'([a-z]+)\s*=\s*"([^"\n]*)"');
 const _close = '</draft>';
 
@@ -330,6 +334,11 @@ const _skillClose = '</new-skill>';
           page: attrs['page'],
           name: attrs['name'],
           series: attrs['series'],
+          replace: (open[1] ?? '')
+              .replaceAll(_attr, '')
+              .trim()
+              .split(RegExp(r'\s+'))
+              .contains('replace'),
         ),
       );
     }

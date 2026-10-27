@@ -101,6 +101,7 @@ extension StudioChat on StudioViewModel {
         written: written,
         name: draft.name,
         seriesTitle: draft.series,
+        replace: draft.replace,
       );
       // 放不上要说出来(以前悄悄丢掉了);系列满了时页签下面还会亮提醒。
       if (problem != null) _note(tr('成稿没放上:{0}', [problem]));
