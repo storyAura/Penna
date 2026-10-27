@@ -50,7 +50,10 @@ String chatLog(
 }
 
 class SideChat extends ChangeNotifier {
-  SideChat(this.main);
+  SideChat(this.main) {
+    _seen = _workspace;
+    main.addListener(_follow);
+  }
 
   /// 主聊天:工作区从它读,请求也借它拼(同一套模型列表和 [StudioViewModel.streamChat])。
   final StudioViewModel main;
@@ -61,6 +64,29 @@ class SideChat extends ChangeNotifier {
 
   List<ChatMessage> get messages => _messages;
   bool get isStreaming => _reply != null;
+
+  /// 眼前是哪个系列的哪一页、主聊天是哪一场。
+  (int, int, String) get _workspace =>
+      (main.series, main.pageIndex, main.chatId);
+  late (int, int, String) _seen;
+
+  bool _checking = false;
+  bool _disposed = false;
+
+  /// 换了页、换了系列或主聊天开了新对话:副聊天也从头开始,
+  /// 不带着上一页的话(用户反馈:上下文会串)。
+  /// 等这一下改完再比:放成稿时会暂时换到别的页再换回来,那不算换页。
+  void _follow() {
+    if (_checking) return;
+    _checking = true;
+    scheduleMicrotask(() {
+      _checking = false;
+      final now = _workspace;
+      if (_disposed || now == _seen) return;
+      _seen = now;
+      if (_messages.isNotEmpty) clear();
+    });
+  }
 
   /// 发一句话;不能发时返回原因。
   String? send(String text, {DateTime? now}) {
@@ -132,6 +158,8 @@ class SideChat extends ChangeNotifier {
         );
       }
     }
+    // 自己的成稿开了新页、新系列:是这场对话做的事,不用从头开始。
+    _seen = _workspace;
   }
 
   /// 以 [history](最后一条是用户消息)为上文开始一条回复。
@@ -210,6 +238,8 @@ class SideChat extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    main.removeListener(_follow);
     unawaited(_reply?.cancel());
     super.dispose();
   }

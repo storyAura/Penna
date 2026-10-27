@@ -97,6 +97,35 @@ void main() {
     expect(vm.body, '【主体】a garden');
   });
 
+  test('换页、主聊天开新对话时副聊天从头开始;自己的成稿写到别的页不算', () async {
+    final seen = <LlmRequest>[];
+    final (vm, side) = _chats([
+      '<draft>【主体】a</draft>',
+      '<draft page="2">【主体】b</draft>',
+      '好',
+    ], seen);
+
+    side.send('第一页怎么样');
+    await pumpEventQueue();
+    expect(side.messages, hasLength(2));
+    // 副聊天自己往第 2 页写成稿:放的时候会暂时换过去,但它还在原来那页。
+    side.send('第二页写个 b');
+    await pumpEventQueue();
+    expect(vm.seriesLength, 2);
+    expect(side.messages, hasLength(4));
+
+    expect(vm.openPage(1), isNull);
+    await pumpEventQueue();
+    expect(side.messages, isEmpty);
+
+    side.send('这页呢');
+    await pumpEventQueue();
+    expect(side.messages, hasLength(2));
+    vm.newChat();
+    await pumpEventQueue();
+    expect(side.messages, isEmpty);
+  });
+
   test('主聊天写 <read-side-chat> 时读到副聊天的记录,再接着写', () async {
     final seen = <LlmRequest>[];
     final (vm, side) = _chats([

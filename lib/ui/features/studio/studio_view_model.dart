@@ -302,6 +302,9 @@ class StudioViewModel extends ChangeNotifier {
   List<Block> get blocks => _blocks;
   DiffProposal? get pending => _pending;
 
+  /// 眼前这场对话的编号:换了对话(新对话、打开历史、换系列)就变。
+  String get chatId => _chatId;
+
   /// 排在 [pending] 后面等确认的改动(成稿被固定区隔成几栏时,每栏一处)。
   List<DiffProposal> _queued = const [];
   int get queuedDiffs => _queued.length;
