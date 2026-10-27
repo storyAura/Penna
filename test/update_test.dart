@@ -161,6 +161,32 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
     });
 
+    testWidgets('切了通道:旧一些的正式版也给装', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: _theme,
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => checkForUpdate(
+                  context,
+                  switching: true,
+                  fetch: () async => _release('1.0.2'),
+                  current: '1.0.3-261027-5-dev',
+                ),
+                child: const Text('查'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('查'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('切换到 v1.0.2'), findsOneWidget);
+      expect(find.text('更新并重启'), findsOneWidget);
+    });
+
     testWidgets('启动时自动检查出错:不打扰用户', (tester) async {
       await tester.pumpWidget(
         MaterialApp(

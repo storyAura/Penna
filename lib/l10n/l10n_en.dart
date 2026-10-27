@@ -633,6 +633,7 @@ const en = <String, String>{
   '正在解压…': 'Unpacking…',
   '即将重启…': 'Restarting soon…',
   '更新失败({0})': 'Update failed ({0})',
+  '切换到 v{0}': 'Switch to v{0}',
   '发现新版本 v{0}': 'New version v{0}',
   '当前版本 v{0}': 'Current version v{0}',
   '暂无更新说明': 'No release notes',

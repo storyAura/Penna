@@ -17,9 +17,11 @@ typedef FetchRelease = Future<Release?> Function();
 
 /// 检查更新([channel] 是 'main' 正式版或 'dev' 测试版)。有新版本就弹窗介绍并可一键更新。
 /// [quiet] 为真时(启动时自动检查)已是最新、出错都不打扰用户。
+/// [switching] 为真时(刚切了通道)只要版本不同就给装,测试版切回正式版也能退回去。
 Future<void> checkForUpdate(
   BuildContext context, {
   bool quiet = false,
+  bool switching = false,
   FetchRelease? fetch,
   String current = appVersion,
   String channel = 'main',
@@ -32,11 +34,12 @@ Future<void> checkForUpdate(
     return;
   }
   if (!context.mounted) return;
-  if (release == null || compareVersions(release.version, current) <= 0) {
+  final diff = release == null ? 0 : compareVersions(release.version, current);
+  if (switching ? diff == 0 : diff <= 0) {
     if (!quiet) showToast(context, tr('已是最新版本'));
     return;
   }
-  final found = release;
+  final found = release!;
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -135,7 +138,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
     final body = TextStyle(fontSize: 13, height: 1.6, color: PennaColors.text);
     return AlertDialog(
       title: Text(
-        tr('发现新版本 v{0}', [release.version]),
+        compareVersions(release.version, widget.current) < 0
+            ? tr('切换到 v{0}', [release.version])
+            : tr('发现新版本 v{0}', [release.version]),
         style: const TextStyle(fontSize: 16),
       ),
       content: SizedBox(
@@ -214,14 +219,22 @@ class UpdateCard extends StatefulWidget {
 class _UpdateCardState extends State<UpdateCard> {
   bool _checking = false;
 
-  Future<void> _check() async {
+  Future<void> _check({bool switching = false}) async {
     setState(() => _checking = true);
     await checkForUpdate(
       context,
+      switching: switching,
       fetch: widget.fetch,
       channel: widget.service?.config.updateChannel ?? 'main',
     );
     if (mounted) setState(() => _checking = false);
+  }
+
+  /// 切了通道就马上查一次,有那个通道的版本直接给装。
+  void _switch(ConfigService service, String channel) {
+    if (service.config.updateChannel == channel || _checking) return;
+    service.update(service.config.copyWith(updateChannel: channel));
+    _check(switching: true);
   }
 
   @override
@@ -251,9 +264,7 @@ class _UpdateCardState extends State<UpdateCard> {
               PennaChip(
                 label: label,
                 selected: service.config.updateChannel == channel,
-                onTap: () => service.update(
-                  service.config.copyWith(updateChannel: channel),
-                ),
+                onTap: () => _switch(service, channel),
               ),
               const SizedBox(width: 6),
             ],
