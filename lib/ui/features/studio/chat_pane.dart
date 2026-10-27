@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:pasteboard/pasteboard.dart';
 
 import '../../../core/harness/attachment.dart';
+import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../data/models/app_config.dart';
 import '../../../data/services/config_service.dart';
@@ -19,13 +20,16 @@ import '../../../data/services/skill_store.dart';
 import 'attachment_view.dart';
 import 'chat_message_view.dart';
 import 'chat_tabs.dart';
+import 'markdown_text.dart';
 import 'mention.dart';
+import 'side_chat.dart';
 import 'studio_view_model.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
 
 part 'chat_composer.dart';
 part 'chat_header.dart';
+part 'side_chat_panel.dart';
 
 // 模型菜单里两个不是模型的选项;真实模型 id 是纯数字,不会撞上。
 const _byOrder = '#order';
@@ -83,6 +87,9 @@ class _ChatPaneState extends State<ChatPane> {
 
   /// 有文件正拖在窗口上方。
   bool _dragging = false;
+
+  /// 副聊天的浮窗开着。
+  bool _sideOpen = false;
 
   bool get _compress => widget.config.config.compressImages;
 
@@ -472,6 +479,70 @@ class _ChatPaneState extends State<ChatPane> {
     _toBottom();
   }
 
+  Widget _list(List<ChatMessage> messages, List<ChatRow> rows) =>
+      messages.isEmpty
+      ? Center(
+          child: Text(
+            tr('描述画面,或贴上要改的提示词'),
+            style: TextStyle(fontSize: 13, color: PennaColors.slate400),
+          ),
+        )
+      : Stack(
+          children: [
+            NotificationListener<ScrollNotification>(
+              onNotification: _onScroll,
+              child: ListView.separated(
+                controller: _scroll,
+                // ponytail: 整场对话都排好版,总高度是量出来的而不是估的;
+                // 只排看得见的那几条时,底下的成稿卡片很高,估出的总高度偏差大,
+                // 拖滚动条会一下跳很远。上限是一场对话约 100 万像素高。
+                scrollCacheExtent: const ScrollCacheExtent.pixels(1e6),
+                padding: const EdgeInsets.all(24),
+                itemCount: rows.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 24),
+                itemBuilder: (_, row) => _row(messages, rows[row]),
+              ),
+            ),
+            Positioned(
+              right: 18,
+              bottom: 12,
+              child: IgnorePointer(
+                ignoring: !_away,
+                child: AnimatedScale(
+                  scale: _away ? 1 : 0,
+                  duration: Motion.base,
+                  curve: Curves.easeOutBack,
+                  child: Tooltip(
+                    message: tr('回到底部'),
+                    child: Material(
+                      color: PennaColors.card,
+                      elevation: 3,
+                      shape: CircleBorder(
+                        side: BorderSide(color: PennaColors.border),
+                      ),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () {
+                          _follow = true;
+                          _toBottom();
+                        },
+                        child: Padding(
+                          padding: EdgeInsets.all(7),
+                          child: Icon(
+                            Icons.arrow_downward,
+                            size: 16,
+                            color: PennaColors.slate700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+
   Widget _build(List<ChatMessage> messages) {
     final rows = foldLookups(messages);
     return Column(
@@ -483,70 +554,34 @@ class _ChatPaneState extends State<ChatPane> {
         ),
         ChatTabs(vm: widget.vm),
         Expanded(
-          child: messages.isEmpty
-              ? Center(
-                  child: Text(
-                    tr('描述画面,或贴上要改的提示词'),
-                    style: TextStyle(fontSize: 13, color: PennaColors.slate400),
+          child: Stack(
+            children: [
+              Positioned.fill(child: _list(messages, rows)),
+              if (widget.vm.side case final side? when _sideOpen)
+                Positioned(
+                  top: 8,
+                  right: 12,
+                  bottom: 8,
+                  width: _sideWidth,
+                  child: PopIn(
+                    child: _SidePanel(
+                      chat: side,
+                      config: widget.config,
+                      onClose: () => setState(() => _sideOpen = false),
+                      onOpenSettings: widget.onOpenSettings,
+                    ),
                   ),
-                )
-              : Stack(
-                  children: [
-                    NotificationListener<ScrollNotification>(
-                      onNotification: _onScroll,
-                      child: ListView.separated(
-                        controller: _scroll,
-                        // ponytail: 整场对话都排好版,总高度是量出来的而不是估的;
-                        // 只排看得见的那几条时,底下的成稿卡片很高,估出的总高度偏差大,
-                        // 拖滚动条会一下跳很远。上限是一场对话约 100 万像素高。
-                        scrollCacheExtent: const ScrollCacheExtent.pixels(1e6),
-                        padding: const EdgeInsets.all(24),
-                        itemCount: rows.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 24),
-                        itemBuilder: (_, row) => _row(messages, rows[row]),
-                      ),
-                    ),
-                    Positioned(
-                      right: 18,
-                      bottom: 12,
-                      child: IgnorePointer(
-                        ignoring: !_away,
-                        child: AnimatedScale(
-                          scale: _away ? 1 : 0,
-                          duration: Motion.base,
-                          curve: Curves.easeOutBack,
-                          child: Tooltip(
-                            message: tr('回到底部'),
-                            child: Material(
-                              color: PennaColors.card,
-                              elevation: 3,
-                              shape: CircleBorder(
-                                side: BorderSide(color: PennaColors.border),
-                              ),
-                              child: InkWell(
-                                customBorder: const CircleBorder(),
-                                onTap: () {
-                                  _follow = true;
-                                  _toBottom();
-                                },
-                                child: Padding(
-                                  padding: EdgeInsets.all(7),
-                                  child: Icon(
-                                    Icons.arrow_downward,
-                                    size: 16,
-                                    color: PennaColors.slate700,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
+            ],
+          ),
         ),
         _Composer(
+          trailing: widget.vm.side == null
+              ? null
+              : _SideToggle(
+                  open: _sideOpen,
+                  onTap: () => setState(() => _sideOpen = !_sideOpen),
+                ),
           input: widget.input,
           inputFocus: widget.inputFocus,
           quickActions: widget.config.config.quickActions,

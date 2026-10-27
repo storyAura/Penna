@@ -16,6 +16,7 @@ import 'features/local/local_model.dart';
 import 'features/local/local_page.dart';
 import 'features/notebook/notebook_page.dart';
 import 'features/settings/settings_page.dart';
+import 'features/studio/side_chat.dart';
 import 'features/studio/studio_page.dart';
 import 'features/studio/studio_view_model.dart';
 import 'features/update/update_flow.dart';
@@ -76,6 +77,7 @@ class _AppShellState extends State<AppShell> {
     // 测试里没在 main() 接上:Agent 用的就是这一页上的本地反推。
     widget.vm.local ??= _local;
     widget.vm.layoutAgent ??= _layoutChat;
+    widget.vm.side ??= SideChat(widget.vm);
     if (widget.checkUpdates) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => checkForUpdate(

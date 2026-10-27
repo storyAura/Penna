@@ -380,6 +380,8 @@ class AppConfig {
     this.llms = const [],
     this.activeLlmId,
     this.polishLlmId,
+    this.sideLlmId,
+    this.sidePiercing = false,
     this.mtOrder = defaultMtOrder,
     this.mtEnabled = defaultMtEnabled,
     this.mtAttempts = defaultMtAttempts,
@@ -423,6 +425,8 @@ class AppConfig {
       ],
       activeLlmId: m['activeLlmId'] as String?,
       polishLlmId: m['polishLlmId'] as String?,
+      sideLlmId: m['sideLlmId'] as String?,
+      sidePiercing: m['sidePiercing'] as bool? ?? false,
       mtOrder: normalizeMtOrder((m['mtOrder'] as List? ?? const []).cast()),
       // 旧版配置没有 mtOrder:那时的开关还没接功能,直接换成新默认(免费引擎)。
       mtEnabled: m['mtOrder'] == null
@@ -486,11 +490,16 @@ class AppConfig {
   final String? activeLlmId;
   final String? polishLlmId;
 
+  /// 副聊天优先用的模型(同上);[sidePiercing] 是副聊天单独的穿甲弹开关。
+  final String? sideLlmId;
+  final bool sidePiercing;
+
   /// Agent 对话依次尝试的模型。
   List<LlmProfile> get agentChain => _llmChain(activeLlmId);
 
   /// 润色依次尝试的模型。
   List<LlmProfile> get polishChain => _llmChain(polishLlmId);
+  List<LlmProfile> get sideChain => _llmChain(sideLlmId);
 
   List<LlmProfile> _llmChain(String? pinnedId) {
     final usable = llms.where((l) => l.enabled);
@@ -592,6 +601,8 @@ class AppConfig {
     'llms': [for (final l in llms) l.toJson()],
     'activeLlmId': activeLlmId,
     'polishLlmId': polishLlmId,
+    'sideLlmId': sideLlmId,
+    'sidePiercing': sidePiercing,
     'mtOrder': mtOrder,
     'mtEnabled': mtEnabled.toList(),
     'mtAttempts': mtAttempts,
@@ -641,6 +652,8 @@ class AppConfig {
     List<LlmProfile>? llms,
     String? Function()? activeLlmId,
     String? Function()? polishLlmId,
+    String? Function()? sideLlmId,
+    bool? sidePiercing,
     Set<String>? mtEnabled,
     List<String>? mtOrder,
     int? mtAttempts,
@@ -673,6 +686,8 @@ class AppConfig {
     llms: llms ?? this.llms,
     activeLlmId: activeLlmId == null ? this.activeLlmId : activeLlmId(),
     polishLlmId: polishLlmId == null ? this.polishLlmId : polishLlmId(),
+    sideLlmId: sideLlmId == null ? this.sideLlmId : sideLlmId(),
+    sidePiercing: sidePiercing ?? this.sidePiercing,
     mtEnabled: mtEnabled ?? this.mtEnabled,
     mtOrder: mtOrder ?? this.mtOrder,
     mtAttempts: mtAttempts ?? this.mtAttempts,

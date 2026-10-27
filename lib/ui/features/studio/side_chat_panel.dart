@@ -1,0 +1,308 @@
+part of 'chat_pane.dart';
+
+// 副聊天的浮窗:盖在对话右边,底色半透明,看得见后面的对话;关掉不丢记录。
+
+/// 浮窗底色的不透明度:后面的对话透得出来,字也看得清。
+const _sideOpacity = 0.9;
+const _sideWidth = 380.0;
+
+/// 快捷操作那一排最右边的开关。
+class _SideToggle extends StatelessWidget {
+  const _SideToggle({required this.open, required this.onTap});
+
+  final bool open;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => PennaButton(
+    label: tr('副聊天'),
+    icon: Icons.forum_outlined,
+    background: open ? PennaColors.primaryBg : PennaColors.slate100,
+    foreground: open ? PennaColors.primary : null,
+    borderColor: open ? PennaColors.primaryBorder : null,
+    onPressed: onTap,
+  );
+}
+
+class _SidePanel extends StatefulWidget {
+  const _SidePanel({
+    required this.chat,
+    required this.config,
+    required this.onClose,
+    required this.onOpenSettings,
+  });
+
+  final SideChat chat;
+  final ConfigService config;
+  final VoidCallback onClose;
+  final VoidCallback onOpenSettings;
+
+  @override
+  State<_SidePanel> createState() => _SidePanelState();
+}
+
+class _SidePanelState extends State<_SidePanel> {
+  final _input = TextEditingController();
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.requestFocus();
+  }
+
+  @override
+  void dispose() {
+    _input.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _send() {
+    final problem = widget.chat.send(_input.text);
+    if (problem != null) return showToast(context, problem, warn: true);
+    _input.clear();
+  }
+
+  /// Enter 发送,Shift+Enter 换行;输入法选字时不拦。
+  KeyEventResult _onKey(FocusNode _, KeyEvent event) {
+    final isEnter =
+        event is! KeyUpEvent &&
+        (event.logicalKey == LogicalKeyboardKey.enter ||
+            event.logicalKey == LogicalKeyboardKey.numpadEnter);
+    if (!isEnter ||
+        HardwareKeyboard.instance.isShiftPressed ||
+        _input.value.composing.isValid) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent) _send();
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([widget.chat, widget.config]),
+      builder: (context, _) {
+        final rows = foldLookups(widget.chat.messages).reversed.toList();
+        return Material(
+          color: PennaColors.card.withValues(alpha: _sideOpacity),
+          elevation: 6,
+          shadowColor: Colors.black26,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: PennaColors.border),
+          ),
+          child: Column(
+            children: [
+              _head(),
+              Divider(height: 1, color: PennaColors.border),
+              Expanded(
+                // 倒着排:新消息贴在底下,生成时不用自己滚。
+                child: ListView.separated(
+                  reverse: true,
+                  padding: const EdgeInsets.all(14),
+                  itemCount: rows.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 14),
+                  itemBuilder: (_, i) => _row(rows[i], last: i == 0),
+                ),
+              ),
+              _composer(),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _head() {
+    final config = widget.config;
+    final cfg = config.config;
+    final chain = cfg.sideChain;
+    // 指定的模型被删了或关了,就当作按顺序。
+    final pinned = chain.any((l) => l.id == cfg.sideLlmId)
+        ? cfg.sideLlmId
+        : null;
+    PopupMenuItem<String> item(String value, String name, bool selected) =>
+        PopupMenuItem(
+          value: value,
+          height: 34,
+          padding: EdgeInsets.zero,
+          child: _PresetMenuRow(name: name, selected: selected),
+        );
+    String nameOf(LlmProfile l) => l.name.trim().isEmpty ? tr('未命名') : l.name;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
+      child: Row(
+        children: [
+          Icon(Icons.forum_outlined, size: 16, color: PennaColors.primary),
+          const SizedBox(width: 6),
+          Text(
+            tr('副聊天'),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: PopupMenuButton<String>(
+              tooltip: tr('副聊天使用的模型'),
+              position: PopupMenuPosition.under,
+              onSelected: (id) => id == _manageModels
+                  ? widget.onOpenSettings()
+                  : config.update(
+                      cfg.copyWith(sideLlmId: () => id == _byOrder ? null : id),
+                    ),
+              itemBuilder: (_) => [
+                item(_byOrder, tr('按顺序'), pinned == null),
+                for (final l in chain) item(l.id, nameOf(l), pinned == l.id),
+                const PopupMenuDivider(height: 8),
+                item(_manageModels, tr('管理模型…'), false),
+              ],
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      chain.isEmpty ? tr('未连接模型') : nameOf(chain.first),
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: PennaColors.slate500,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.keyboard_arrow_down,
+                    size: 14,
+                    color: PennaColors.slate500,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Spacer(),
+          Tooltip(
+            message: tr('副聊天单独的穿甲弹开关'),
+            child: PennaChip(
+              label: tr('穿甲弹'),
+              selected: cfg.sidePiercing,
+              onTap: () =>
+                  config.update(cfg.copyWith(sidePiercing: !cfg.sidePiercing)),
+            ),
+          ),
+          IconButton(
+            tooltip: tr('清空副聊天'),
+            iconSize: 16,
+            visualDensity: VisualDensity.compact,
+            onPressed: widget.chat.messages.isEmpty ? null : widget.chat.clear,
+            icon: const Icon(Icons.delete_sweep_outlined),
+          ),
+          IconButton(
+            tooltip: tr('关闭'),
+            iconSize: 16,
+            visualDensity: VisualDensity.compact,
+            onPressed: widget.onClose,
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(ChatRow row, {required bool last}) {
+    final m = row.message;
+    final body = TextStyle(fontSize: 13, height: 1.6, color: PennaColors.text);
+    if (m.fromUser) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: _sideWidth * 0.8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: PennaColors.primaryBg,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: SelectableText(
+            m.text,
+            style: body,
+            contextMenuBuilder: pennaTextMenu,
+          ),
+        ),
+      );
+    }
+    final text = splitPeek(m.text, readMainChat).prose;
+    final note = TextStyle(fontSize: 11, color: PennaColors.slate500);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final l in row.lookups)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle_outline, size: 13, color: note.color),
+                const SizedBox(width: 4),
+                Text(l.toolSummary ?? '', style: note),
+              ],
+            ),
+          ),
+        if (m.by != null) Text(m.by!, style: note),
+        if (text.isEmpty && last && widget.chat.isStreaming)
+          Text('…', style: body)
+        else
+          SelectableText.rich(
+            markdownSpan(text, body),
+            contextMenuBuilder: pennaTextMenu,
+          ),
+      ],
+    );
+  }
+
+  Widget _composer() {
+    final streaming = widget.chat.isStreaming;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Focus(
+              onKeyEvent: _onKey,
+              child: TextField(
+                controller: _input,
+                focusNode: _focus,
+                minLines: 1,
+                maxLines: 5,
+                style: const TextStyle(fontSize: 13),
+                contextMenuBuilder: pennaTextMenu,
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: tr('问问工作区里的提示词'),
+                  hintStyle: TextStyle(
+                    fontSize: 13,
+                    color: PennaColors.slate400,
+                  ),
+                  filled: true,
+                  fillColor: PennaColors.card,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: PennaColors.border),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          IconButton(
+            tooltip: streaming ? tr('停止') : tr('发送'),
+            onPressed: streaming ? widget.chat.stop : _send,
+            icon: Icon(
+              streaming ? Icons.stop_circle_outlined : Icons.arrow_circle_up,
+              color: PennaColors.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

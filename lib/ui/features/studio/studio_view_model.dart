@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/harness/attachment.dart';
+import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/characters/character_dict.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
@@ -22,6 +23,7 @@ import '../../../data/services/translate_engines.dart';
 import '../layout/layout_board.dart';
 import '../local/local_model.dart';
 import 'chat_message.dart';
+import 'side_chat.dart';
 import '../../../l10n/l10n.dart';
 
 export 'chat_message.dart';
@@ -137,6 +139,10 @@ class StudioViewModel extends ChangeNotifier {
   /// 把活转给它,等它把布局放到画板上,再把 JSON 拿回主工作区的新系列。
   /// 和 [local] 一样建好之后才接上;没有就由主工作区的 Agent 自己写 `<layout>`。
   StudioViewModel? layoutAgent;
+
+  /// 副聊天(另一个模型,只读工作区)。主聊天的 Agent 写 `<read-side-chat>` 时读它的记录;
+  /// 同样建好之后才接上,布局页的对话没有。
+  SideChat? side;
 
   /// 布局页右边那场对话用的:系统提示只讲布局,回复里的 `<layout>` 放到 [layout] 上,
   /// 不往成稿里送。界面和工作台的对话是同一个 `ChatPane`。

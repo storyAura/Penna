@@ -18,7 +18,11 @@ class _Composer extends StatelessWidget {
     required this.onAutoApprove,
     required this.dragging,
     this.queued = const [],
+    this.trailing,
   });
+
+  /// 快捷操作那一排最右边的按钮(副聊天的开关)。
+  final Widget? trailing;
 
   /// 成稿的改动是自动采纳还是等用户点。
   final bool autoApprove;
@@ -71,28 +75,34 @@ class _Composer extends StatelessWidget {
               ],
             ),
           ),
-          if (quickActions.isNotEmpty) ...[
+          if (quickActions.isNotEmpty || trailing != null) ...[
             Row(
               children: [
-                Text(
-                  tr('快捷操作:'),
-                  style: TextStyle(fontSize: 11, color: PennaColors.slate400),
-                ),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: ScrollStrip(
-                    visible: _maxQuickActions,
-                    children: [
-                      for (final action in quickActions)
-                        PennaButton(
-                          // 默认的两个按界面语言翻译,自己加的原样。
-                          label: tr(action.label),
-                          background: PennaColors.slate100,
-                          onPressed: () => onQuickAction(tr(action.prompt)),
-                        ),
-                    ],
+                if (quickActions.isNotEmpty) ...[
+                  Text(
+                    tr('快捷操作:'),
+                    style: TextStyle(fontSize: 11, color: PennaColors.slate400),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: ScrollStrip(
+                      visible: _maxQuickActions,
+                      children: [
+                        for (final action in quickActions)
+                          PennaButton(
+                            // 默认的两个按界面语言翻译,自己加的原样。
+                            label: tr(action.label),
+                            background: PennaColors.slate100,
+                            onPressed: () => onQuickAction(tr(action.prompt)),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
+                if (trailing != null) ...[const SizedBox(width: 8), trailing!],
               ],
             ),
             const SizedBox(height: 8),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/harness/characters/character_dict.dart';
+import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
@@ -99,7 +100,9 @@ class ChatMessageView extends StatelessWidget {
     final m = message;
     // 先拆新 Skill:它正文里举例用的成稿标签不能被当成成稿。
     final tools = splitLocalTools(
-      splitCharacterTags(splitTagSearch(m.text).prose).prose,
+      splitCharacterTags(
+        splitTagSearch(splitPeek(m.text, readSideChat).prose).prose,
+      ).prose,
     );
     final made = splitNewSkill(splitAskLayout(tools.prose).prose);
     final newSkill = made.skill;

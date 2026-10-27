@@ -27,7 +27,14 @@ extension StudioContext on StudioViewModel {
     final asks = layoutAgent == null || layoutOnly
         ? const <({String name, String brief})>[]
         : splitAskLayout(prose).asks.take(1).toList();
-    if (queries.isEmpty && names.isEmpty && calls.isEmpty && asks.isEmpty ||
+    // 要看副聊天的记录:本机的,不用等。布局页的对话不管。
+    final peek =
+        side != null && !layoutOnly && splitPeek(prose, readSideChat).asked;
+    if (queries.isEmpty &&
+            names.isEmpty &&
+            calls.isEmpty &&
+            asks.isEmpty &&
+            !peek ||
         _toolRounds >= _maxToolRounds) {
       return false;
     }
@@ -75,6 +82,7 @@ extension StudioContext on StudioViewModel {
           text: [
             if (results.isNotEmpty) formatTagResults(results),
             if (people.isNotEmpty) formatCharacterResults(people),
+            if (peek) chatLog('副聊天的记录', side!.messages, speaker: '副聊天'),
             if (ran.isNotEmpty)
               '【本地工具的结果】程序替你跑的本地反推、区域控制的结果如下。'
                   '<reverse-results> 里是本地模型从图里读出来的东西,'
@@ -86,6 +94,7 @@ extension StudioContext on StudioViewModel {
             if (results.isNotEmpty) tr('查了 Danbooru 标签 · {0} 个', [hits.length]),
             if (people.isNotEmpty)
               tr('查了角色库 · {0} 个', [people.values.expand((h) => h).length]),
+            if (peek) tr('读了副聊天'),
             for (final r in ran) r.note,
           ].join(' · '),
           toolDetails: [
@@ -385,6 +394,8 @@ extension StudioContext on StudioViewModel {
         '【当前系列】「${seriesName(series)}」,共 $seriesLength 页\n'
             '【当前成稿】\n$draft',
       _siblingPages,
+      // 副聊天说过话才提:模型知道有这么个地方、怎么去看。
+      if (side?.messages.isNotEmpty ?? false) sideNoteForMain,
       _namingNote('draft'),
       if (_blocks.any((b) => b.pinned))
         '【固定区】成稿里下面这些片段由用户固定,一个字都不能改,也不能挪走:\n'
@@ -438,10 +449,11 @@ extension StudioContext on StudioViewModel {
     AgentPreset preset,
     List<Map<String, String>> messages, {
     Map<int, List<LlmImage>> images = const {},
+    String? piercing,
   }) {
     // 穿甲弹:开着时接在系统提示最前面。对话、润色、反推都经过这里,
-    // 它们的第一条都是系统提示。
-    final pierce = cfg.piercingText;
+    // 它们的第一条都是系统提示。副聊天有自己的开关([piercing])。
+    final pierce = piercing ?? cfg.piercingText;
     final sent = pierce.isEmpty || messages.first['role'] != 'system'
         ? messages
         : [
@@ -469,6 +481,31 @@ extension StudioContext on StudioViewModel {
             ),
           ),
     ];
+  }
+
+  /// 副聊天的请求:用它自己指定的模型和穿甲弹开关,温度照当前 Preset。
+  List<(String, LlmRequest)> sideRequests(List<Map<String, String>> messages) {
+    final cfg = config.config;
+    return _requests(
+      cfg,
+      _usable(cfg.sideChain),
+      cfg.activePreset,
+      messages,
+      piercing: cfg.sidePiercing ? cfg.piercingPrompt.trim() : '',
+    );
+  }
+
+  /// 给副聊天看的工作区:当前系列的每一页(带分段标注),标出眼前是哪一页。
+  String get workspaceText {
+    final shown = [
+      for (final (i, p) in pages.indexed)
+        if (p.series == series)
+          '第 ${pageNumber(i)} 页${p.name.isEmpty ? '' : '(${p.name})'}'
+              '${i == _page ? '(用户眼前这页)' : ''}:\n'
+              '${i == _page ? _joined(labels: true) : p.blocks.map((b) => b.text).join().trim()}',
+    ];
+    return '【当前系列】「${seriesName(series)}」,共 $seriesLength 页\n'
+        '${shown.join('\n\n')}';
   }
 
   // ponytail: 启用的自定义 Skill 整篇放进系统提示,Skill 多了会很占上下文;

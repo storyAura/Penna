@@ -1035,4 +1035,12 @@ const en = <String, String>{
   '画布尺寸': 'Canvas size',
   '1 为不对齐': '1 turns snapping off',
   '放大查看': 'View larger',
+  '副聊天': 'Side chat',
+  '副聊天使用的模型': 'Model for the side chat',
+  '副聊天单独的穿甲弹开关': 'Armor-Piercing for the side chat only',
+  '未连接模型': 'No model',
+  '清空副聊天': 'Clear side chat',
+  '读了主聊天': 'Read the main chat',
+  '读了副聊天': 'Read the side chat',
+  '问问工作区里的提示词': 'Ask about the prompts in the workspace',
 };
