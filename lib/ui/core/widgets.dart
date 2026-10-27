@@ -232,7 +232,9 @@ class PennaButton extends StatelessWidget {
           foregroundColor: foreground ?? PennaColors.slate700,
           disabledBackgroundColor: PennaColors.slate100,
           minimumSize: Size.zero,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          // 桌面上默认是紧凑密度,会把上下内边距各减 8,字就贴着边框了。
+          visualDensity: VisualDensity.standard,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(6),
