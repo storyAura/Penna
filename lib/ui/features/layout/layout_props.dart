@@ -277,6 +277,14 @@ class _BoxCard extends StatelessWidget {
         ),
         onPressed: b.offscreen ? null : () => board.setHidden(index, shown),
       ),
+      IconButton(
+        tooltip: b.locked ? tr('解锁') : tr('锁定(画布上拖不动)'),
+        iconSize: 16,
+        visualDensity: VisualDensity.compact,
+        color: b.locked ? PennaColors.primary : null,
+        icon: Icon(b.locked ? Icons.lock : Icons.lock_open_outlined),
+        onPressed: () => board.setLocked(index, !b.locked),
+      ),
       _icon(
         open ? Icons.expand_less : Icons.expand_more,
         open ? tr('收起') : tr('展开'),

@@ -65,7 +65,7 @@ extension StudioContext on StudioViewModel {
       }
       for (final ask in asks) {
         if (_disposed || run != _toolRun) return;
-        ran.add(await _askLayout(ask, run));
+        ran.add(await _askLayout(ask, run, _lastImage));
       }
       if (_disposed || run != _toolRun) return;
       _toolBusy = false;
@@ -277,6 +277,7 @@ extension StudioContext on StudioViewModel {
   Future<LocalToolResult> _askLayout(
     ({String name, String brief}) ask,
     int run,
+    Attachment? image,
   ) async {
     final agent = layoutAgent!;
     final board = agent.layout;
@@ -306,7 +307,6 @@ extension StudioContext on StudioViewModel {
       }
     }
     if (ask.name.isNotEmpty) agent.renameSeries(agent.series, ask.name);
-    final image = _lastImage;
     // 参考图和画布一横一竖:先把画布对调。上面已经换到新系列的空白页,
     // 用户原来的页不受影响,所以不用等自动审批。
     final flipped = image != null && await board.swapFor(image.bytes!) != null;
@@ -483,17 +483,56 @@ extension StudioContext on StudioViewModel {
     ];
   }
 
+  /// 各条消息里的图,按请求里的下标排(+1:前面还有一条系统提示)。
+  Map<int, List<LlmImage>> _imagesOf(List<ChatMessage> sent) => {
+    for (final (i, m) in sent.indexed)
+      if (m.attachments.any((a) => a.isImage))
+        i + 1: [
+          for (final a in m.attachments)
+            if (a.isImage) (mime: a.mime!, bytes: a.bytes!),
+        ],
+  };
+
   /// 副聊天的请求:用它自己指定的模型和穿甲弹开关,温度照当前 Preset。
-  List<(String, LlmRequest)> sideRequests(List<Map<String, String>> messages) {
+  /// 附件和主聊天一样:文本文件包进那条消息,图另走 [LlmRequest.images]。
+  List<(String, LlmRequest)> sideRequests(
+    String system,
+    List<ChatMessage> sent,
+  ) {
     final cfg = config.config;
     return _requests(
       cfg,
       _usable(cfg.sideChain),
       cfg.activePreset,
-      messages,
+      [
+        {'role': 'system', 'content': system},
+        for (final (i, m) in sent.indexed)
+          {
+            'role': m.fromUser ? 'user' : 'assistant',
+            'content': !m.fromUser
+                ? m.text
+                // 区域控制那边带着参考图:提醒画布多大(同主聊天)。
+                : layoutOnly &&
+                      i == sent.length - 1 &&
+                      m.attachments.any((a) => a.isImage)
+                ? '${_withReferences(m, const {})}${_canvasReminder()}'
+                : _withReferences(m, const {}),
+          },
+      ],
+      images: _imagesOf(sent),
       piercing: cfg.sidePiercing ? cfg.piercingPrompt.trim() : '',
     );
   }
+
+  /// 副聊天能不能把排布局的活转给区域控制(主工作区才能,同主聊天的 `<ask-layout>`)。
+  String get askLayoutGuide =>
+      layoutAgent == null || layoutOnly ? '' : _askLayoutPrompt;
+
+  /// 副聊天写的 `<ask-layout>`:和主聊天走同一条路,[image] 是副聊天里用户发的最新一张图。
+  Future<LocalToolResult> askLayoutFor(
+    ({String name, String brief}) ask,
+    Attachment? image,
+  ) => _askLayout(ask, _toolRun, image);
 
   /// 区域控制那边的副聊天照着排布局的要求(和布局页的 Agent 同一份,带着画板现在的样子)。
   String get layoutGuide =>

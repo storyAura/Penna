@@ -187,7 +187,8 @@ class _LayoutCanvasState extends State<LayoutCanvas>
     ];
     for (final i in order) {
       final b = boxes[i];
-      if (b.offscreen || !_board.shown(i)) continue;
+      // 锁住的点不中:在它上面拖是画新框。
+      if (b.offscreen || b.locked || !_board.shown(i)) continue;
       final r = Rect.fromLTRB(
         b.left.toDouble(),
         b.top.toDouble(),
@@ -208,7 +209,12 @@ class _LayoutCanvasState extends State<LayoutCanvas>
   /// 按在选中的那个多边形的哪个顶点上;没按中是 null。顶点只在平面视图里拖。
   int? _hitVertex(Offset p, double scale) {
     final i = _board.selected;
-    if (i == null || !_board.shown(i) || _board.threeD) return null;
+    if (i == null ||
+        !_board.shown(i) ||
+        _board.threeD ||
+        _board.layout.boxes[i].locked) {
+      return null;
+    }
     for (final (k, (x, y)) in _board.layout.boxes[i].shapePoints.indexed) {
       if ((p - Offset(x, y)).distance * scale <= _handle) return k;
     }
@@ -615,18 +621,27 @@ class _BoxView extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
             color: color,
-            child: Text(
-              '${index + 1} · ${box.name.trim().isEmpty ? layoutLabelName(box.label) : box.name.trim()}'
-              ' · ${layoutLayerName(box.layer)}',
-              style: const TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (box.locked) ...[
+                  const Icon(Icons.lock, size: 10, color: Colors.white),
+                  const SizedBox(width: 3),
+                ],
+                Text(
+                  '${index + 1} · ${box.name.trim().isEmpty ? layoutLabelName(box.label) : box.name.trim()}'
+                  ' · ${layoutLayerName(box.layer)}',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-        if (selected)
+        if (selected && !box.locked)
           Positioned(
             right: -5,
             bottom: -5,

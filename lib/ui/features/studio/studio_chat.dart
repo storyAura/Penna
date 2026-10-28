@@ -106,11 +106,15 @@ extension StudioChat on StudioViewModel {
       // 放不上要说出来(以前悄悄丢掉了);系列满了时页签下面还会亮提醒。
       if (problem != null) _note(tr('成稿没放上:{0}', [problem]));
     }
-    // 只写到了别的页(比如后面新开的一页):换过去,让用户看到刚写好的。
-    if (written.isNotEmpty && !written.contains(_page)) {
-      _show(written.last);
-      _leftPage();
-    }
+    showWritten(written);
+  }
+
+  /// 成稿只写到了别的页(比如新开的一页):换过去,让用户看到刚写好的。
+  /// 副聊天写的也走这里;正在生成时不换。
+  void showWritten(Set<int> written) {
+    if (written.isEmpty || written.contains(_page) || isStreaming) return;
+    _show(written.last);
+    _leftPage();
   }
 
   /// 回复里写完了一个新 Skill:直接加进用户的 Skills。
@@ -157,57 +161,43 @@ extension StudioChat on StudioViewModel {
       for (final m in history)
         if (m.fromUser || !m.failed && m.text.isNotEmpty) m,
     ];
-    final requests = _requests(
-      cfg,
-      chain,
-      preset,
-      [
+    final requests = _requests(cfg, chain, preset, [
+      {
+        'role': 'system',
+        'content': layoutOnly
+            ? _layoutSystemPrompt(cfg, preset)
+            : _systemPrompt(cfg, preset),
+      },
+      for (final (i, m) in sent.indexed)
         {
-          'role': 'system',
-          'content': layoutOnly
-              ? _layoutSystemPrompt(cfg, preset)
-              : _systemPrompt(cfg, preset),
-        },
-        for (final (i, m) in sent.indexed)
-          {
-            'role': m.fromUser ? 'user' : 'assistant',
-            'content': switch (_withReferences(m, {
-              for (final s in skills?.all ?? const <UserSkill>[])
-                if (!cfg.disabledSkills.contains(s.id)) s.id,
-            })) {
-              // 自己以前写的布局、透视、灯光不重发:画板可能已被用户改过。
-              // 后面紧跟着工具结果的是查资料的那条,里面的布局没放上画板。
-              final text when !m.fromUser => forgetLighting(
-                forgetPerspectives(
-                  forgetLayers(
-                    forgetLayouts(
-                      text,
-                      placed: i + 1 >= sent.length || !sent[i + 1].tool,
-                    ),
+          'role': m.fromUser ? 'user' : 'assistant',
+          'content': switch (_withReferences(m, {
+            for (final s in skills?.all ?? const <UserSkill>[])
+              if (!cfg.disabledSkills.contains(s.id)) s.id,
+          })) {
+            // 自己以前写的布局、透视、灯光不重发:画板可能已被用户改过。
+            // 后面紧跟着工具结果的是查资料的那条,里面的布局没放上画板。
+            final text when !m.fromUser => forgetLighting(
+              forgetPerspectives(
+                forgetLayers(
+                  forgetLayouts(
+                    text,
+                    placed: i + 1 >= sent.length || !sent[i + 1].tool,
                   ),
                 ),
               ),
-              // 布局页里刚发的这条带着参考图:就在这里提醒画布多大,
-              // 模型看了图常照图的比例写宽高(系统提示里说了也会忘)。
-              final text
-                  when layoutOnly &&
-                      i == sent.length - 1 &&
-                      m.attachments.any((a) => a.isImage) =>
-                '$text${_canvasReminder()}',
-              final text => text,
-            },
+            ),
+            // 布局页里刚发的这条带着参考图:就在这里提醒画布多大,
+            // 模型看了图常照图的比例写宽高(系统提示里说了也会忘)。
+            final text
+                when layoutOnly &&
+                    i == sent.length - 1 &&
+                    m.attachments.any((a) => a.isImage) =>
+              '$text${_canvasReminder()}',
+            final text => text,
           },
-      ],
-      // 下标 +1:前面还有一条系统提示。
-      images: {
-        for (final (i, m) in sent.indexed)
-          if (m.attachments.any((a) => a.isImage))
-            i + 1: [
-              for (final a in m.attachments)
-                if (a.isImage) (mime: a.mime!, bytes: a.bytes!),
-            ],
-      },
-    );
+        },
+    ], images: _imagesOf(sent));
     _reply =
         streamWithFailover(
           requests,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:penna/core/harness/attachment.dart';
 import 'package:penna/core/harness/chat_peek.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
 import 'package:penna/data/models/app_config.dart';
@@ -113,13 +114,15 @@ void main() {
     side.send('第一页怎么样');
     await pumpEventQueue();
     expect(side.messages, hasLength(2));
-    // 副聊天自己往第 2 页写成稿:放的时候会暂时换过去,但它还在原来那页。
+    // 副聊天自己往第 2 页写成稿:工作区换到那页给用户看,副聊天不算换了页。
     side.send('第二页写个 b');
     await pumpEventQueue();
     expect(vm.seriesLength, 2);
+    expect(vm.pageIndex, 1);
+    expect(vm.body, '【主体】b');
     expect(side.messages, hasLength(4));
 
-    expect(vm.openPage(1), isNull);
+    expect(vm.openPage(0), isNull);
     await pumpEventQueue();
     expect(side.messages, isEmpty);
 
@@ -129,6 +132,67 @@ void main() {
     vm.newChat();
     await pumpEventQueue();
     expect(side.messages, isEmpty);
+  });
+
+  test('副聊天能带图和文本文件:图随请求发出,文件包进那条消息', () async {
+    final seen = <LlmRequest>[];
+    final (_, side) = _chats(['看到了'], seen);
+
+    side.send(
+      '照这张图',
+      attachments: [
+        Attachment.image(
+          name: 'a.png',
+          mime: 'image/png',
+          bytes: Uint8List.fromList([1, 2, 3]),
+        ),
+        const Attachment.text(name: 'b.txt', text: 'NOTE'),
+      ],
+    );
+    await pumpEventQueue();
+    final req = seen.single;
+    expect(
+      req.messages[1]['content'],
+      allOf(contains('照这张图'), contains('NOTE')),
+    );
+    expect(req.images[1]!.single.mime, 'image/png');
+    expect(side.messages.first.attachments, hasLength(2));
+  });
+
+  test('副聊天写 <ask-layout> 时交给区域控制的 Agent,排好后接着写', () async {
+    const json =
+        '{"width": 832, "height": 1216, "items": [{"name": "左", '
+        '"bbox": [100, 100, 500, 1100]}], "bbox_coord_space": "abs", '
+        '"bbox_format": "xyxy"}';
+    final board = LayoutBoard();
+    final seen = <LlmRequest>[];
+    final (vm, side) = _chats([
+      '<ask-layout name="海报">左边一个人</ask-layout>',
+      '<layout>$json</layout>',
+      '排好了。',
+    ], seen);
+    vm.layoutAgent = StudioViewModel(
+      config: vm.config,
+      layout: board,
+      layoutOnly: true,
+      streamChat: (req) {
+        seen.add(req);
+        return Stream.value(seen.length == 2 ? '<layout>$json</layout>' : '');
+      },
+    );
+
+    side.send('排个布局');
+    await pumpEventQueue(times: 50);
+    expect(seen.first.messages.first['content'], contains('<ask-layout'));
+    expect(board.layout.boxes.single.name, '左');
+    // JSON 放进主工作区新开的一页(眼前空着就用它),副聊天接着说完。
+    expect(vm.body, board.json);
+    expect(
+      side.messages.firstWhere((m) => m.tool).toolSummary,
+      contains('区域控制排好了'),
+    );
+    expect(side.messages.last.text, '排好了。');
+    expect(side.isStreaming, isFalse);
   });
 
   test('区域控制的副聊天照排布局的要求写,<layout> 放到画板上;那边的主聊天也读得到它', () async {

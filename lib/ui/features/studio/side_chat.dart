@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/harness/attachment.dart';
 import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
@@ -19,8 +20,8 @@ import 'studio_view_model.dart';
 const _logMessages = 20;
 const _logChars = 2000;
 
-/// 副聊天一条消息里最多看几次主聊天。
-const _maxPeeks = 2;
+/// 副聊天一条消息里最多跑几轮工具(看主聊天、转区域控制)。
+const _maxRounds = 3;
 
 /// 主聊天的系统提示里讲副聊天的那一段(副聊天说过话才带)。
 const sideNoteForMain =
@@ -61,10 +62,14 @@ class SideChat extends ChangeNotifier {
 
   List<ChatMessage> _messages = const [];
   StreamSubscription<String>? _reply;
-  int _peeks = 0;
+  int _rounds = 0;
+
+  /// 正在等区域控制排布局;[_run] 在停止时加一,作废等回来的结果。
+  bool _waiting = false;
+  int _run = 0;
 
   List<ChatMessage> get messages => _messages;
-  bool get isStreaming => _reply != null;
+  bool get isStreaming => _reply != null || _waiting;
 
   /// 眼前是哪个系列的哪一页、主聊天是哪一场。
   (int, int, String) get _workspace =>
@@ -89,21 +94,32 @@ class SideChat extends ChangeNotifier {
     });
   }
 
-  /// 发一句话;不能发时返回原因。
-  String? send(String text, {DateTime? now}) {
+  /// 发一句话(可以带图和文本文件);不能发时返回原因。
+  String? send(
+    String text, {
+    DateTime? now,
+    List<Attachment> attachments = const [],
+  }) {
     if (isStreaming) return tr('正在生成,请先停止当前回复');
-    if (text.trim().isEmpty) return null;
-    _peeks = 0;
+    if (text.trim().isEmpty && attachments.isEmpty) return null;
+    _rounds = 0;
     final time = now ?? DateTime.now();
     return _start([
       ..._messages,
-      ChatMessage(fromUser: true, text: text.trim(), time: time),
+      ChatMessage(
+        fromUser: true,
+        text: text.trim(),
+        time: time,
+        attachments: List.unmodifiable(attachments),
+      ),
     ], time);
   }
 
   void stop() {
     if (!isStreaming) return;
-    unawaited(_reply!.cancel());
+    _run++;
+    _waiting = false;
+    unawaited(_reply?.cancel());
     _reply = null;
     _update((m) => m.copyWith(stopped: true));
   }
@@ -119,7 +135,7 @@ class SideChat extends ChangeNotifier {
     if (isStreaming) return tr('正在生成,请先停止当前回复');
     final at = _messages.lastIndexWhere((m) => m.fromUser && !m.tool);
     if (at < 0) return tr('还没有可以重新运行的消息');
-    _peeks = 0;
+    _rounds = 0;
     return _start(_messages.sublist(0, at + 1), DateTime.now());
   }
 
@@ -140,11 +156,12 @@ class SideChat extends ChangeNotifier {
         '在这里和你另开一场对话,让你帮着看、帮着改:回答问题、点评、出主意,要改提示词时直接写好放进 <draft>,'
         '程序会把它放进工作区(用户眼前那一页;已有内容时变成待确认的改动)。不写 <layout>。',
     main.draftFormat,
+    main.askLayoutGuide,
     '用户要你参考主聊天里说过的话、或问主聊天的 Agent 说了什么时,只输出 <$readMainChat></$readMainChat>,'
         '程序把主聊天最近的记录交给你,你再接着回答。',
     '【工作区】用户眼前的提示词(每段开头的【】是分段标注,〔译〕行是对照译文):\n'
         '${main.workspaceText}',
-  ].join('\n\n');
+  ].where((s) => s.isNotEmpty).join('\n\n');
 
   /// 回复里的成稿放进工作区,和主聊天的一样;放不上的记在这条回复上。
   void _deliver() {
@@ -172,19 +189,21 @@ class SideChat extends ChangeNotifier {
         );
       }
     }
+    // 写到了别的页就换过去,和主聊天一样。
+    main.showWritten(written);
     // 自己的成稿开了新页、新系列:是这场对话做的事,不用从头开始。
     _seen = _workspace;
   }
 
-  /// 区域控制那边:写完的 `<layout>` 放到画板上眼前那一页(和布局卡片上的按钮一样)。
+  /// 区域控制那边:写完的 `<layout>` 和主聊天的一样放到画板上(照 page 新开一页、
+  /// 另起系列并换过去,接上本系列的画风和角色卡),记一笔在这条回复上。
   // ponytail: 只收布局本身;<perspective>、<lighting> 这些只有主聊天会放,要的话照 _deliverLayout 补。
   void _deliverLayout() {
-    final laid = splitLayout(_messages.last.text);
-    final json = laid.json;
-    if (!laid.complete || json == null || main.adoptLayout(json)) return;
-    _update(
-      (m) => m.copyWith(toolSummary: [?m.toolSummary, tr('布局读不了')].join(' · ')),
-    );
+    final note = main.placeLayout(_messages.last.text);
+    // 新开的页是这场对话做的事,不用从头开始。
+    _seen = _workspace;
+    if (note == null || note.isEmpty) return;
+    _update((m) => m.copyWith(toolSummary: [?m.toolSummary, note].join(' · ')));
   }
 
   /// 以 [history](最后一条是用户消息)为上文开始一条回复。
@@ -193,11 +212,7 @@ class SideChat extends ChangeNotifier {
       for (final m in history)
         if (m.fromUser || !m.failed && m.text.isNotEmpty) m,
     ];
-    final requests = main.sideRequests([
-      {'role': 'system', 'content': _systemPrompt},
-      for (final m in sent)
-        {'role': m.fromUser ? 'user' : 'assistant', 'content': m.text},
-    ]);
+    final requests = main.sideRequests(_systemPrompt, sent);
     if (requests.isEmpty) return tr('请先在设置里添加模型并填写模型名称');
     _messages = List.unmodifiable([
       ...history,
@@ -221,7 +236,7 @@ class SideChat extends ChangeNotifier {
           },
           onDone: () {
             _reply = null;
-            if (_peek()) return;
+            if (_peek() || _askLayout()) return;
             _deliver();
             notifyListeners();
           },
@@ -233,11 +248,45 @@ class SideChat extends ChangeNotifier {
 
   /// 回复里要看主聊天:把主聊天的记录接在后面,让模型接着写。返回是否接手了。
   bool _peek() {
-    if (_peeks >= _maxPeeks ||
+    if (_rounds >= _maxRounds ||
         !splitPeek(_messages.last.text, readMainChat).asked) {
       return false;
     }
-    _peeks++;
+    _rounds++;
+    return _continue(
+      chatLog('主聊天的记录', main.messages, speaker: 'Agent'),
+      tr('读了主聊天'),
+    );
+  }
+
+  /// 回复里写了 `<ask-layout>`:和主聊天一样交给区域控制的 Agent,等它排好再接着写。
+  /// 返回是否接手了。
+  bool _askLayout() {
+    if (_rounds >= _maxRounds || main.askLayoutGuide.isEmpty) return false;
+    final ask = splitAskLayout(_messages.last.text).asks.firstOrNull;
+    if (ask == null) return false;
+    _rounds++;
+    final run = ++_run;
+    _waiting = true;
+    notifyListeners();
+    final image = _messages.reversed
+        .where((m) => m.fromUser && !m.tool)
+        .expand((m) => m.attachments.reversed.where((a) => a.isImage))
+        .firstOrNull;
+    unawaited(() async {
+      final result = await main.askLayoutFor(ask, image);
+      if (_disposed || run != _run) return;
+      _waiting = false;
+      if (result.text.isEmpty) return notifyListeners();
+      // JSON 放进了成稿区新开的一页:是这场对话做的事,不用从头开始。
+      _seen = _workspace;
+      _continue(result.text, result.note);
+    }());
+    return true;
+  }
+
+  /// 把工具的结果作为一条消息接在后面,让模型接着写。返回是否接上了。
+  bool _continue(String text, String note) {
     final time = DateTime.now();
     return _start([
           ..._messages,
@@ -245,8 +294,8 @@ class SideChat extends ChangeNotifier {
             fromUser: true,
             tool: true,
             time: time,
-            text: chatLog('主聊天的记录', main.messages, speaker: 'Agent'),
-            toolSummary: tr('读了主聊天'),
+            text: text,
+            toolSummary: note,
           ),
         ], time) ==
         null;

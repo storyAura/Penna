@@ -7,6 +7,9 @@ part of 'chat_pane.dart';
 const _sideOpacity = 0.9;
 const _sideWidth = 440.0;
 
+/// 浮窗里的快捷操作最多露出几个,多的横着滚。
+const _maxSideQuickActions = 4;
+
 /// 快捷操作那一排最右边的开关。
 class _SideToggle extends StatelessWidget {
   const _SideToggle({required this.open, required this.onTap});
@@ -27,6 +30,7 @@ class _SideToggle extends StatelessWidget {
 
 class _SidePanel extends StatefulWidget {
   const _SidePanel({
+    super.key,
     required this.chat,
     required this.pane,
     required this.config,
@@ -46,9 +50,16 @@ class _SidePanel extends StatefulWidget {
   State<_SidePanel> createState() => _SidePanelState();
 }
 
-class _SidePanelState extends State<_SidePanel> {
+class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
   final _input = TextEditingController();
   final _focus = FocusNode();
+
+  @override
+  ConfigService get _config => widget.config;
+  @override
+  FocusNode get _inputFocus => _focus;
+  @override
+  void _onImage(Attachment a) => widget.pane.widget.onImage?.call(a);
 
   @override
   void initState() {
@@ -64,13 +75,26 @@ class _SidePanelState extends State<_SidePanel> {
   }
 
   void _send() {
-    final problem = widget.chat.send(_input.text);
+    final problem = widget.chat.send(_input.text, attachments: _attachments);
     if (problem != null) return showToast(context, problem, warn: true);
     _input.clear();
+    setState(() => _attachments = const []);
   }
 
-  /// Enter 发送,Shift+Enter 换行;输入法选字时不拦。
+  /// 快捷操作:和主聊天一样接在输入框末尾,不替换已有的字。
+  void _quick(String text) {
+    final had = _input.text.trimRight();
+    final next = had.isEmpty ? text : '$had $text';
+    _input.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+    _focus.requestFocus();
+  }
+
+  /// Enter 发送,Shift+Enter 换行;输入法选字时不拦。Ctrl+V 能贴图片和文件。
   KeyEventResult _onKey(FocusNode _, KeyEvent event) {
+    _pasteOn(event);
     final isEnter =
         event is! KeyUpEvent &&
         (event.logicalKey == LogicalKeyboardKey.enter ||
@@ -259,46 +283,91 @@ class _SidePanelState extends State<_SidePanel> {
 
   Widget _composer() {
     final streaming = widget.chat.isStreaming;
+    final quick = widget.config.config.quickActions;
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Focus(
-              onKeyEvent: _onKey,
-              child: TextField(
-                controller: _input,
-                focusNode: _focus,
-                minLines: 1,
-                maxLines: 5,
-                style: const TextStyle(fontSize: 13),
-                contextMenuBuilder: pennaTextMenu,
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: tr('问问工作区里的提示词'),
-                  hintStyle: TextStyle(
-                    fontSize: 13,
-                    color: PennaColors.slate400,
+          if (quick.isNotEmpty) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ScrollStrip(
+                visible: _maxSideQuickActions,
+                children: [
+                  for (final action in quick)
+                    PennaButton(
+                      label: tr(action.label),
+                      background: PennaColors.slate100,
+                      onPressed: () => _quick(tr(action.prompt)),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+          if (_attachments.isNotEmpty) ...[
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final (i, a) in _attachments.indexed)
+                  AttachmentChip(
+                    attachment: a,
+                    onRemove: () => _removeAttachment(i),
                   ),
-                  filled: true,
-                  fillColor: PennaColors.card,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: PennaColors.border),
+              ],
+            ),
+            const SizedBox(height: 6),
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              IconButton(
+                tooltip: tr('添加图片或文本文件'),
+                onPressed: _pickFiles,
+                color: PennaColors.slate500,
+                icon: const Icon(Icons.attach_file, size: 17),
+              ),
+              Expanded(
+                child: Focus(
+                  onKeyEvent: _onKey,
+                  child: TextField(
+                    controller: _input,
+                    focusNode: _focus,
+                    minLines: 1,
+                    maxLines: 5,
+                    style: const TextStyle(fontSize: 13),
+                    contextMenuBuilder: pennaTextMenu,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: tr('问问工作区里的提示词'),
+                      hintStyle: TextStyle(
+                        fontSize: 13,
+                        color: PennaColors.slate400,
+                      ),
+                      filled: true,
+                      fillColor: PennaColors.card,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: PennaColors.border),
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          IconButton(
-            tooltip: streaming ? tr('停止') : tr('发送'),
-            onPressed: streaming ? widget.chat.stop : _send,
-            icon: Icon(
-              streaming ? Icons.stop_circle_outlined : Icons.arrow_circle_up,
-              color: PennaColors.primary,
-            ),
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: streaming ? tr('停止') : tr('发送'),
+                onPressed: streaming ? widget.chat.stop : _send,
+                icon: Icon(
+                  streaming
+                      ? Icons.stop_circle_outlined
+                      : Icons.arrow_circle_up,
+                  color: PennaColors.primary,
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -1043,4 +1043,12 @@ const en = <String, String>{
   '读了主聊天': 'Read the main chat',
   '读了副聊天': 'Read the side chat',
   '问问工作区里的提示词': 'Ask about the prompts in the workspace',
+  '锁定「{0}」': 'Lock "{0}"',
+  '解锁「{0}」': 'Unlock "{0}"',
+  '解锁': 'Unlock',
+  '锁定(画布上拖不动)': "Lock (can't be dragged on the canvas)",
+  '穿甲弹:开': 'Armor-Piercing: on',
+  '穿甲弹:关': 'Armor-Piercing: off',
+  '穿甲弹内容为空,在设置 → Preset 里填写':
+      'Armor-Piercing text is empty. Fill it in under Settings → Preset',
 };

@@ -411,6 +411,24 @@ class LayoutBoard extends ChangeNotifier {
     );
   }
 
+  /// 锁住 / 解锁第 [i] 块:锁住的在画布上点不中、拖不动,在它上面拖是画新框。
+  void setLocked(int i, bool locked) {
+    if (i < 0 || i >= _layout.boxes.length) return;
+    final b = _layout.boxes[i];
+    if (locked && _selected == i) _selected = null;
+    _set(
+      _layout.copyWith(
+        boxes: [
+          for (final (j, x) in _layout.boxes.indexed)
+            j == i ? x.copyWith(locked: locked) : x,
+        ],
+      ),
+      action: locked
+          ? tr('锁定「{0}」', [boxName(b, i)])
+          : tr('解锁「{0}」', [boxName(b, i)]),
+    );
+  }
+
   /// 换镜头:有体块的框照新镜头重新算,前后跟着远近排(见 [reprojectBoxes])。
   void setCamera(Camera camera, {String? action}) {
     if (camera == _layout.camera) return;

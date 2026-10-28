@@ -15,6 +15,8 @@ class _Header extends StatelessWidget {
 
   /// 「新对话」和「历史」两个按钮;生成中换不了,所以先禁用。
   List<Widget> _chatButtons(BuildContext context) => [
+    _piercingToggle(context),
+    const SizedBox(width: 6),
     // 和旁边的「历史」同一个样子、同样大。
     MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -98,6 +100,39 @@ class _Header extends StatelessWidget {
     const SizedBox(width: 6),
   ];
   final VoidCallback onOpenSettings;
+
+  /// 穿甲弹的快捷开关(内容在「设置 → Preset」里写);对话栏窄,只放图标。
+  Widget _piercingToggle(BuildContext context) {
+    final cfg = config.config;
+    final on = cfg.piercing;
+    return Tooltip(
+      message: on ? tr('穿甲弹:开') : tr('穿甲弹:关'),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () {
+            config.update(cfg.copyWith(piercing: !on));
+            if (!on && cfg.piercingPrompt.trim().isEmpty) {
+              showToast(context, tr('穿甲弹内容为空,在设置 → Preset 里填写'), warn: true);
+            }
+          },
+          child: Bouncy(
+            child: PennaCard(
+              color: on ? PennaColors.primaryBg : PennaColors.card,
+              borderColor: on ? PennaColors.primaryBorder : null,
+              radius: 6,
+              padding: const EdgeInsets.all(6),
+              child: Icon(
+                Icons.bolt,
+                size: 15,
+                color: on ? PennaColors.primary : PennaColors.slate500,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

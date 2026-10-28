@@ -67,7 +67,7 @@ class ChatPane extends StatefulWidget {
   State<ChatPane> createState() => _ChatPaneState();
 }
 
-class _ChatPaneState extends State<ChatPane> {
+class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
   final _scroll = SmoothScrollController();
 
   /// 已经播过弹入动画的消息序号;滚回视野时不再重播。
@@ -80,83 +80,31 @@ class _ChatPaneState extends State<ChatPane> {
   /// 下一条消息要引用的 Skill。
   List<String> _mentioned = const [];
 
-  /// 下一条消息要带的附件。
-  List<Attachment> _attachments = const [];
-
   /// 有文件正拖在窗口上方。
   bool _dragging = false;
 
   /// 副聊天的浮窗开着。
   bool _sideOpen = false;
+  final _side = GlobalKey<_SidePanelState>();
 
-  bool get _compress => widget.config.config.compressImages;
+  @override
+  ConfigService get _config => widget.config;
+  @override
+  FocusNode get _inputFocus => widget.inputFocus;
+  @override
+  void _onImage(Attachment a) => widget.onImage?.call(a);
 
-  /// 加上一个附件;它是压缩过的图就提醒一句(压缩能在软件设置里关掉)。
-  void _add(Attachment attachment) {
-    setState(() {
-      _attachments = List.unmodifiable([..._attachments, attachment]);
-    });
-    if (attachment.compressed) {
-      showToast(context, tr('大图已压缩为 WebP,可在软件设置里关闭'));
-    }
-    if (attachment.isImage) widget.onImage?.call(attachment);
-  }
-
-  /// 把选中或拖进来的文件加成附件;读不了的逐个提示,不影响其余的。
-  Future<void> _attach(Iterable<String> paths) async {
-    for (final path in paths) {
-      if (_attachments.length >= maxAttachments) {
-        if (mounted) {
-          showToast(context, tr('最多 {0} 个附件', [maxAttachments]), warn: true);
-        }
-        return;
-      }
-      try {
-        final attachment = await readAttachment(
-          File(path),
-          compress: _compress,
+  /// 拖进来的文件:落在副聊天的浮窗上就给它,否则给主聊天。
+  void _drop(DropDoneDetails details) {
+    final paths = details.files.map((f) => f.path);
+    final box = _side.currentContext?.findRenderObject() as RenderBox?;
+    final onSide =
+        box != null &&
+        box.hasSize &&
+        (box.localToGlobal(Offset.zero) & box.size).contains(
+          details.globalPosition,
         );
-        if (mounted) _add(attachment);
-      } on AttachmentException catch (e) {
-        if (mounted) showToast(context, e.message, warn: true);
-      }
-    }
-  }
-
-  /// 把剪贴板里的图片(截图、网页上复制的图)或文件(资源管理器里复制的)加成附件。
-  Future<void> _pasteAttachments() async {
-    try {
-      final files = await Pasteboard.files();
-      if (files.isNotEmpty) return await _attach(files);
-      // 从表格、文档里复制的内容常常同时带着文字和一张图:有文字就只贴文字。
-      final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
-      if (text != null && text.isNotEmpty) return;
-      final image = await Pasteboard.image;
-      if (image == null || !mounted) return;
-      // Windows 给的是不压缩的 BMP,比原图大好几倍:先转成 WebP(压缩开着)或 PNG。
-      final attachment = image.length > maxPastedBytes
-          ? null
-          : await pastedImage(image, compress: _compress);
-      if (!mounted) return;
-      if (attachment == null) {
-        return showToast(context, tr('读不了这张图'), warn: true);
-      }
-      final problem = attachment.bytes!.length > maxImageBytes
-          ? tr('图片超过 {0}', [maxImageLabel])
-          : _attachments.length >= maxAttachments
-          ? tr('最多 {0} 个附件', [maxAttachments])
-          : null;
-      if (problem != null) return showToast(context, problem, warn: true);
-      _add(attachment);
-    } on Object {
-      // 剪贴板读不了就当里面没有图,不打扰用户。
-    }
-  }
-
-  Future<void> _pickFiles() async {
-    final picked = await openFiles();
-    await _attach(picked.map((f) => f.path));
-    widget.inputFocus.requestFocus();
+    onSide ? _side.currentState!._attach(paths) : _attach(paths);
   }
 
   List<UserSkill> get _allSkills => widget.vm.skills?.all ?? builtinSkillList;
@@ -401,12 +349,7 @@ class _ChatPaneState extends State<ChatPane> {
       widget.vm.stop();
       return KeyEventResult.handled;
     }
-    // Ctrl+V:剪贴板里是图片或文件就加成附件。不拦这次按键,文字照常由输入框粘贴。
-    if (event is KeyDownEvent &&
-        event.logicalKey == LogicalKeyboardKey.keyV &&
-        HardwareKeyboard.instance.isControlPressed) {
-      _pasteAttachments();
-    }
+    _pasteOn(event);
     final isEnter =
         event is! KeyUpEvent &&
         (event.logicalKey == LogicalKeyboardKey.enter ||
@@ -427,7 +370,7 @@ class _ChatPaneState extends State<ChatPane> {
     return DropTarget(
       onDragEntered: (_) => setState(() => _dragging = true),
       onDragExited: (_) => setState(() => _dragging = false),
-      onDragDone: (details) => _attach(details.files.map((f) => f.path)),
+      onDragDone: _drop,
       child: ColoredBox(color: PennaColors.editorBg, child: _build(messages)),
     );
   }
@@ -569,6 +512,7 @@ class _ChatPaneState extends State<ChatPane> {
                       width: _sideWidth,
                       child: PopIn(
                         child: _SidePanel(
+                          key: _side,
                           chat: side,
                           pane: this,
                           config: widget.config,
@@ -633,11 +577,7 @@ class _ChatPaneState extends State<ChatPane> {
             for (final (i, attachment) in _attachments.indexed)
               AttachmentChip(
                 attachment: attachment,
-                onRemove: () => setState(() {
-                  _attachments = List.unmodifiable(
-                    [..._attachments]..removeAt(i),
-                  );
-                }),
+                onRemove: () => _removeAttachment(i),
               ),
             for (final (i, name) in _namesOf(_mentioned).indexed)
               MentionChip(
@@ -650,5 +590,100 @@ class _ChatPaneState extends State<ChatPane> {
         ),
       ],
     );
+  }
+}
+
+/// 输入框带的附件:按钮选、拖进来、Ctrl+V 贴。主聊天和副聊天各有一份。
+mixin _Attachments<T extends StatefulWidget> on State<T> {
+  /// 下一条消息要带的附件。
+  List<Attachment> _attachments = const [];
+
+  ConfigService get _config;
+  FocusNode get _inputFocus;
+
+  /// 放进了一张图(区域控制工作台拿它看横竖)。
+  void _onImage(Attachment a) {}
+
+  bool get _compress => _config.config.compressImages;
+
+  /// 加上一个附件;它是压缩过的图就提醒一句(压缩能在软件设置里关掉)。
+  void _add(Attachment attachment) {
+    setState(() {
+      _attachments = List.unmodifiable([..._attachments, attachment]);
+    });
+    if (attachment.compressed) {
+      showToast(context, tr('大图已压缩为 WebP,可在软件设置里关闭'));
+    }
+    if (attachment.isImage) _onImage(attachment);
+  }
+
+  void _removeAttachment(int i) => setState(() {
+    _attachments = List.unmodifiable([..._attachments]..removeAt(i));
+  });
+
+  /// 把选中或拖进来的文件加成附件;读不了的逐个提示,不影响其余的。
+  Future<void> _attach(Iterable<String> paths) async {
+    for (final path in paths) {
+      if (_attachments.length >= maxAttachments) {
+        if (mounted) {
+          showToast(context, tr('最多 {0} 个附件', [maxAttachments]), warn: true);
+        }
+        return;
+      }
+      try {
+        final attachment = await readAttachment(
+          File(path),
+          compress: _compress,
+        );
+        if (mounted) _add(attachment);
+      } on AttachmentException catch (e) {
+        if (mounted) showToast(context, e.message, warn: true);
+      }
+    }
+  }
+
+  /// 把剪贴板里的图片(截图、网页上复制的图)或文件(资源管理器里复制的)加成附件。
+  Future<void> _pasteAttachments() async {
+    try {
+      final files = await Pasteboard.files();
+      if (files.isNotEmpty) return await _attach(files);
+      // 从表格、文档里复制的内容常常同时带着文字和一张图:有文字就只贴文字。
+      final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+      if (text != null && text.isNotEmpty) return;
+      final image = await Pasteboard.image;
+      if (image == null || !mounted) return;
+      // Windows 给的是不压缩的 BMP,比原图大好几倍:先转成 WebP(压缩开着)或 PNG。
+      final attachment = image.length > maxPastedBytes
+          ? null
+          : await pastedImage(image, compress: _compress);
+      if (!mounted) return;
+      if (attachment == null) {
+        return showToast(context, tr('读不了这张图'), warn: true);
+      }
+      final problem = attachment.bytes!.length > maxImageBytes
+          ? tr('图片超过 {0}', [maxImageLabel])
+          : _attachments.length >= maxAttachments
+          ? tr('最多 {0} 个附件', [maxAttachments])
+          : null;
+      if (problem != null) return showToast(context, problem, warn: true);
+      _add(attachment);
+    } on Object {
+      // 剪贴板读不了就当里面没有图,不打扰用户。
+    }
+  }
+
+  Future<void> _pickFiles() async {
+    final picked = await openFiles();
+    await _attach(picked.map((f) => f.path));
+    _inputFocus.requestFocus();
+  }
+
+  /// Ctrl+V:剪贴板里是图片或文件就加成附件。不拦这次按键,文字照常由输入框粘贴。
+  void _pasteOn(KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.keyV &&
+        HardwareKeyboard.instance.isControlPressed) {
+      _pasteAttachments();
+    }
   }
 }

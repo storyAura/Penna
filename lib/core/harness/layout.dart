@@ -40,7 +40,8 @@ const minLayoutSide = 64, maxLayoutSide = 4096;
 /// 官方格式不认,交出去的 JSON 里没有。[body] 是它在 3D 视图里的体块(文字块没有)。
 /// [hidden] 是在画布上暂时屏蔽(只是不画、点不中,交出去的 JSON 照常带着):
 /// null 是没设过,按视图来定(见 [shownIn])。[shape] 是框里的异形(null 是方框,
-/// 见 [LayoutShape]),框始终是它的外框。
+/// 见 [LayoutShape]),框始终是它的外框。[locked] 是用户锁住了它:画布上点不中、拖不动,
+/// 在它占的地方能接着画新框(Agent 照样能改)。
 @immutable
 class LayoutBox {
   const LayoutBox({
@@ -56,6 +57,7 @@ class LayoutBox {
     this.body,
     this.hidden,
     this.shape,
+    this.locked = false,
   });
 
   final int left, top, right, bottom;
@@ -63,6 +65,7 @@ class LayoutBox {
   final Body? body;
   final bool? hidden;
   final LayoutShape? shape;
+  final bool locked;
 
   /// 画布上画不画它:转到镜头外看不见了([offscreen])就算屏蔽着;用户点过眼睛
   /// 就照他的;没点过的,3D 视图里文字块默认屏蔽(文字贴在画面上不跟镜头转,
@@ -96,6 +99,7 @@ class LayoutBox {
     Body? Function()? body,
     bool? Function()? hidden,
     LayoutShape? Function()? shape,
+    bool? locked,
   }) => LayoutBox(
     left: left ?? this.left,
     top: top ?? this.top,
@@ -109,6 +113,7 @@ class LayoutBox {
     body: body == null ? this.body : body(),
     hidden: hidden == null ? this.hidden : hidden(),
     shape: shape == null ? this.shape : shape(),
+    locked: locked ?? this.locked,
   );
 
   /// 按比例缩到另一块画布上(换画布尺寸时用)。
@@ -129,6 +134,7 @@ class LayoutBox {
     'body': ?body?.toJson(),
     'hidden': ?hidden,
     'shape': ?shape?.toJson(),
+    if (locked) 'locked': true,
   };
 
   static LayoutBox? fromJson(Object? j) {
@@ -148,6 +154,7 @@ class LayoutBox {
       body: Body.fromJson(j['body']),
       hidden: j['hidden'] is bool ? j['hidden'] as bool : null,
       shape: LayoutShape.fromJson(j['shape']),
+      locked: j['locked'] == true,
     );
   }
 }
@@ -571,6 +578,7 @@ List<LayoutBox> inheritNames(
           body: () => old[j].body,
           hidden: () => old[j].hidden,
           shape: () => shape(b, j),
+          locked: old[j].locked,
         ),
       },
   ];

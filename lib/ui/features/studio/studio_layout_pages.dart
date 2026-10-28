@@ -58,29 +58,47 @@ extension StudioLayoutPages on StudioViewModel {
   /// 并换到那一页,用户一眼就看得到。读不了的不记:这一栏前面是个对勾,
   /// 读不了由布局卡片自己标红。
   void _deliverLayout() {
+    if (layout == null || _messages.isEmpty) return;
+    final placed = placeLayout(
+      splitNewSkill(_messages.last.text).prose,
+      keep: _layoutKeep,
+      // 透视先放:3D 视图里它会转镜头,框和体块要照转好的镜头立起来。
+      // 后放的话已立好的体块跟着镜头一转,框挪了位置、人物也转成侧身。
+      first: _deliverPerspective,
+    );
+    if (placed == null) return _deliverPerspective();
+    if (placed.isNotEmpty) _note(placed);
+  }
+
+  /// 把 [reply] 里完整的 `<layout>` 放到画板上(区域控制那边照 `page` 换页),
+  /// 返回记在回复上的一句;没写完、读不了是 null,放不上的原因也在那一句里。
+  /// [first] 在真正放布局之前调。副聊天写的布局也走这里。
+  String? placeLayout(
+    String reply, {
+    LayoutKeep keep = LayoutKeep.none,
+    VoidCallback? first,
+  }) {
     final board = layout;
-    if (board == null || _messages.isEmpty) return;
-    final made = splitLayout(splitNewSkill(_messages.last.text).prose);
+    if (board == null) return null;
+    final made = splitLayout(reply);
     final json = made.json;
-    if (!made.complete || json == null) return _deliverPerspective();
+    if (!made.complete || json == null) return null;
     final l0 = board.layout;
     // 先看读不读得了,免得读不了还白开一页。
     if (parseMossLayout(json, width: l0.width, height: l0.height) == null) {
-      return _deliverPerspective();
+      return null;
     }
     final where = layoutOnly
         ? _layoutPageFor(made.page, name: made.name, title: made.series)
         : null;
     if (where != null && where.problem != null) {
-      return _note(tr('布局没放上:{0}', [where.problem!]));
+      return tr('布局没放上:{0}', [where.problem!]);
     }
-    // 透视先放:3D 视图里它会转镜头,框和体块要照转好的镜头立起来。
-    // 后放的话已立好的体块跟着镜头一转,框挪了位置、人物也转成侧身。
-    _deliverPerspective();
+    first?.call();
     final before = (board.layout.width, board.layout.height);
     final style = _seriesStyle;
     final cast = _seriesCast;
-    if (!board.apply(json, keep: _layoutKeep)) return;
+    if (!board.apply(json, keep: keep)) return '';
     // 换到本系列的新一页时画板是空的,Agent 没写画风就接上本系列的。
     if (board.layout.style.trim().isEmpty && style.isNotEmpty) {
       board.setSummary(style: style);
@@ -92,26 +110,19 @@ extension StudioLayoutPages on StudioViewModel {
     final l = board.layout;
     final clipped = board.fixes.where((f) => f.clipped).length;
     final dropped = board.fixes.length - clipped;
-    _note(
-      [
-        tr('已放到区域控制工作台 · {0} 个框', [l.boxes.length]),
-        if (where?.moved ?? false)
-          tr('「{0}」第 {1} 页', [seriesName(series), pageNumber(_page)]),
-        if ((l.width, l.height) != before)
-          tr('画布换成 {0}×{1}', [l.width, l.height]),
-        if (board.refit case final r?)
-          tr('按画布比例摆放:{0}×{1} → {2}×{3}', [
-            r.width,
-            r.height,
-            l.width,
-            l.height,
-          ]),
-        if (clipped > 0) tr('{0} 个超出画布,已截掉', [clipped]),
-        if (dropped > 0) tr('{0} 个读不了,已去掉', [dropped]),
-        if (castMisses(l) case final m when m.isNotEmpty)
-          tr('{0} 个人物块没对上角色卡', [m.length]),
-      ].join(' · '),
-    );
+    return [
+      tr('已放到区域控制工作台 · {0} 个框', [l.boxes.length]),
+      if (where?.moved ?? false)
+        tr('「{0}」第 {1} 页', [seriesName(series), pageNumber(_page)]),
+      if ((l.width, l.height) != before)
+        tr('画布换成 {0}×{1}', [l.width, l.height]),
+      if (board.refit case final r?)
+        tr('按画布比例摆放:{0}×{1} → {2}×{3}', [r.width, r.height, l.width, l.height]),
+      if (clipped > 0) tr('{0} 个超出画布,已截掉', [clipped]),
+      if (dropped > 0) tr('{0} 个读不了,已去掉', [dropped]),
+      if (castMisses(l) case final m when m.isNotEmpty)
+        tr('{0} 个人物块没对上角色卡', [m.length]),
+    ].join(' · ');
   }
 
   /// 这条回复交出的布局里有人物块对不上角色卡时,程序自己让 Agent 改一次(算一轮工具),

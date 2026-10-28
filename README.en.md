@@ -67,7 +67,7 @@ Each page is a separate prompt, and pages can be grouped into series. There can 
 
 - Replies stream in and can be stopped or run again at any time.
 - Messages sent while a reply is generating are queued and sent in order; a queued message can also skip the line and be sent right away.
-- **Side chat**: click **Side chat** at the right end of the quick actions row to open a translucent floating panel over the conversation. It runs a separate conversation with its own model and its own Armor-Piercing switch, reads the prompts in the workspace and puts its new drafts into the workspace just like the main chat, while the two conversations stay separate; each chat can read the other's conversation when asked. The Area Control chat has its own side chat, whose layouts go onto the canvas.
+- **Side chat**: click **Side chat** at the right end of the quick actions row to open a translucent floating panel over the conversation. It runs a separate conversation with its own model and its own Armor-Piercing switch, reads the prompts in the workspace and accepts images and text files, shares the quick actions, puts its new drafts into the workspace and switches to that page just like the main chat, and can hand layout tasks to the Area Control Workbench, while the two conversations stay separate; each chat can read the other's conversation when asked. The Area Control chat has its own side chat, whose layouts go onto the canvas. A button left of **New chat** in the chat header toggles Armor-Piercing.
 - Questions from the Agent appear as stacked options with single or multiple choice; when the choice is about sections of the draft, the sections of the current page are listed directly.
 - When asked for tag interrogation or a specific local model, the Agent runs the model on this PC against the image in the chat; when the model is not installed yet, you choose whether to download it or use an installed one instead.
 - When asked to turn the draft into JSON or lay it out by position, the Agent hands the task to the Region Control Agent. The finished layout appears in Region Control, and the JSON is also placed into a new series in the draft.
@@ -106,6 +106,7 @@ Draw regions on a canvas and describe each one to produce MOSS-Image layout JSON
 - The canvas can go full screen, filling the window together with the camera panel for easier camera work and arranging; press Esc to return.
 - When estimating distances, objects standing on the ground are placed by how far their bottom edge is from the horizon.
 - Layers can be hidden on the canvas without affecting the exported JSON; text layers are hidden by default in the 3D view.
+- Layers can be locked: a locked layer cannot be selected or dragged on the canvas, so new boxes can be drawn inside its area.
 - The history lists each step — drawing, moving, turning the camera, the Agent placing a layout — and can roll back to before any of them.
 
 ### Comics

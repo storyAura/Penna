@@ -192,6 +192,25 @@ void main() {
     expect(board.prompt, isNot(contains('超出画布')));
   });
 
+  test('锁定:存得住,Agent 重写布局时接上,交出去的 JSON 里没有', () {
+    final board = LayoutBoard()..setSize(400, 400);
+    const json =
+        '{"items": [{"name": "人", "bbox": [0, 0, 200, 200]}],'
+        ' "bbox_coord_space": "abs", "bbox_format": "xyxy"}';
+    board.apply(json);
+    board.select(0);
+    board.setLocked(0, true);
+    expect(board.selected, isNull);
+    final box = board.layout.boxes.single;
+    expect(box.locked, isTrue);
+    expect(LayoutBox.fromJson(box.toJson())!.locked, isTrue);
+    board.apply(json);
+    expect(board.layout.boxes.single.locked, isTrue);
+    expect(board.json, isNot(contains('locked')));
+    board.setLocked(0, false);
+    expect(board.layout.boxes.single.toJson(), isNot(contains('locked')));
+  });
+
   test('画板:用户画了还没写描述的框,给 Agent 的提示里点名它们不能动', () {
     final board = LayoutBoard()
       ..addBox(const LayoutBox(left: 0, top: 0, right: 100, bottom: 100))
