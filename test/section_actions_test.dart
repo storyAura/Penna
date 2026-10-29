@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/data/services/translate_engines.dart';
 import 'package:penna/ui/core/theme.dart';
+import 'package:penna/ui/features/studio/activity_bar.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 import 'package:penna/ui/shell.dart';
 
@@ -235,23 +236,92 @@ void main() {
   });
 
   group('回滚', () {
-    test('回到某一步之前:它和它之后做的都撤销,回滚本身还能再滚回来', () {
+    test('回到某一步之前、之后:记录都留着,能反复切;回到前面再做别的,原来那几步成了另一个分支', () {
       final vm = _studio();
       vm.moveSection(0, 0, 2);
       final moved = vm.body;
       vm.unsection();
+      final merged = vm.body;
       vm.clearDraft();
       expect(vm.body, isEmpty);
+      List<ActionState> states() => [
+        for (var i = 0; i < vm.actions.length; i++) vm.stateOf(i),
+      ];
+      expect(states(), [
+        ActionState.current,
+        ActionState.done,
+        ActionState.done,
+      ]);
 
-      // 第 1 条是「取消分段」(新的在前:清空、取消分段、拖动)。
+      // 第 1 条是「取消分段」(新的在前:清空、取消分段、拖动)。回到它之前:后两步撤掉,记录不删。
       expect(vm.rollback(1), isNull);
       expect(vm.body, moved);
-      expect(vm.actions.first.text, startsWith('回滚到「取消分段'));
-      expect(vm.actions, hasLength(2));
+      expect(vm.actions, hasLength(3));
+      expect(states(), [
+        ActionState.undone,
+        ActionState.undone,
+        ActionState.current,
+      ]);
 
-      // 滚错了:把刚才那次回滚再撤销,回到清空之后。
-      expect(vm.rollback(0), isNull);
+      // 再回到「清空」之后,然后又切回「取消分段」之后:来回切都对得上。
+      expect(vm.restoreTo(0), isNull);
       expect(vm.body, isEmpty);
+      expect(vm.restoreTo(1), isNull);
+      expect(vm.body, merged);
+      expect(vm.stateOf(0), ActionState.undone);
+
+      // 在这里做别的:「清空」那一步成了另一个分支,还能切过去。
+      vm.addPin('masterpiece');
+      expect(vm.actions, hasLength(4));
+      expect(vm.stateOf(0), ActionState.current);
+      expect(vm.stateOf(1), ActionState.branch);
+      expect(vm.restoreTo(1), isNull);
+      expect(vm.body, isEmpty);
+      expect(vm.stateOf(0), ActionState.branch);
+      expect(vm.stateOf(1), ActionState.current);
+    });
+
+    testWidgets('操作记录栏:标出当前、已撤销,两个按钮来回切', (tester) async {
+      final vm = _studio();
+      vm.unsection();
+      vm.clearDraft();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: pennaTheme(),
+          home: Scaffold(
+            body: ListenableBuilder(
+              listenable: vm,
+              builder: (_, _) => ActivityBar(vm: vm),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byIcon(Icons.history));
+      await tester.pumpAndSettle();
+      expect(find.text('当前'), findsOneWidget);
+      // 眼前这一笔没有「之后」可回。
+      expect(find.byIcon(Icons.redo), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.undo).last);
+      await tester.pumpAndSettle();
+      expect(vm.body, _body);
+      expect(find.text('已撤销'), findsNWidgets(2));
+      expect(find.text('当前'), findsNothing);
+
+      await tester.tap(find.byIcon(Icons.redo).first);
+      await tester.pumpAndSettle();
+      expect(vm.body, isEmpty);
+      expect(find.text('当前'), findsOneWidget);
+    });
+
+    test('换走时手打的字记在眼前这一步上,切回来还在', () {
+      final vm = _studio();
+      vm.clearDraft();
+      vm.setText(0, 'typed after clear');
+      vm.rollback(0);
+      expect(vm.body, _body);
+      vm.restoreTo(0);
+      expect(vm.body, 'typed after clear');
     });
 
     test('采纳改动能撤回:成稿变回去,那处改动重新等确认', () {

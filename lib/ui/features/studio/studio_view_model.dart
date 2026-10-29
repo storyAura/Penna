@@ -33,6 +33,7 @@ part 'studio_auto_lookup.dart';
 part 'studio_chat.dart';
 part 'studio_context.dart';
 part 'studio_draft.dart';
+part 'studio_history.dart';
 part 'studio_layout_pages.dart';
 part 'studio_pages.dart';
 part 'studio_rewrite.dart';
@@ -49,8 +50,65 @@ typedef QueuedMessage = ({
   String? quote,
 });
 
-/// 操作记录里的一笔:什么时候,做了什么。
-typedef ActionRecord = ({DateTime time, String text});
+/// 操作记录里的一笔:什么时候,做了什么,做之前、做之后工作台的样子。
+/// 记录是一棵树:每一笔记着做它时眼前是哪一笔之后([parent]),回到前面再做别的,
+/// 原来那几笔就成了另一个分支,还能切回去(见 [StudioHistory])。
+@immutable
+class ActionRecord {
+  const ActionRecord._({
+    required this.id,
+    required this.time,
+    required this.text,
+    required this.parent,
+    required _Snapshot before,
+    this.details = const [],
+    _Snapshot? after,
+    // 命名参数不能带下划线,写不成 this._before。
+    // ignore: prefer_initializing_formals
+  }) : _before = before,
+       // ignore: prefer_initializing_formals
+       _after = after;
+
+  final int id;
+  final DateTime time;
+  final String text;
+
+  /// 合成这一笔的那几步(Agent 一条回复里新开页、起名、采纳……);只有一步时是空的。
+  final List<String> details;
+
+  /// 做这一步时眼前是哪一笔之后的样子;null 是最开始(或那一笔已经太旧、删掉了)。
+  final int? parent;
+
+  final _Snapshot _before;
+
+  /// 做完之后的样子。眼前这一笔的就是现在,换走时才补上,所以可能是 null。
+  final _Snapshot? _after;
+
+  ActionRecord _withAfter(_Snapshot after) => ActionRecord._(
+    id: id,
+    time: time,
+    text: text,
+    parent: parent,
+    before: _before,
+    details: details,
+    after: after,
+  );
+}
+
+/// 一笔记录和眼前的关系。
+enum ActionState {
+  /// 眼前就是做完这一笔之后的样子。
+  current,
+
+  /// 走到眼前之前做过的。
+  done,
+
+  /// 从眼前往后做过、又撤回来的(「回到这一步之后」能重做)。
+  undone,
+
+  /// 别的分支上的:回到前面以后又做了别的,它们留在原来那条路上。
+  branch,
+}
 
 const _maxActions = 100;
 
@@ -217,71 +275,19 @@ class StudioViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 操作记录,新的在前;只留在内存里,关掉程序就没了。
-  // ponytail: 不存盘,关掉程序就不能回滚了;打字不记,所以回滚到某一步之前时,
-  // 那之后手打的字也一起没了。要更细得把打字也(合并着)记进来。
+  /// 操作记录,新的在前;只留在内存里,关掉程序就没了。怎么记、怎么回到某一步见 [StudioHistory]。
+  // ponytail: 不存盘,关掉程序就不能回滚了;打字不记,回到某一步时那之后手打的字跟着那一步走
+  // (换走时眼前的样子记在当前这一笔的「之后」里,切回来还在)。
   List<ActionRecord> _actions = const [];
   List<ActionRecord> get actions => _actions;
 
-  /// 和 [_actions] 一一对应:做那一步之前工作台的样子,回滚时用。
-  List<_Snapshot> _undo = const [];
+  /// 眼前是哪一笔做完之后的样子;null 是最开始(还没做,或回到了最早那一笔之前)。
+  int? _head;
 
-  /// 工作台现在的样子。里面都是不可变的东西,所以只是记个引用,不费地方。
-  _Snapshot _snapshot() => (
-    pages: List.unmodifiable(pages),
-    page: _page,
-    seriesNames: _seriesNames,
-    seriesChats: _seriesChats,
-    messages: _messages,
-    chatId: _chatId,
-    archive: _archive,
-    closedTabs: _closedTabs,
-  );
+  int _nextActionId = 0;
 
-  /// 记一笔操作。**要在动手改之前调**:它顺手拍下现在的样子,回滚就是回到这里。
-  /// 来不及在改之前调的,先自己 [_snapshot] 一份从 [before] 传进来。
-  void _log(String text, {_Snapshot? before}) {
-    _actions = List.unmodifiable(
-      [(time: DateTime.now(), text: text), ..._actions].take(_maxActions),
-    );
-    _undo = List.unmodifiable(
-      [before ?? _snapshot(), ..._undo].take(_maxActions),
-    );
-  }
-
-  /// 回滚:撤销 [actions] 里第 [index] 条和它之后做的所有事,回到做它之前的样子。
-  /// 回滚本身也记一笔,所以滚错了还能再滚回来。生成中不能回滚,返回原因。
-  String? rollback(int index) {
-    if (index < 0 || index >= _actions.length) return null;
-    if (isStreaming) return tr('正在生成,请先停止当前回复');
-    final target = _undo[index];
-    final now = _snapshot();
-    final undone = _actions[index].text;
-    _pages = target.pages;
-    _page = target.page;
-    _seriesNames = target.seriesNames;
-    _seriesChats = target.seriesChats;
-    _messages = target.messages;
-    _chatId = target.chatId;
-    _archive = target.archive;
-    _closedTabs = target.closedTabs;
-    _blocks = _pages[_page].blocks;
-    _pending = _pages[_page].pending;
-    _queued = _pages[_page].queued;
-    _translation = null;
-    _translationBy = null;
-    _quote = null;
-    bodySelection = null;
-    _toolRounds = 0;
-    _foundTags.clear();
-    // 被撤销的那几条不留了,换成「回滚」这一条。
-    _actions = List.unmodifiable(_actions.skip(index + 1));
-    _undo = List.unmodifiable(_undo.skip(index + 1));
-    _log(tr('回滚到「{0}」之前', [undone]), before: now);
-    // 区域控制那场对话要把回滚后的这页摆回画板上。
-    _changed();
-    return null;
-  }
+  /// 正在把几笔合成一笔时(见 [StudioHistory._asOneStep]),各步的说明先攒在这里。
+  List<String>? _steps;
 
   /// 眼前这一页叫什么,记操作时用:「系列 1 · 第 2 页」。
   String get _here =>

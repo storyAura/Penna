@@ -27,6 +27,30 @@ StudioViewModel _studio(
 String _text(DraftPage p) => p.blocks.map((b) => b.text).join();
 
 void main() {
+  test('Agent 一条回复新开页、起名、写入:操作记录里是一笔,一次撤干净,还能重做', () async {
+    final vm = _studio(
+      (_) => Stream.value('<draft page="新" name="兔女郎">\n【主体】a bunny\n</draft>'),
+      blocks: const [(text: '【主体】a fox', pinned: false)],
+    );
+    vm.send('再来一页');
+    await pumpEventQueue();
+
+    expect(vm.pages, hasLength(2));
+    final record = vm.actions.single;
+    expect(record.text, 'Agent 写入 系列 1 · 第 2 页');
+    expect(record.details, [
+      '新增 系列 1 · 第 2 页',
+      '系列 1 · 第 2 页改名:兔女郎',
+      startsWith('采纳'),
+    ]);
+
+    vm.rollback(0);
+    expect(vm.pages.map(_text), ['【主体】a fox']);
+    vm.restoreTo(0);
+    expect(vm.pages.map(_text), ['【主体】a fox', '【主体】a bunny']);
+    expect(vm.pages.last.name, '兔女郎');
+  });
+
   test('换了新主题:另起一个系列,原来的页不动,对话跟着过去', () async {
     final vm = _studio(
       (_) => Stream.value(
@@ -51,7 +75,9 @@ void main() {
     // 还是这场对话,接着聊的是新系列。
     expect(vm.messages, hasLength(2));
     // 能整个撤回去。
-    vm.rollback(vm.actions.indexWhere((a) => a.text.startsWith('新建')));
+    vm.rollback(
+      vm.actions.indexWhere((a) => a.details.any((d) => d.startsWith('新建'))),
+    );
     expect(vm.pages.map(_text), ['【主体】a fox']);
   });
 

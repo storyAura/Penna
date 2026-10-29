@@ -90,21 +90,27 @@ extension StudioChat on StudioViewModel {
         .lastWhere((m) => m.fromUser && !m.tool, orElse: () => _messages.first)
         .quote;
     final drafts = splitDrafts(splitNewSkill(_messages.last.text).prose).drafts;
-    // 一条回复可以有好几份,各去各的页。
+    // 一条回复可以有好几份,各去各的页;新开页、起名、采纳在操作记录里合成一笔。
     final written = <int>{};
-    for (final draft in drafts) {
-      if (!draft.complete) continue;
-      final problem = placeDraft(
-        draft.text,
-        page: draft.page,
-        replacing: quote,
-        written: written,
-        name: draft.name,
-        seriesTitle: draft.series,
-        replace: draft.replace,
-      );
-      // 放不上要说出来(以前悄悄丢掉了);系列满了时页签下面还会亮提醒。
-      if (problem != null) _note(tr('成稿没放上:{0}', [problem]));
+    final problems = asAgentStep(
+      written,
+      () => [
+        for (final draft in drafts)
+          if (draft.complete)
+            placeDraft(
+              draft.text,
+              page: draft.page,
+              replacing: quote,
+              written: written,
+              name: draft.name,
+              seriesTitle: draft.series,
+              replace: draft.replace,
+            ),
+      ],
+    );
+    // 放不上要说出来(以前悄悄丢掉了);系列满了时页签下面还会亮提醒。
+    for (final problem in problems.nonNulls) {
+      _note(tr('成稿没放上:{0}', [problem]));
     }
     showWritten(written);
   }

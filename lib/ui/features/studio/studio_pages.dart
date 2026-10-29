@@ -397,8 +397,12 @@ extension StudioPages on StudioViewModel {
     if (body.trim().isEmpty && _pending == null && !written.contains(_page)) {
       return (_page, null);
     }
+    final before = _snapshot();
     final at = _insertPage(series);
-    return at == null ? (null, StudioPages.fullMessage) : (at, null);
+    if (at == null) return (null, StudioPages.fullMessage);
+    // 以前没记这一笔:撤掉后面的改名、采纳,新开的空白页还留着。
+    _log(tr('新增 {0}', [_pageTitle(at)]), before: before);
+    return (at, null);
   }
 
   /// 这份成稿是不是要另起一个系列:标签上写了 `page="新系列"`(换了主题)。

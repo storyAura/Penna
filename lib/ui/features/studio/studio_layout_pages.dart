@@ -78,6 +78,20 @@ extension StudioLayoutPages on StudioViewModel {
     LayoutKeep keep = LayoutKeep.none,
     VoidCallback? first,
   }) {
+    // 新开页、起名、摆框在操作记录里合成一笔。
+    final at = <int>{};
+    return asAgentStep(at, () {
+      final note = _placeLayout(reply, keep: keep, first: first);
+      at.add(_page);
+      return note;
+    });
+  }
+
+  String? _placeLayout(
+    String reply, {
+    required LayoutKeep keep,
+    VoidCallback? first,
+  }) {
     final board = layout;
     if (board == null) return null;
     final made = splitLayout(reply);

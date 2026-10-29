@@ -107,7 +107,7 @@ Draw regions on a canvas and describe each one to produce MOSS-Image layout JSON
 - When estimating distances, objects standing on the ground are placed by how far their bottom edge is from the horizon.
 - Layers can be hidden on the canvas without affecting the exported JSON; text layers are hidden by default in the 3D view.
 - Layers can be locked: a locked layer cannot be selected or dragged on the canvas, so new boxes can be drawn inside its area.
-- The history lists each step — drawing, moving, turning the camera, the Agent placing a layout — and can roll back to before any of them.
+- The history lists each step — drawing, moving, turning the camera, the Agent placing a layout — and can go back to before or after any of them.
 
 ### Comics
 
@@ -163,7 +163,7 @@ A Skill is a writing guide (`SKILL.md`) that decides how the Agent writes prompt
 - **Archive**: drafts and Region Control layouts saved by hand, in two sections, with names and categories.
 - **Notes**: notebooks in the sidebar for quick notes; each notebook holds multiple entries with a name and content, saved as you type.
 - **Prompt history**: recorded automatically on accept, copy and clear, up to 100 entries; each can be expanded or put back into the draft.
-- **Activity**: records structural operations such as pages, pins and accept/reject, and can roll back to before any step.
+- **Activity**: records structural operations such as pages, pins and accept/reject; the changes from one Agent reply count as one step. Any step can be revisited from before or after, back and forth; after going back, new operations start a branch and the earlier steps stay available on the other branch.
 
 ### App settings
 

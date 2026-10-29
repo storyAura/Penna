@@ -173,26 +173,31 @@ class SideChat extends ChangeNotifier {
     if (main.layoutOnly) return _deliverLayout();
     final drafts = splitDrafts(_messages.last.text).drafts;
     final written = <int>{};
-    for (final d in drafts) {
-      if (!d.complete) continue;
-      final problem = main.placeDraft(
-        d.text,
-        page: d.page,
-        written: written,
-        name: d.name,
-        seriesTitle: d.series,
-        replace: d.replace,
+    // 新开页、起名、采纳在操作记录里合成一笔,和主聊天一样。
+    final problems = main.asAgentStep(
+      written,
+      () => [
+        for (final d in drafts)
+          if (d.complete)
+            main.placeDraft(
+              d.text,
+              page: d.page,
+              written: written,
+              name: d.name,
+              seriesTitle: d.series,
+              replace: d.replace,
+            ),
+      ],
+    );
+    for (final problem in problems.nonNulls) {
+      _update(
+        (m) => m.copyWith(
+          toolSummary: [
+            ?m.toolSummary,
+            tr('成稿没放上:{0}', [problem]),
+          ].join(' · '),
+        ),
       );
-      if (problem != null) {
-        _update(
-          (m) => m.copyWith(
-            toolSummary: [
-              ?m.toolSummary,
-              tr('成稿没放上:{0}', [problem]),
-            ].join(' · '),
-          ),
-        );
-      }
     }
     // 写到了别的页就换过去,和主聊天一样。
     main.showWritten(written);

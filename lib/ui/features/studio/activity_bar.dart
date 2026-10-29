@@ -104,58 +104,16 @@ class _ActivityBarState extends State<ActivityBar> {
                           ),
                         )
                       : ListView.separated(
-                          padding: const EdgeInsets.all(10),
+                          padding: const EdgeInsets.all(8),
                           itemCount: actions.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 8),
-                          itemBuilder: (context, i) => Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      _clock(actions[i].time),
-                                      style: TextStyle(
-                                        fontSize: 10.5,
-                                        color: PennaColors.slate400,
-                                      ),
-                                    ),
-                                  ),
-                                  Tooltip(
-                                    message: tr('回滚到这一步之前'),
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(4),
-                                      onTap: () {
-                                        final problem = widget.vm.rollback(i);
-                                        if (problem != null) {
-                                          showToast(
-                                            context,
-                                            problem,
-                                            warn: true,
-                                          );
-                                        }
-                                      },
-                                      child: Padding(
-                                        padding: EdgeInsets.all(2),
-                                        child: Icon(
-                                          Icons.undo,
-                                          size: 13,
-                                          color: PennaColors.slate500,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Text(
-                                actions[i].text,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  height: 1.4,
-                                  color: PennaColors.slate700,
-                                ),
-                              ),
-                            ],
+                          separatorBuilder: (_, _) => const SizedBox(height: 4),
+                          itemBuilder: (context, i) => _ActionTile(
+                            record: actions[i],
+                            state: widget.vm.stateOf(i),
+                            onBefore: () =>
+                                _report(context, widget.vm.rollback(i)),
+                            onAfter: () =>
+                                _report(context, widget.vm.restoreTo(i)),
                           ),
                         ),
                 ),
@@ -165,4 +123,109 @@ class _ActivityBarState extends State<ActivityBar> {
       ),
     );
   }
+}
+
+void _report(BuildContext context, String? problem) {
+  if (problem != null) showToast(context, problem, warn: true);
+}
+
+/// 操作记录里的一笔:时间、和眼前的关系、做了什么(合成的几步用小字列在下面),
+/// 右上角两个按钮回到它之前、之后。眼前这一笔底色标出;撤回来的、别的分支上的是灰字。
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    required this.record,
+    required this.state,
+    required this.onBefore,
+    required this.onAfter,
+  });
+
+  final ActionRecord record;
+  final ActionState state;
+  final VoidCallback onBefore;
+  final VoidCallback onAfter;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = state == ActionState.current;
+    final away = state == ActionState.undone || state == ActionState.branch;
+    final tag = switch (state) {
+      ActionState.current => tr('当前'),
+      ActionState.undone => tr('已撤销'),
+      ActionState.branch => tr('另一分支'),
+      ActionState.done => null,
+    };
+    return Container(
+      padding: const EdgeInsets.fromLTRB(6, 4, 2, 6),
+      decoration: BoxDecoration(
+        color: current ? PennaColors.primaryBg : null,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: current ? PennaColors.primaryBorder : Colors.transparent,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (state == ActionState.branch) ...[
+                Icon(Icons.call_split, size: 11, color: PennaColors.slate400),
+                const SizedBox(width: 3),
+              ],
+              Text(
+                _clock(record.time),
+                style: TextStyle(fontSize: 10.5, color: PennaColors.slate400),
+              ),
+              if (tag != null) ...[
+                const SizedBox(width: 6),
+                Text(
+                  tag,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: current ? PennaColors.primary : PennaColors.slate400,
+                  ),
+                ),
+              ],
+              const Spacer(),
+              _jump(Icons.undo, tr('回到这一步之前'), onBefore),
+              if (!current) _jump(Icons.redo, tr('回到这一步之后'), onAfter),
+            ],
+          ),
+          Text(
+            record.text,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.4,
+              color: away ? PennaColors.slate400 : PennaColors.slate700,
+            ),
+          ),
+          for (final step in record.details)
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Text(
+                '· $step',
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.35,
+                  color: away ? PennaColors.slate400 : PennaColors.slate500,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _jump(IconData icon, String tip, VoidCallback onTap) => Tooltip(
+    message: tip,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(4),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Icon(icon, size: 13, color: PennaColors.slate500),
+      ),
+    ),
+  );
 }
