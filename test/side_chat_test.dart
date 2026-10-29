@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/attachment.dart';
+import 'package:penna/core/harness/characters/character_dict.dart';
 import 'package:penna/core/harness/chat_peek.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
 import 'package:penna/data/models/app_config.dart';
@@ -157,6 +158,51 @@ void main() {
     );
     expect(req.images[1]!.single.mime, 'image/png');
     expect(side.messages.first.attachments, hasLength(2));
+  });
+
+  test('副聊天也能查角色:提到的先查好附在消息后面,写了 <search-character> 时查完接着写', () async {
+    final seen = <LlmRequest>[];
+    final replies = [
+      '<search-character>hikari (arcaea)</search-character>',
+      '改好了',
+    ];
+    final service = tempConfig();
+    service.update(
+      service.config.putLlm(
+        const LlmProfile(id: 'a', name: 'A', baseUrl: 'http://a', model: 'm'),
+      ),
+    );
+    final vm = StudioViewModel(
+      config: service,
+      characterDict: CharacterDict.parse(
+        'tairitsu (arcaea)\tarcaea\t1girl, black hair\tblack dress\t对立\n'
+        'hikari (arcaea)\tarcaea\t1girl, white hair\twhite dress\t光\n',
+      ),
+      streamChat: (req) {
+        seen.add(req);
+        return Stream.value(replies[seen.length - 1]);
+      },
+    );
+    final side = SideChat(vm);
+    vm.side = side;
+
+    side.send('光和对立的特征错了');
+    await pumpEventQueue(times: 50);
+    expect(seen, hasLength(2));
+    expect(seen.first.messages.first['content'], contains('【先查再写】'));
+    // 「对立」认得出来(「光」只有一个字,不认),先查好接在消息后面。
+    final asked = seen.first.messages.last['content']!;
+    expect(asked, contains('【程序已按用户这句话里的名字查了角色库】'));
+    expect(asked, contains('触发词:tairitsu (arcaea), arcaea'));
+    expect(side.messages[1].toolSummary, '已按名字查了角色库:tairitsu (arcaea)');
+    // 模型自己要查的也查了,结果交回去,它接着写完。
+    expect(
+      seen.last.messages.last['content'],
+      contains('触发词:hikari (arcaea), arcaea'),
+    );
+    expect(side.messages.firstWhere((m) => m.tool).toolSummary, '查了角色库 · 1 个');
+    expect(side.messages.last.text, '改好了');
+    expect(side.isStreaming, isFalse);
   });
 
   test('副聊天写 <ask-layout> 时交给区域控制的 Agent,排好后接着写', () async {

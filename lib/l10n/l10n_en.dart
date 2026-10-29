@@ -184,6 +184,7 @@ const en = <String, String>{
   '不带服装的词': 'Tags without the outfit',
   '已复制(不带服装)': 'Copied (without outfit)',
   '只要服装': 'Outfit only',
+  '没有可显示的话 · 查看原文': 'Nothing to show · View raw reply',
   '已按名字查了角色库:{0}': 'Looked up in the character library: {0}',
   '复制图片': 'Copy image',
   '附到输入框': 'Attach again',

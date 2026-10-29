@@ -2,9 +2,9 @@ part of 'layout.dart';
 
 // 回复里和布局有关的几种标签:<ask-layout>、<layout>、<layers>。
 
-final _ask = RegExp(
-  r'<ask-layout(?:\s+name\s*=\s*"([^"\n]*)")?\s*>([\s\S]*?)</ask-layout>',
-);
+/// 开始标签上可以带别的属性,name 用单引号也认(有的模型这么写,以前整个标签就不认了)。
+final _ask = RegExp(r'<ask-layout(\s[^>]*)?>([\s\S]*?)</ask-layout>');
+final _askName = RegExp(r'''name\s*=\s*["']([^"'\n]*)["']''');
 const _askOpen = '<ask-layout';
 
 /// 主工作区把排布局的活交给区域控制工作台的 Agent:`<ask-layout name="系列名">任务</ask-layout>`。
@@ -16,7 +16,10 @@ const _askOpen = '<ask-layout';
   final asks = [
     for (final m in _ask.allMatches(reply))
       if (m[2]!.trim().isNotEmpty)
-        (name: (m[1] ?? '').trim(), brief: m[2]!.trim()),
+        (
+          name: (_askName.firstMatch(m[1] ?? '')?[1] ?? '').trim(),
+          brief: m[2]!.trim(),
+        ),
   ];
   var prose = reply.replaceAll(_ask, '');
   final half = prose.indexOf(_askOpen);

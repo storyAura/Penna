@@ -4,6 +4,8 @@ import 'package:image/image.dart' as img;
 import 'package:penna/core/harness/attachment.dart';
 import 'package:penna/ui/core/theme.dart';
 import 'package:penna/ui/features/studio/attachment_view.dart';
+import 'package:penna/ui/features/studio/chat_message_view.dart';
+import 'package:penna/ui/features/studio/studio_view_model.dart';
 
 void main() {
   final picture = img.Image(width: 8, height: 6)
@@ -62,5 +64,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(reused, same(image));
     expect(find.text('复制图片'), findsNothing);
+  });
+
+  testWidgets('回复里没有能显示的话:不再只画省略号,能点开看原文;空回复直说', (tester) async {
+    Future<void> show(String text) => tester.pumpWidget(
+      MaterialApp(
+        theme: pennaTheme(),
+        home: Scaffold(
+          body: ChatMessageView(
+            message: ChatMessage(
+              fromUser: false,
+              text: text,
+              time: DateTime(2026, 10, 29),
+            ),
+            onAdoptDraft: (_) {},
+            draftStatus: (_) => DraftStatus.ready,
+          ),
+        ),
+      ),
+    );
+
+    await show('<search-tags>银发</search-tags>');
+    expect(find.text('…'), findsNothing);
+    await tester.tap(find.text('没有可显示的话 · 查看原文'));
+    await tester.pumpAndSettle();
+    expect(find.text('<search-tags>银发</search-tags>'), findsOneWidget);
+
+    await show('');
+    expect(find.text('模型没有返回内容'), findsOneWidget);
   });
 }

@@ -4,10 +4,12 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/harness/attachment.dart';
+import '../../../core/harness/characters/character_dict.dart';
 import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/providers/llm_router.dart';
+import '../../../core/harness/tags/tag_search.dart';
 import '../../../l10n/l10n.dart';
 import 'studio_view_model.dart';
 
@@ -20,7 +22,7 @@ import 'studio_view_model.dart';
 const _logMessages = 20;
 const _logChars = 2000;
 
-/// 副聊天一条消息里最多跑几轮工具(看主聊天、转区域控制)。
+/// 副聊天一条消息里最多跑几轮工具(看主聊天、查标签和角色、转区域控制)。
 const _maxRounds = 3;
 
 /// 主聊天的系统提示里讲副聊天的那一段(副聊天说过话才带)。
@@ -149,7 +151,9 @@ class SideChat extends ChangeNotifier {
     '用户要你参考主聊天里说过的话、或问主聊天的 Agent 说了什么时,只输出 <$readMainChat></$readMainChat>,'
         '程序把主聊天最近的记录交给你,你再接着回答。',
     main.layoutGuide,
-  ].join('\n\n');
+    // 放在最后:有的模型读到后面就忘了"先查"。
+    main.lookupGuide,
+  ].where((s) => s.isNotEmpty).join('\n\n');
 
   String get _draftPrompt => [
     '你是 Penna 的副聊天助手。Penna 是写文生图提示词的工作台:用户在主聊天里和另一个 Agent 写提示词,'
@@ -161,6 +165,7 @@ class SideChat extends ChangeNotifier {
         '程序把主聊天最近的记录交给你,你再接着回答。',
     '【工作区】用户眼前的提示词(每段开头的【】是分段标注,〔译〕行是对照译文):\n'
         '${main.workspaceText}',
+    main.lookupGuide,
   ].where((s) => s.isNotEmpty).join('\n\n');
 
   /// 回复里的成稿放进工作区,和主聊天的一样;放不上的记在这条回复上。
@@ -212,11 +217,18 @@ class SideChat extends ChangeNotifier {
       for (final m in history)
         if (m.fromUser || !m.failed && m.text.isNotEmpty) m,
     ];
-    final requests = main.sideRequests(_systemPrompt, sent);
+    // 用户这次的话里提到的角色,和主聊天一样先替模型查好。
+    final (:ask, text: lookup, :note) = main.autoLookupFor(sent);
+    final requests = main.sideRequests(
+      _systemPrompt,
+      sent,
+      ask: ask,
+      lookup: lookup,
+    );
     if (requests.isEmpty) return tr('请先在设置里添加模型并填写模型名称');
     _messages = List.unmodifiable([
       ...history,
-      ChatMessage(fromUser: false, text: '', time: time),
+      ChatMessage(fromUser: false, text: '', time: time, toolSummary: note),
     ]);
     _reply =
         streamWithFailover(
@@ -236,7 +248,7 @@ class SideChat extends ChangeNotifier {
           },
           onDone: () {
             _reply = null;
-            if (_peek() || _askLayout()) return;
+            if (_peek() || _lookup() || _askLayout()) return;
             _deliver();
             notifyListeners();
           },
@@ -257,6 +269,30 @@ class SideChat extends ChangeNotifier {
       chatLog('主聊天的记录', main.messages, speaker: 'Agent'),
       tr('读了主聊天'),
     );
+  }
+
+  /// 回复里要查标签、查角色库:借主聊天的查法查好,接着写(用户反馈:DeepSeek 写了
+  /// `<search-character>` 却没人理,回复只剩一个省略号,后面的转区域控制也没发)。
+  /// 返回是否接手了。
+  bool _lookup() {
+    if (_rounds >= _maxRounds) return false;
+    final reply = _messages.last.text;
+    if (splitTagSearch(reply).queries.isEmpty &&
+        splitCharacterTags(reply).queries.isEmpty) {
+      return false;
+    }
+    _rounds++;
+    final run = ++_run;
+    _waiting = true;
+    notifyListeners();
+    unawaited(() async {
+      final result = await main.lookupFor(reply);
+      if (_disposed || run != _run) return;
+      _waiting = false;
+      if (result == null) return notifyListeners();
+      _continue(result.text, result.note);
+    }());
+    return true;
   }
 
   /// 回复里写了 `<ask-layout>`:和主聊天一样交给区域控制的 Agent,等它排好再接着写。

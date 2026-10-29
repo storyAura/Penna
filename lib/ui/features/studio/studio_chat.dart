@@ -157,21 +157,10 @@ extension StudioChat on StudioViewModel {
         if (m.fromUser || !m.failed && m.text.isNotEmpty) m,
     ];
     // 用户这次的话里提到的角色,先替模型查好,接在那条消息后面(查工具那几轮也一直带着)。
-    final ask = sent.where((m) => m.fromUser && !m.tool).lastOrNull;
-    final found = ask == null
-        ? const <String, List<CharacterHit>>{}
-        : _mentioned(ask);
-    final auto = _autoLookupText(found);
+    final (:ask, text: auto, :note) = autoLookupFor(sent);
     _messages = List.unmodifiable([
       ...history,
-      ChatMessage(
-        fromUser: false,
-        text: '',
-        time: time,
-        toolSummary: found.isEmpty
-            ? null
-            : tr('已按名字查了角色库:{0}', [found.keys.join(tr('、'))]),
-      ),
+      ChatMessage(fromUser: false, text: '', time: time, toolSummary: note),
     ]);
     final preset = cfg.activePreset;
     final enabled = {

@@ -42,20 +42,7 @@ extension StudioContext on StudioViewModel {
     _toolBusy = true;
     _changed();
     unawaited(() async {
-      // 几组一起查:在线搜索一次就要十几秒,排着队查太久。
-      final asked = queries.take(_maxQueries).toList();
-      final found = await Future.wait([
-        for (final query in asked)
-          () async {
-            try {
-              return await search!(query);
-            } on Object {
-              // 查不了就如实告诉模型,它会换个办法。
-              return (hits: const <TagHit>[], source: '搜索失败');
-            }
-          }(),
-      ]);
-      final results = {for (final (i, query) in asked.indexed) query: found[i]};
+      final results = await _findTags(queries.take(_maxQueries).toList());
       // 一个个跑:它们共用本地反推页上的图和选中的模型。
       final image = _lastImage ?? local?.image;
       final ran = <LocalToolResult>[];
@@ -504,11 +491,17 @@ extension StudioContext on StudioViewModel {
 
   /// 副聊天的请求:用它自己指定的模型和穿甲弹开关,温度照当前 Preset。
   /// 附件和主聊天一样:文本文件包进那条消息,图另走 [LlmRequest.images]。
+  /// [lookup] 是程序替它先查好的角色(`autoLookupFor`),接在 [ask] 那条消息后面。
   List<(String, LlmRequest)> sideRequests(
     String system,
-    List<ChatMessage> sent,
-  ) {
+    List<ChatMessage> sent, {
+    ChatMessage? ask,
+    String lookup = '',
+  }) {
     final cfg = config.config;
+    String user(ChatMessage m) => identical(m, ask) && lookup.isNotEmpty
+        ? '${_withReferences(m, const {})}\n\n$lookup'
+        : _withReferences(m, const {});
     return _requests(
       cfg,
       _usable(cfg.sideChain),
@@ -524,8 +517,8 @@ extension StudioContext on StudioViewModel {
                 : layoutOnly &&
                       i == sent.length - 1 &&
                       m.attachments.any((a) => a.isImage)
-                ? '${_withReferences(m, const {})}${_canvasReminder()}'
-                : _withReferences(m, const {}),
+                ? '${user(m)}${_canvasReminder()}'
+                : user(m),
           },
       ],
       images: _imagesOf(sent),

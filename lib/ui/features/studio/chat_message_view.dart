@@ -150,8 +150,10 @@ class ChatMessageView extends StatelessWidget {
       else if (drafts.isEmpty &&
           newSkill == null &&
           laid.json == null &&
+          picks.isEmpty &&
           !m.stopped)
-        const Text('…', style: _bodyStyle),
+        // 以前只画一个省略号:模型写了程序没接住的标签时,用户看不出发生了什么。
+        _RawReply(m.text),
       // 一份成稿一张卡片;分了页的各去各的页。
       for (final (i, draft) in drafts.indexed) ...[
         if (prose.isNotEmpty || i > 0) const SizedBox(height: 10),
@@ -697,6 +699,70 @@ class _ToolBlock extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 回复里没有能显示的东西:模型什么都没回,或者只写了程序没接住的标签。
+/// 后一种收成一行灰字,点开看原文,用户至少看得出模型写了什么。
+class _RawReply extends StatefulWidget {
+  const _RawReply(this.text);
+
+  final String text;
+
+  @override
+  State<_RawReply> createState() => _RawReplyState();
+}
+
+class _RawReplyState extends State<_RawReply> {
+  var _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final grey = _bodyStyle.copyWith(
+      fontSize: 12.5,
+      color: PennaColors.slate500,
+    );
+    if (widget.text.trim().isEmpty) return Text(tr('模型没有返回内容'), style: grey);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => setState(() => _open = !_open),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(tr('没有可显示的话 · 查看原文'), style: grey),
+                Icon(
+                  _open ? Icons.expand_less : Icons.expand_more,
+                  size: 16,
+                  color: PennaColors.slate500,
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: Motion.of(context, Motion.base),
+          curve: Motion.expand,
+          alignment: Alignment.topLeft,
+          child: _open
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: SelectableText(
+                    widget.text.trim(),
+                    contextMenuBuilder: pennaTextMenu,
+                    style: monoStyle.copyWith(
+                      fontSize: 11.5,
+                      color: PennaColors.slate700,
+                    ),
+                  ),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ],
     );
   }
 }

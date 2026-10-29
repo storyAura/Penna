@@ -265,6 +265,12 @@ void main() {
       expect(r.asks, [(name: '', brief: '排一张海报')]);
       expect(splitAskLayout('稍等<ask-lay').prose, '稍等');
       expect(splitAskLayout('稍等<ask-layout name="x">排').prose, '稍等');
+      // 带别的属性、name 用单引号的也认。
+      expect(
+        splitAskLayout("<ask-layout kind=\"json\" name='光与对立'>两个人</ask-layout>")
+            .asks,
+        [(name: '光与对立', brief: '两个人')],
+      );
     });
   });
 
