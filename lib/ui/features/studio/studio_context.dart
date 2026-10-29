@@ -80,7 +80,8 @@ extension StudioContext on StudioViewModel {
           tool: true,
           text: [
             if (results.isNotEmpty) formatTagResults(results),
-            if (people.isNotEmpty) formatCharacterResults(people),
+            if (people.isNotEmpty)
+              formatCharacterResults(people, formOf: characterDict?.parentOf),
             if (peek) chatLog('副聊天的记录', side!.messages, speaker: '副聊天'),
             if (ran.isNotEmpty)
               '【本地工具的结果】程序替你跑的本地反推、区域控制的结果如下。'
@@ -179,7 +180,8 @@ extension StudioContext on StudioViewModel {
         outfits: c.outfits,
         alias: c.alias,
       ),
-    ...?characterDict?.search(name),
+    // 内置的带上同一个角色的其他形态(变身、换装后另起的角色标签)。
+    ...?characterDict?.withForms(characterDict!.search(name), perHit: 6),
   ];
 
   /// 回复里要存进角色库的角色:存进去,并在这条回复上记一笔。同名的换成新的。

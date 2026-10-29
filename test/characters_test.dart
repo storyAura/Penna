@@ -1,14 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/attachment.dart';
 import 'package:penna/core/harness/characters/character_dict.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/character_store.dart';
+import 'package:penna/ui/core/theme.dart';
 import 'package:penna/ui/core/widgets.dart';
 import 'package:penna/ui/features/characters/characters_page.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
@@ -108,6 +109,93 @@ void main() {
       expect(find.text('vocaloid'), findsOneWidget);
     });
 
+    test('变身、换装后另起名字的形态:查到一个,本体和其他形态一起带出来', () {
+      final dict = CharacterDict.parse(
+        'moria luluka\tmeitantei precure!\t1girl, grey hair\tblack dress\n'
+        'cure arcana shadow\tmeitantei precure!\t\tmagical girl\t\tmoria luluka\n'
+        'akechi anna\tmeitantei precure!\t1girl, orange hair\t\n'
+        'cure arcana\tmeitantei precure!\t1girl, blonde hair\t\t\tmoria luluka\n',
+      );
+      expect(dict.parentOf('cure arcana'), 'moria luluka');
+      expect(dict.parentOf('moria luluka'), isNull);
+      expect(dict.formsOf('moria luluka').map((h) => h.name), [
+        'cure arcana shadow',
+        'cure arcana',
+      ]);
+      // 查的是形态:先给本体,再给兄弟形态。
+      expect(dict.formsOf('cure arcana').map((h) => h.name), [
+        'moria luluka',
+        'cure arcana shadow',
+      ]);
+      expect(dict.formsOf('akechi anna'), isEmpty);
+
+      // 已经列过的不重复;用户自己存的原样留着,不找形态。
+      final mine = (
+        name: 'moria luluka',
+        series: '',
+        looks: '',
+        outfit: '',
+        prompt: 'my luluka',
+        intro: '',
+        outfits: const <({String name, String prompt})>[],
+        alias: '',
+      );
+      final hits = dict.withForms([
+        mine,
+        ...dict.search('cure arcana'),
+      ], perHit: 5);
+      expect(hits.map((h) => h.name), [
+        'moria luluka',
+        'cure arcana',
+        'moria luluka',
+        'cure arcana shadow',
+      ]);
+      expect(hits.first.prompt, 'my luluka');
+
+      final text = formatCharacterResults({
+        'cure arcana': dict.withForms(dict.search('cure arcana')),
+      }, formOf: dict.parentOf);
+      expect(text, contains('形态:moria luluka 的另一个样子'));
+      expect(
+        RegExp('形态:').allMatches(text).length,
+        2, // cure arcana 和 cure arcana shadow 两个形态
+      );
+    });
+
+    testWidgets('角色卡:「只要服装」只复制服装,形态标出是谁的', (tester) async {
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String;
+          }
+          return null;
+        },
+      );
+      final dict = CharacterDict.parse(
+        'moria luluka\tmeitantei precure!\t1girl, grey hair\tblack dress, veil\n'
+        'cure arcana\tmeitantei precure!\t1girl, blonde hair\tmagical girl\t\tmoria luluka\n',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: pennaTheme(),
+          home: Scaffold(
+            body: CharactersPage(store: CharacterStore(), dict: dict),
+          ),
+        ),
+      );
+      await tester.tap(find.widgetWithText(PennaChip, '内置'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'moria luluka');
+      await tester.pumpAndSettle();
+      expect(find.text('moria luluka 的形态'), findsOneWidget);
+      await tester.tap(find.text('只要服装').first);
+      await tester.pump();
+      expect(copied, 'black dress, veil');
+      await tester.pumpAndSettle(const Duration(seconds: 3));
+    });
+
     test('随程序打包的那份:合并好了,外貌和服装分开', () {
       final real = CharacterDict.parse(
         utf8.decode(
@@ -124,6 +212,12 @@ void main() {
       expect(miku.outfit, contains('detached sleeves'));
       expect(real.search('初音未来').first.name, 'hatsune miku');
       expect(real.search('甘雨').first.name, 'ganyu (genshin impact)');
+      // 形态:名字对不上的变身(来自 wiki)和挂着父标签的换装都认。
+      expect(
+        real.formsOf('moria luluka').map((h) => h.name),
+        contains('cure arcana shadow'),
+      );
+      expect(real.parentOf('yuki miku'), 'hatsune miku');
     });
   });
 

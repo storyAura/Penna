@@ -8,6 +8,7 @@ extension StudioStorage on StudioViewModel {
     if (file == null || !await file.exists()) return;
     try {
       restore(jsonDecode(await file.readAsString()) as Map<String, dynamic>);
+      _files?.sweep();
     } on Object catch (e) {
       debugPrint(tr('读取工作台失败:{0}', [e.runtimeType]));
       try {
@@ -19,7 +20,8 @@ extension StudioStorage on StudioViewModel {
     }
   }
 
-  /// 要存盘的全部内容。待确认的改动和没发出去的引用不存。
+  /// 要存盘的全部内容。待确认的改动和没发出去的引用不存;
+  /// 存盘时(有 [saveFile])顺带把消息附件写成文件。
   Map<String, dynamic> toJson() => {
     ..._pagesJson(),
     'translation': ?_translation,
@@ -30,12 +32,12 @@ extension StudioStorage on StudioViewModel {
       for (final c in _archive)
         if (_closedTabs.contains(c.id)) c.id,
     ],
-    'messages': [for (final m in _messages) m.toJson()],
+    'messages': [for (final m in _messages) m.toJson(files: _files)],
     'chats': [
       for (final c in _archive)
         {
           'id': c.id,
-          'messages': [for (final m in c.messages) m.toJson()],
+          'messages': [for (final m in c.messages) m.toJson(files: _files)],
         },
     ],
     'prompts': [
@@ -48,7 +50,7 @@ extension StudioStorage on StudioViewModel {
   void restore(Map<String, dynamic> j) {
     List<ChatMessage> messages(Object? list) => List.unmodifiable([
       for (final m in (list as List?) ?? const [])
-        ChatMessage.fromJson(m as Map<String, dynamic>),
+        ChatMessage.fromJson(m as Map<String, dynamic>, files: _files),
     ]);
     List<Block> blocksOf(Object? list) => List.unmodifiable([
       for (final b in (list as List?) ?? const [])

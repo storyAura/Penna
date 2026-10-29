@@ -346,9 +346,13 @@ class _BuiltinCard extends StatelessWidget {
     required this.onSave,
     required this.favorite,
     required this.onFavorite,
+    this.formOf,
   });
 
   final CharacterHit hit;
+
+  /// 它是哪个角色变身、换装后的样子;不是形态时是 null。
+  final String? formOf;
   final bool favorite;
   final VoidCallback onFavorite;
 
@@ -374,54 +378,87 @@ class _BuiltinCard extends StatelessWidget {
     ),
   );
 
+  /// 名字和一排按钮;放不下时按钮只留图标,名字进悬停提示。
+  Widget _header(BuildContext context, double width) {
+    final trigger = characterTrigger(hit);
+    final buttons = [
+      (
+        label: tr('复制'),
+        icon: Icons.content_copy,
+        tip: tr('触发词、外貌和服装'),
+        text: _fullPrompt(hit),
+        toast: tr('已复制'),
+      ),
+      if (hit.looks.isNotEmpty && hit.outfit.isNotEmpty)
+        (
+          label: tr('只要外貌'),
+          icon: Icons.face_outlined,
+          tip: tr('不带服装的词'),
+          text: '$trigger, ${hit.looks}',
+          toast: tr('已复制(不带服装)'),
+        ),
+      // 给别的角色换上这一身:不带触发词,否则画出来的是这个角色。
+      if (hit.outfit.isNotEmpty)
+        (
+          label: tr('只要服装'),
+          icon: Icons.checkroom_outlined,
+          tip: tr('不带触发词和外貌的词'),
+          text: hit.outfit,
+          toast: tr('已复制(只有服装)'),
+        ),
+    ];
+    final save = tr('存到我的');
+    // 名字至少留 120,星标 26。
+    final compact =
+        width <
+        146 +
+            pennaButtonsWidth(context, [...buttons.map((b) => b.label), save]);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            trigger,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+        ),
+        _star(favorite, onFavorite),
+        const SizedBox(width: 4),
+        for (final b in buttons)
+          PennaButton(
+            label: compact ? '' : b.label,
+            icon: b.icon,
+            tooltip: compact ? '${b.label} · ${b.tip}' : b.tip,
+            onPressed: () => copyWithToast(context, b.text, b.toast),
+          ),
+        PennaButton(
+          label: compact ? '' : save,
+          icon: Icons.bookmark_add_outlined,
+          tooltip: compact ? save : null,
+          onPressed: onSave,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final trigger = characterTrigger(hit);
     return PennaCard(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  trigger,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              _star(favorite, onFavorite),
-              const SizedBox(width: 4),
-              PennaButton(
-                label: tr('复制'),
-                icon: Icons.content_copy,
-                tooltip: tr('触发词、外貌和服装'),
-                onPressed: () =>
-                    copyWithToast(context, _fullPrompt(hit), tr('已复制')),
-              ),
-              if (hit.looks.isNotEmpty && hit.outfit.isNotEmpty)
-                PennaButton(
-                  label: tr('只要外貌'),
-                  icon: Icons.face_outlined,
-                  tooltip: tr('不带服装的词'),
-                  onPressed: () => copyWithToast(
-                    context,
-                    '$trigger, ${hit.looks}',
-                    tr('已复制(不带服装)'),
-                  ),
-                ),
-              PennaButton(
-                label: tr('存到我的'),
-                icon: Icons.bookmark_add_outlined,
-                onPressed: onSave,
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, box) => _header(context, box.maxWidth),
           ),
+          if (formOf != null)
+            Text(
+              tr('{0} 的形态', [formOf]),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: PennaColors.primary),
+            ),
           if (hit.alias.isNotEmpty)
             Text(
               hit.alias,

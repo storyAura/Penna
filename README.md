@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/version-1.0.3--261028--7--dev-F26D7D" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.3--261029--1--dev-F26D7D" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-4F7CF7" alt="license">
 </p>
 
@@ -72,7 +72,7 @@ Agent 与润色的结果以待确认改动的形式提交。改动按行以红�
 - Agent 的提问以竖排选项列出,支持单选和多选;选择成稿中的段落时,直接列出当前页的各段。
 - 要求 Tag 反推或指定本地模型反推时,Agent 调用本机模型处理对话中的图片;所需模型尚未安装时,由用户选择下载或改用已安装的模型。
 - 要求把成稿转成 JSON 或按位置排版时,Agent 把任务交给区域控制工作台的 Agent;布局写好后显示在区域控制工作台,JSON 同时放入成稿区新建的系列。
-- 图片(最大 10 MB)和文本文件可以通过按钮、拖放或 Ctrl+V 作为附件发送。
+- 图片(最大 10 MB)和文本文件可以通过按钮、拖放或 Ctrl+V 作为附件发送,随对话一起保存。
 - 输入 `@` 引用某个 Skill;输入框上方的快捷操作接在已输入的内容之后,可以自定义。
 - 多场对话以标签页并列,关闭的对话保留在历史中。
 - 每个 Preset 有独立的系统提示、温度和 Top P。
@@ -132,7 +132,8 @@ Agent 与润色的结果以待确认改动的形式提交。改动按行以红�
 ### 角色库
 
 - 内置约 7.4 万个 Danbooru 角色,按热门程度排列,可按英文名或中文、日文译名搜索,也可以按系列(作品)名搜索。
-- 每个角色的特征词分为「外貌」和「服装与其他」两组,可单独取用外貌特征。
+- 每个角色的特征词分为「外貌」和「服装与其他」两组,可单独取用外貌或服装。
+- 搜索角色时一并列出它的其他形态(变身、换装后另起名字的角色标签,整理自 Danbooru 的角色 wiki),本体和各形态的特征词都能取用。
 - 「我的」「内置」「收藏」分页显示。「我的」保存自己的角色(名称、别名、简介、提示词和一张图),每个角色可保存多套命名的服装,可拖动排序。
 - 内置的系列和角色都可以加入收藏,在「收藏」页集中查看。
 - Agent 在对话中可以查询角色库(按名称或别名,连同简介和各套服装),也可以把角色存进去。
@@ -297,7 +298,7 @@ Penna 的源代码以 [MIT](LICENSE) 许可发布。
 
 随程序分发的第三方内容保留各自的许可:
 
-- `assets/danbooru_characters.tsv.gz`:由 [StoryAura/Danbooru-Dataset-csv](https://huggingface.co/datasets/StoryAura/Danbooru-Dataset-csv) 的 `danbooru_character_appearance.csv` 打包而成。该表在 [Laxhar/noob-wiki](https://huggingface.co/datasets/Laxhar/noob-wiki)(Apache-2.0)的基础上扩充,扩充部分为 MIT,原有标签遵循 Apache-2.0。
+- `assets/danbooru_characters.tsv.gz`:由 [StoryAura/Danbooru-Dataset-csv](https://huggingface.co/datasets/StoryAura/Danbooru-Dataset-csv) 的 `danbooru_character_appearance.csv` 打包而成。该表在 [Laxhar/noob-wiki](https://huggingface.co/datasets/Laxhar/noob-wiki)(Apache-2.0)的基础上扩充,扩充部分为 MIT,原有标签遵循 Apache-2.0。角色的形态关系取自同一数据集 `danbooru_character_tags.csv` 的父标签和 [Danbooru](https://danbooru.donmai.us) 的角色 wiki。
 - `font/MapleMono-Regular.ttf`:SIL OFL 1.1,见 [font/MapleMono-LICENSE.txt](font/MapleMono-LICENSE.txt)。
 - `font/LXGW975YuanSC-500W.ttf`:SIL OFL 1.1,见 [font/LXGW975Yuan-LICENSE.txt](font/LXGW975Yuan-LICENSE.txt)。
 - `onnxruntime.dll`:[ONNX Runtime](https://github.com/microsoft/onnxruntime),MIT。

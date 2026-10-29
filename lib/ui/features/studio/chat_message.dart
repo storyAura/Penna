@@ -70,10 +70,10 @@ class ChatMessage {
     toolDetails: toolDetails ?? this.toolDetails,
   );
 
-  // ponytail: 附件(图片、文件)只在内存里,不存盘;重开后旧消息不带附件。
-  // 要留的话得把文件另存到「文档\Penna」下再记路径。
-  /// 存盘用。附件不存。
-  Map<String, dynamic> toJson() => {
+  /// 存盘用。给了 [files] 才存附件(另存成文件,这里只记文件名)。
+  Map<String, dynamic> toJson({AttachmentFiles? files}) => {
+    if (files != null && attachments.isNotEmpty)
+      'attachments': [for (final a in attachments) files.put(a)],
     'fromUser': fromUser,
     'text': text,
     'time': time.toIso8601String(),
@@ -86,7 +86,17 @@ class ChatMessage {
     'toolSummary': ?toolSummary,
   };
 
-  factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
+  /// 附件的文件没了的就不带上。
+  factory ChatMessage.fromJson(
+    Map<String, dynamic> j, {
+    AttachmentFiles? files,
+  }) => ChatMessage(
+    attachments: files == null
+        ? const []
+        : List.unmodifiable([
+            for (final a in (j['attachments'] as List?) ?? const [])
+              ?files.get(a),
+          ]),
     fromUser: j['fromUser'] as bool,
     text: j['text'] as String,
     time: DateTime.parse(j['time'] as String),

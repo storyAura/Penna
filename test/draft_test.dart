@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:penna/core/harness/attachment.dart';
 import 'package:penna/core/harness/draft_block.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
 import 'package:penna/data/models/app_config.dart';
@@ -281,6 +283,72 @@ void main() {
       expect(broken.finalPrompt, '');
       expect(file.existsSync(), isFalse);
       broken.dispose();
+    });
+
+    test('消息带的图片和文件存成文件,重开后还在;不再提到的下次读回时清掉', () async {
+      final dir = Directory.systemTemp.createTempSync('penna_ws');
+      final sep = Platform.pathSeparator;
+      final file = File('${dir.path}${sep}workspace.json');
+      final folder = Directory('${dir.path}${sep}attachments${sep}workspace');
+      final pixels = Uint8List.fromList([1, 2, 3, 4]);
+      StudioViewModel open([List<ChatMessage> messages = const []]) =>
+          StudioViewModel(
+            config: tempConfig(),
+            streamChat: (_) => const Stream.empty(),
+            saveFile: file,
+            messages: messages,
+          );
+      final image = Attachment.image(
+        name: '猫.png',
+        mime: 'image/png',
+        bytes: pixels,
+        compressed: true,
+      );
+      final message = ChatMessage(
+        fromUser: true,
+        text: '模仿这个',
+        time: DateTime(2026, 10, 29),
+        // 同一张图附了两次也只存一份。
+        attachments: [
+          image,
+          image,
+          const Attachment.text(name: '设定.md', text: '短发'),
+        ],
+      );
+
+      open([message])
+        ..setText(0, 'a fox')
+        ..dispose();
+      expect(folder.listSync(), hasLength(2));
+
+      final again = open();
+      await again.load();
+      final back = again.messages.single.attachments;
+      expect(back.map((a) => a.name), ['猫.png', '猫.png', '设定.md']);
+      expect(back.first.isImage, isTrue);
+      expect(back.first.compressed, isTrue);
+      expect(back.first.bytes, pixels);
+      expect(back.last.isImage, isFalse);
+      expect(back.last.text, '短发');
+      // 再存一次:文件已经在了,不重写也不多出来。
+      again
+        ..setText(0, 'a red fox')
+        ..dispose();
+      expect(folder.listSync(), hasLength(2));
+
+      // 对话没了:下次读回时清掉。
+      open()
+        ..setText(0, 'empty')
+        ..dispose();
+      await open().load();
+      expect(folder.listSync(), isEmpty);
+
+      // 存档里写的文件名不对(想指到别处)时不认。
+      expect(
+        AttachmentFiles(folder)
+            .get({'name': 'x', 'file': '..${sep}config.json'}),
+        isNull,
+      );
     });
   });
 

@@ -71,7 +71,7 @@ Each page is a separate prompt, and pages can be grouped into series. There can 
 - Questions from the Agent appear as stacked options with single or multiple choice; when the choice is about sections of the draft, the sections of the current page are listed directly.
 - When asked for tag interrogation or a specific local model, the Agent runs the model on this PC against the image in the chat; when the model is not installed yet, you choose whether to download it or use an installed one instead.
 - When asked to turn the draft into JSON or lay it out by position, the Agent hands the task to the Region Control Agent. The finished layout appears in Region Control, and the JSON is also placed into a new series in the draft.
-- Images (up to 10 MB) and text files can be attached with the button, by drag and drop, or with Ctrl+V.
+- Images (up to 10 MB) and text files can be attached with the button, by drag and drop, or with Ctrl+V, and are saved with the conversation.
 - Type `@` to cite a Skill. Quick actions above the input box append to what you have typed and can be customized.
 - Several conversations sit side by side as tabs; closed conversations stay in History.
 - Each Preset has its own system prompt, temperature and Top P.
@@ -130,7 +130,8 @@ A three-page comic laid out in Penna and rendered with MOSS-Image:
 ### Characters
 
 - About 74,000 Danbooru characters built in, ordered by popularity and searchable by English name, Chinese and Japanese aliases, or series name.
-- Each character's feature tags are split into **Looks** and **Outfit and other**, so the appearance can be used on its own.
+- Each character's feature tags are split into **Looks** and **Outfit and other**, so the appearance or the outfit can be used on its own.
+- A character search also lists the character's other forms (transformations and costumes tagged under a different name, collected from Danbooru's character wiki pages), with the feature tags of each form.
 - Separate **Mine**, **Built-in** and **Favorites** tabs. **Mine** holds your own characters (a name, aliases, a description, a prompt and a picture), each with any number of named outfits, and can be reordered by dragging.
 - Built-in series and characters can be added to **Favorites** for quick access.
 - The Agent can search the character library during a chat (by name or alias, including descriptions and outfits) and save characters to it.
@@ -299,7 +300,7 @@ Penna's source code is released under the [MIT](LICENSE) license.
 
 Third-party content shipped with the app keeps its own license:
 
-- `assets/danbooru_characters.tsv.gz`: packed from `danbooru_character_appearance.csv` in [StoryAura/Danbooru-Dataset-csv](https://huggingface.co/datasets/StoryAura/Danbooru-Dataset-csv). That table extends [Laxhar/noob-wiki](https://huggingface.co/datasets/Laxhar/noob-wiki) (Apache-2.0); the extensions are MIT and the original tags remain under Apache-2.0.
+- `assets/danbooru_characters.tsv.gz`: packed from `danbooru_character_appearance.csv` in [StoryAura/Danbooru-Dataset-csv](https://huggingface.co/datasets/StoryAura/Danbooru-Dataset-csv). That table extends [Laxhar/noob-wiki](https://huggingface.co/datasets/Laxhar/noob-wiki) (Apache-2.0); the extensions are MIT and the original tags remain under Apache-2.0. The links between characters and their forms come from the parent tags in `danbooru_character_tags.csv` of the same dataset and from [Danbooru](https://danbooru.donmai.us) character wiki pages.
 - `font/MapleMono-Regular.ttf`: SIL OFL 1.1, see [font/MapleMono-LICENSE.txt](font/MapleMono-LICENSE.txt).
 - `font/LXGW975YuanSC-500W.ttf`: SIL OFL 1.1, see [font/LXGW975Yuan-LICENSE.txt](font/LXGW975Yuan-LICENSE.txt).
 - `onnxruntime.dll`: [ONNX Runtime](https://github.com/microsoft/onnxruntime), MIT.

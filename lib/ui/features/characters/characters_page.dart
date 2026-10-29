@@ -87,6 +87,7 @@ class _CharactersPageState extends State<CharactersPage> {
 
   Widget _builtinCard(CharacterHit hit) => _BuiltinCard(
     hit: hit,
+    formOf: widget.dict?.parentOf(hit.name),
     onSave: () => _edit(null, hit),
     favorite: widget.store.isFavoriteCharacter(hit.name),
     onFavorite: () => widget.store.toggleCharacter(hit.name),
@@ -318,7 +319,13 @@ class _CharactersPageState extends State<CharactersPage> {
         child: _builtin(
           dict,
           q,
-          q.isEmpty ? const [] : dict.search(q, limit: _maxBuiltin),
+          // 查到的角色后面跟着它变身、换装后的其他形态(名字对不上,单靠名字查不到)。
+          q.isEmpty
+              ? const []
+              : dict
+                    .withForms(dict.search(q, limit: _maxBuiltin), perHit: 8)
+                    .take(_maxBuiltin * 2)
+                    .toList(),
         ),
       ),
     ),

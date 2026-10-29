@@ -529,7 +529,9 @@ extension StudioPages on StudioViewModel {
       for (final e in _seriesChats.entries)
         '${e.key}': {
           'id': e.value.id,
-          'messages': [for (final m in e.value.messages) m.toJson()],
+          'messages': [
+            for (final m in e.value.messages) m.toJson(files: _files),
+          ],
         },
     },
   };

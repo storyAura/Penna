@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
@@ -45,24 +46,146 @@ class Attachment {
   const Attachment.image({
     required this.name,
     required String this.mime,
-    required Uint8List this.bytes,
+    required Uint8List bytes,
     this.compressed = false,
-  }) : text = null;
+    // 命名参数不能带下划线,写不成 this._bytes。
+    // ignore: prefer_initializing_formals
+  }) : _bytes = bytes,
+       _text = null,
+       file = null;
 
-  const Attachment.text({required this.name, required String this.text})
+  const Attachment.text({required this.name, required String text})
     : mime = null,
-      bytes = null,
-      compressed = false;
+      _bytes = null,
+      // ignore: prefer_initializing_formals
+      _text = text,
+      compressed = false,
+      file = null;
+
+  /// 存过盘的附件(见 [AttachmentFiles]):内容在 [file] 里,用到时才读进来。
+  /// [mime] 为 null 的是文本文件。
+  const Attachment.saved({
+    required this.name,
+    required String this.file,
+    this.mime,
+    this.compressed = false,
+  }) : _bytes = null,
+       _text = null;
 
   final String name;
   final String? mime;
-  final Uint8List? bytes;
-  final String? text;
+  final Uint8List? _bytes;
+  final String? _text;
+
+  /// 内容所在的文件;刚选上、还没存盘的是 null。
+  final String? file;
 
   /// 这张图是被 [compressImage] 缩小、转成 WebP 的。
   final bool compressed;
 
-  bool get isImage => bytes != null;
+  bool get isImage => mime != null;
+
+  Uint8List? get bytes => isImage ? _bytes ?? _load() as Uint8List : null;
+
+  String? get text => isImage ? null : _text ?? _load() as String;
+
+  /// 从 [file] 读出来的内容,每个附件只读一次。
+  static final _loaded = Expando<Object>();
+
+  /// 文件没了(被删掉)时给空的,不让整条消息出错。
+  Object _load() => _loaded[this] ??= () {
+    final f = File(file!);
+    try {
+      return isImage ? f.readAsBytesSync() : f.readAsStringSync();
+    } on FileSystemException catch (e) {
+      debugPrint(tr('读不了附件「{0}」:{1}', [name, e.message]));
+      return isImage ? Uint8List(0) : '';
+    }
+  }();
+}
+
+/// 把对话里的附件存成文件(工作台存盘时用):[dir] 里每个附件一个文件,
+/// 文件名是内容的 SHA-1,所以同一张图只存一份。存盘的 JSON 里只记文件名。
+// ponytail: 存盘时在界面线程里同步算哈希、写文件(一张最多 10 MB,只算一次);
+// 读回时不读内容,显示或发送时才读。嫌卡再挪到后台。
+class AttachmentFiles {
+  AttachmentFiles(this.dir);
+
+  final Directory dir;
+
+  /// 读回时用到的文件名,[sweep] 留着它们。
+  final _used = <String>{};
+
+  static final _names = Expando<String>();
+
+  /// 存好 [a](已经在 [dir] 里的不再写),返回记进 JSON 的那一项。
+  Map<String, dynamic> put(Attachment a) {
+    final name = _nameOf(a);
+    final f = File('${dir.path}${Platform.pathSeparator}$name');
+    if (!f.existsSync()) {
+      dir.createSync(recursive: true);
+      // 先写临时文件再改名:中途断电也不会留下半截的文件。
+      File('${f.path}.tmp')
+        ..writeAsBytesSync(a.bytes ?? utf8.encode(a.text ?? ''), flush: true)
+        ..renameSync(f.path);
+    }
+    return {
+      'name': a.name,
+      'file': name,
+      'mime': ?a.mime,
+      if (a.compressed) 'compressed': true,
+    };
+  }
+
+  String _nameOf(Attachment a) {
+    final saved = a.file;
+    if (saved != null && File(saved).parent.path == dir.path) {
+      return saved.substring(dir.path.length + 1);
+    }
+    return _names[a] ??= () {
+      final ext = switch (a.mime) {
+        null => 'txt',
+        'image/jpeg' => 'jpg',
+        final m => m.substring(m.indexOf('/') + 1),
+      };
+      final content = a.bytes ?? utf8.encode(a.text ?? '');
+      return '${sha1.convert(content)}.$ext';
+    }();
+  }
+
+  /// [put] 记下的一项读回成附件;文件没了或这一项不对时返回 null。
+  Attachment? get(Object? j) {
+    if (j is! Map) return null;
+    final name = j['file'];
+    // 只认 [put] 起的文件名,不让 JSON 指到别的文件夹去。
+    if (name is! String || !RegExp(r'^[0-9a-f]{40}\.[a-z]+$').hasMatch(name)) {
+      return null;
+    }
+    final path = '${dir.path}${Platform.pathSeparator}$name';
+    if (!File(path).existsSync()) return null;
+    _used.add(name);
+    return Attachment.saved(
+      name: (j['name'] as String?) ?? name,
+      file: path,
+      mime: j['mime'] as String?,
+      compressed: j['compressed'] == true,
+    );
+  }
+
+  /// 读回存档后调:删掉存档里不再提到的文件(上次删掉、清空的对话留下的)。
+  /// 不在存盘时删:操作记录的回滚还可能把删掉的对话拿回来,它只在内存里,重开就没了。
+  void sweep() {
+    try {
+      if (dir.existsSync()) {
+        for (final f in dir.listSync().whereType<File>()) {
+          if (!_used.contains(f.uri.pathSegments.last)) f.deleteSync();
+        }
+      }
+    } on FileSystemException catch (e) {
+      debugPrint(tr('清理附件失败:{0}', [e.message]));
+    }
+    _used.clear();
+  }
 }
 
 /// 给用户看的附件错误。

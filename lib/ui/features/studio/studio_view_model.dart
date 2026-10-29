@@ -151,6 +151,21 @@ class StudioViewModel extends ChangeNotifier {
   /// 工作台存盘的文件(「文档/Penna/workspace.json」);为 null 时不存(测试用)。
   final File? saveFile;
 
+  /// 消息附件另存的文件夹:[saveFile] 旁边的 attachments\<存档名>\(两场对话各一个,
+  /// 清理时互不相干)。不存盘时是 null。
+  late final AttachmentFiles? _files = () {
+    final file = saveFile;
+    if (file == null) return null;
+    final sep = Platform.pathSeparator;
+    final name = file.uri.pathSegments.last.replaceFirst(
+      RegExp(r'\.json$'),
+      '',
+    );
+    return AttachmentFiles(
+      Directory('${file.parent.path}${sep}attachments$sep$name'),
+    );
+  }();
+
   Timer? _saveTimer;
 
   /// 有改动就过一小会儿存一次;生成回复时先不存,结束时那次通知会补上。

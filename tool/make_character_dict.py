@@ -6,6 +6,8 @@
     python tool/make_character_dict.py dataset/danbooru_character_appearance.csv
         # 已经分好的整表(列是 name, series, looks, outfit, alias)直接打包,不再分词;
         # 现在内置的就是这张,来自 https://huggingface.co/datasets/StoryAura/Danbooru-Dataset-csv
+        # 同一个文件夹里有 danbooru_character_forms.csv(tool/fetch_character_forms.py 抓的)时,
+        # 每行多一列「是哪个角色的形态」
 
 每行输出「角色名 \t 作品 \t 外貌 \t 服装与其他 \t 别名」,按图的数量从多到少排;名字里的下划线换成空格。
 别名(中文、日文译名)来自同一个文件夹里的 danbooru_character_tags.csv,没有这个文件就留空;
@@ -154,11 +156,67 @@ def main(folder: str, review: bool) -> None:
 
 
 FINISHED = ['name', 'series', 'looks', 'outfit', 'alias']
+FORMS = 'danbooru_character_forms.csv'
+
+
+def parents(folder: str, rows: list[list[str]]) -> dict[str, str]:
+    """每个形态(变身、换装后的另一个角色标签)属于哪个角色,都换成表里的名字。
+
+    两个来源,都在整表旁边:danbooru_character_tags.csv 的 parent_tag(Danbooru 的父标签),
+    和 tool/fetch_character_forms.py 从角色 wiki 的「Appearance」这类小节抓的 FORMS。
+    两边都要在表里、是同一部作品;一层层往上找到最上面那个(不成环),所以一个角色的
+    所有形态都挂在同一个名字上。
+    """
+    series = {r[0]: r[1] for r in rows}
+    # 角色表里的名字可能是旧的(改过名),旧名在别名里。
+    renamed = {}
+    for name, _, _, _, alias in rows:
+        for a in alias.split(', '):
+            if a.isascii() and a:
+                renamed.setdefault(clean(a).lower(), name)
+
+    def known(tag: str) -> str | None:
+        name = clean(tag).lower()
+        return name if name in series else renamed.get(name)
+
+    links = []
+    path = os.path.join(folder, ALIASES)
+    if os.path.exists(path):
+        with io.open(path, encoding='utf-8-sig', newline='') as f:
+            links += [(r['parent_tag'], r['character_tag'])
+                      for r in csv.DictReader(f) if r['parent_tag'].strip()]
+    path = os.path.join(folder, FORMS)
+    if os.path.exists(path):
+        with io.open(path, encoding='utf-8-sig', newline='') as f:
+            links += [(r['parent'], r['form']) for r in csv.DictReader(f)]
+    else:
+        print('没有', FORMS, ',只用父标签(先跑 tool/fetch_character_forms.py)')
+
+    up = {}
+
+    def top(name: str) -> str:
+        seen = set()
+        while name in up and name not in seen:
+            seen.add(name)
+            name = up[name]
+        return name
+
+    for parent, form in links:
+        parent, form = known(parent), known(form)
+        if not parent or not form or parent == form or form in up:
+            continue
+        a, b = series[parent], series[form]
+        if a and b and a != b:
+            continue
+        if top(parent) != form:
+            up[form] = parent
+    return {form: top(form) for form in up}
 
 
 def from_table(path: str) -> None:
-    """已经分好外貌、服装的整表(列是 FINISHED 那五个,按热门程度排好)直接打包。"""
-    lines = []
+    """已经分好外貌、服装的整表(列是 FINISHED 那五个,按热门程度排好)直接打包。
+    每行最后多一列:它是哪个角色的形态(见 [parents]),不是形态的留空。"""
+    rows = []
     with io.open(path, encoding='utf-8-sig', newline='') as f:
         reader = csv.DictReader(f)
         if reader.fieldnames != FINISHED:
@@ -166,13 +224,17 @@ def from_table(path: str) -> None:
         for row in reader:
             name = clean(row['name'])
             if name:
-                lines.append('\t'.join([
+                rows.append([
                     name, clean(row['series']), clean(row['looks']),
-                    clean(row['outfit']), cut(row['alias'])]))
+                    clean(row['outfit']), cut(row['alias'])])
+    parent = parents(os.path.dirname(path), rows)
+    lines = ['\t'.join([*r, parent.get(r[0], '')]) for r in rows]
     out = os.path.join('assets', 'danbooru_characters.tsv.gz')
     with io.open(out, 'wb') as f:
         f.write(gzip.compress('\n'.join(lines).encode('utf-8'), 9))
-    print(len(lines), 'characters ->', out, round(os.path.getsize(out) / 1e6, 2), 'MB')
+    print(len(lines), 'characters (', len(parent), 'forms of',
+          len(set(parent.values())), 'characters) ->', out,
+          round(os.path.getsize(out) / 1e6, 2), 'MB')
 
 
 if __name__ == '__main__':

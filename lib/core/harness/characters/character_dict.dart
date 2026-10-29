@@ -17,12 +17,22 @@ typedef CharacterHit = ({
 /// 内置的 Danbooru 角色库:角色名、作品、分好的特征词、别名。
 /// 数据由 tool/make_character_dict.py 从 dataset/ 里那几份表合并精简而成。
 class CharacterDict {
-  /// [tsv] 每行是「角色名 \t 作品 \t 外貌 \t 服装与其他 \t 别名」,按图的数量从多到少排好。
-  CharacterDict.parse(String tsv)
-    : _rows = List.unmodifiable([
-        for (final line in tsv.split('\n'))
-          if (line.isNotEmpty) _row(line.split('\t')),
-      ]);
+  /// [tsv] 每行是「角色名 \t 作品 \t 外貌 \t 服装与其他 \t 别名 \t 本体」,按图的数量
+  /// 从多到少排好。「本体」是这个角色变身、换装前的那个角色(见 [formsOf]),不是形态的留空。
+  factory CharacterDict.parse(String tsv) {
+    final rows = <CharacterHit>[];
+    final parents = <String, String>{};
+    for (final line in tsv.split('\n')) {
+      if (line.isEmpty) continue;
+      final parts = line.split('\t');
+      final row = _row(parts);
+      rows.add(row);
+      if (parts.length > 5 && parts[5].isNotEmpty) parents[row.name] = parts[5];
+    }
+    return CharacterDict._(List.unmodifiable(rows), Map.unmodifiable(parents));
+  }
+
+  CharacterDict._(this._rows, this._parents);
 
   /// 后面几列没有的算空的。
   static CharacterHit _row(List<String> parts) {
@@ -40,6 +50,9 @@ class CharacterDict {
   }
 
   final List<CharacterHit> _rows;
+
+  /// 形态 → 本体(都是最上面那个,不会一层套一层)。
+  final Map<String, String> _parents;
 
   int get length => _rows.length;
 
@@ -66,6 +79,49 @@ class CharacterDict {
 
   /// 按角色名取回(收藏只记名字);同名的取图多的那个。
   CharacterHit? byName(String name) => _byName[name];
+
+  /// 这个角色是哪个角色的形态;不是形态时是 null。
+  String? parentOf(String name) => _parents[name];
+
+  /// 本体 → 它的各个形态的名字,图多的在前。只算一次。
+  late final _forms = () {
+    final map = <String, List<String>>{};
+    for (final r in _rows) {
+      final parent = _parents[r.name];
+      if (parent != null) (map[parent] ??= []).add(r.name);
+    }
+    return map;
+  }();
+
+  /// 同一个角色的其他样子:有的角色变身、换装后是另一个角色标签,名字对不上
+  /// (`moria luluka` 变身后是 `cure arcana shadow`)。[name] 是本体时给它的各个形态;
+  /// 是形态时先给本体,再给本体的其他形态。图多的在前,最多 [limit] 个,不含它自己。
+  List<CharacterHit> formsOf(String name, {int limit = 12}) {
+    final root = _parents[name] ?? name;
+    return [if (root != name) root, ...?_forms[root]]
+        .where((n) => n != name)
+        .take(limit)
+        .map((n) => _byName[n])
+        .nonNulls
+        .toList();
+  }
+
+  /// [hits] 里每个内置角色后面跟上它的其他形态(各最多 [perHit] 个),已经列过的不重复。
+  /// 用户自己存的(有提示词)原样留着。
+  List<CharacterHit> withForms(List<CharacterHit> hits, {int perHit = 12}) {
+    final seen = {
+      for (final h in hits)
+        if (h.prompt.isEmpty) h.name,
+    };
+    return [
+      for (final h in hits) ...[
+        h,
+        if (h.prompt.isEmpty)
+          for (final f in formsOf(h.name, limit: perHit))
+            if (seen.add(f.name)) f,
+      ],
+    ];
+  }
 
   /// 某个系列名下有几个角色。
   int countOf(String series) => _seriesCount[series] ?? 0;
@@ -181,12 +237,18 @@ splitCharacterTags(String reply) {
 }
 
 /// 把几次查询的结果写成给模型看的一段话。
-String formatCharacterResults(Map<String, List<CharacterHit>> results) => [
+/// [formOf] 给出某个内置角色是哪个角色的形态(`CharacterDict.parentOf`),结果里点明。
+String formatCharacterResults(
+  Map<String, List<CharacterHit>> results, {
+  String? Function(String name)? formOf,
+}) => [
   '【角色库查询结果】每个角色给出触发词(写进提示词就能认出这个角色)和特征词。'
       '特征词分两行:「外貌」是头发、眼睛、体型这些长在身上的,「服装」是原设的衣服和饰品。'
       '用户只要这个角色的长相、要给它换衣服或另外指定了穿着时,只用「外貌」那一行,'
       '「服装」那一行的词一个都不要带;用户要原设、或没提衣服时两行都用。'
       '没有特征词的角色只有触发词可用。「又叫」是它的别名,只用来认人,不要写进提示词。'
+      '有「形态」一行的是另一个角色变身、换装后的样子,它有自己的触发词和特征词:'
+      '用户说的是本体、没提变身或哪套衣服时用本体;点名变身后的、某套衣服时用那个形态。'
       '用户自己存的角色:开头是用户给它起的名字;「别名」是同一个角色的别的叫法(可能是英文名、'
       'Danbooru 名或昵称),用户用名字或任一个别名说的都是它。「提示词」是基础,写法以它为准;'
       '「服装·名字」是另存的几套衣服,用户点名哪套就把「提示词」里的穿着换成那一套,没点名就照「提示词」,'
@@ -195,7 +257,7 @@ String formatCharacterResults(Map<String, List<CharacterHit>> results) => [
   '<character-results>',
   for (final MapEntry(key: query, value: hits) in results.entries)
     '查「${_plain(query, 80)}」:\n'
-        '${hits.isEmpty ? '没有找到' : hits.map(_describe).join('\n')}'
+        '${hits.isEmpty ? '没有找到' : hits.map((h) => _describe(h, formOf)).join('\n')}'
         '${_mixed(hits) ? '\n这个名字同时对上了用户自己存的角色和内置的角色:先用 <options> 问用户指的是哪一个'
                   '(用户存的写它的名字,内置的写触发词),不要自己挑;问清楚之前不写 <draft> 和 <layout>。' : ''}',
   '</character-results>',
@@ -205,7 +267,7 @@ String formatCharacterResults(Map<String, List<CharacterHit>> results) => [
 bool _mixed(List<CharacterHit> hits) =>
     hits.any((h) => h.prompt.isNotEmpty) && hits.any((h) => h.prompt.isEmpty);
 
-String _describe(CharacterHit c) => [
+String _describe(CharacterHit c, String? Function(String)? formOf) => [
   '- ${_plain(c.name, 80)}'
       '${c.prompt.isEmpty ? '' : '(用户自己存的)'}',
   if (c.prompt.isNotEmpty) ...[
@@ -216,6 +278,8 @@ String _describe(CharacterHit c) => [
       '  服装·${_plain(o.name.isEmpty ? '未命名' : o.name, 40)}:'
           '${o.prompt.isEmpty ? '(没写提示词)' : _plain(o.prompt, 800)}',
   ] else ...[
+    if (formOf?.call(c.name) case final root?)
+      '  形态:${_plain(root, 80)} 的另一个样子',
     '  触发词:${_plain(characterTrigger(c), 160)}',
     // 别名只是帮着认人(是不是用户说的那个),不写进提示词。
     if (c.alias.isNotEmpty) '  又叫:${_plain(c.alias, 80)}',
