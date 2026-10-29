@@ -188,6 +188,30 @@ class _Block extends StatelessWidget {
   }
 }
 
+/// 「模型」那一栏右上角:加一个放着已有模型的文件夹,扫完说一声找到了什么。
+class _AddFolder extends StatelessWidget {
+  const _AddFolder({required this.model});
+
+  final LocalModel model;
+
+  Future<void> _add(BuildContext context) async {
+    final path = await getDirectoryPath();
+    if (path == null) return;
+    await model.addFolder(path);
+    if (context.mounted) showToast(context, model.foundSummary);
+  }
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: tr('添加已有模型的文件夹'),
+    iconSize: 16,
+    visualDensity: VisualDensity.compact,
+    color: PennaColors.slate500,
+    icon: const Icon(Icons.create_new_folder_outlined),
+    onPressed: model.scanning ? null : () => _add(context),
+  );
+}
+
 /// 一行可下载的东西:名字、说明,右边是下载 / 进度 / 删除。
 class _DownloadRow extends StatelessWidget {
   const _DownloadRow({

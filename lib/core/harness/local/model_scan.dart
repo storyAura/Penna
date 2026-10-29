@@ -6,12 +6,14 @@ import 'llama_server.dart';
 import 'tagger.dart';
 
 // 在用户指定的文件夹(连同子文件夹)里找已经有的模型,免得同一个模型反复下载。
-// 认得 BooruDatasetTagManagerPlus(Models\SmilingWolf\wd-...\)、
-// NLapt(模型目录\<id>\xxx.gguf)和 HuggingFace 缓存(models--作者--名字\snapshots\<哈希>\)的放法。
+// 认得 BooruDatasetTagManagerPlus(Models\SmilingWolf\wd-...\)、ComfyUI-WD14-Tagger(名字.onnx + 名字.csv)、
+// NLapt(模型目录\<id>\xxx.gguf)、HuggingFace 缓存(models--作者--名字\snapshots\<哈希>\)
+// 和 ModelScope 缓存(作者\名字\,名字里的点写成 ___)的放法。
 
 /// 扫到的东西,都是完整路径。
 typedef FoundModels = ({
-  /// 放着 model.onnx 和一种标签表的文件夹(打标模型,见 [taggerLabelFiles])。
+  /// 打标模型本体:旁边有一种标签表的 model.onnx(见 [taggerLabelFiles]),
+  /// 或有同名 .csv 的「名字.onnx」。
   List<String> taggers,
 
   /// 模型本体 .gguf(名字里带 mmproj 的算视觉组件,不在这里)。
@@ -72,7 +74,7 @@ FoundModels scanModelFolders(
     } on FileSystemException {
       continue;
     }
-    final files = <String>{};
+    final files = <String, String>{}; // 小写的文件名 → 路径
     for (final e in entries) {
       if (++seen > maxEntries) {
         truncated = true;
@@ -90,20 +92,35 @@ FoundModels scanModelFolders(
           queue.add((Directory(e.path), depth + 1));
         }
       } else if (type == FileSystemEntityType.file) {
-        files.add(name);
+        files[name] = e.path;
         if (name.endsWith('.gguf')) {
           (isMmproj(name) ? mmprojs : ggufs).add(e.path);
-        } else if (name == llamaServerFileName) {
-          servers.add(e.path);
         }
       }
     }
-    if (files.contains(taggerModelFile) &&
-        taggerLabelFiles.keys.any(files.contains)) {
-      taggers.add(dir.path);
+    // 别的程序也有叫 llama-server 的(不认 -m 这些参数):旁边要有 llama.cpp 自己的
+    // 库或工具(ggml.dll、llama.dll、libllama.so、llama-cli.exe……)才算。
+    if (files[llamaServerFileName] case final exe?
+        when files.keys.any(
+          (n) =>
+              n != llamaServerFileName &&
+              RegExp(r'^(lib)?(ggml|llama)').hasMatch(n),
+        )) {
+      servers.add(exe);
     }
-    if (florenceOnnx.every(files.contains) &&
-        (files.contains(florenceTokenizer) ||
+    if (files[taggerModelFile] case final model?
+        when taggerLabelFiles.keys.any(files.containsKey)) {
+      taggers.add(model);
+    }
+    for (final MapEntry(key: name, value: path) in files.entries) {
+      if (name != taggerModelFile &&
+          name.endsWith('.onnx') &&
+          files.containsKey('${name.substring(0, name.length - 5)}.csv')) {
+        taggers.add(path);
+      }
+    }
+    if (florenceOnnx.every(files.containsKey) &&
+        (files.containsKey(florenceTokenizer) ||
             File(
               '${dir.parent.path}${Platform.pathSeparator}$florenceTokenizer',
             ).existsSync())) {
@@ -121,9 +138,39 @@ FoundModels scanModelFolders(
   );
 }
 
-/// 这个文件夹是不是清单里的那个打标模型:路径里有一层的名字以模型名结尾
+/// 常见的模型缓存(HuggingFace、ModelScope)里存在的那些,不用添加也会找。
+List<String> cacheFolders(Map<String, String> env) {
+  final sep = Platform.pathSeparator;
+  final home = env['USERPROFILE'] ?? env['HOME'];
+  String? under(String? base, String rest) =>
+      base == null ? null : '$base$sep$rest';
+  final hf =
+      env['HF_HUB_CACHE'] ??
+      env['HUGGINGFACE_HUB_CACHE'] ??
+      under(env['HF_HOME'] ?? under(home, '.cache${sep}huggingface'), 'hub');
+  final ms = env['MODELSCOPE_CACHE'] ?? under(home, '.cache${sep}modelscope');
+  return [
+    for (final d in [hf, ms])
+      if (d != null && Directory(d).existsSync()) d,
+  ];
+}
+
+/// 认打标模型用的路径:model.onnx 看它所在的文件夹,「名字.onnx」看去掉后缀的名字。
+String taggerDir(String model) =>
+    fileName(model).toLowerCase() == taggerModelFile
+    ? _parent(model)
+    : model.substring(0, model.length - '.onnx'.length);
+
+/// 打标模型 [model] 的标签表:model.onnx 旁边的 [labels];「名字.onnx」配同名的 .csv。
+String taggerLabelsAt(String model, String labels) =>
+    fileName(model).toLowerCase() == taggerModelFile
+    ? '${_parent(model)}${Platform.pathSeparator}$labels'
+    : '${taggerDir(model)}.csv';
+
+/// 这个模型是不是清单里的那个打标模型:[taggerDir] 里有一层的名字以模型名结尾
 /// (wd-vit-tagger-v3、SmilingWolf__wd-vit-tagger-v3、models--SmilingWolf--wd-vit-tagger-v3)。
-String? catalogTaggerFor(String dir) {
+String? catalogTaggerFor(String model) {
+  final dir = taggerDir(model);
   for (final m in taggerModels) {
     // 文件在仓库的子文件夹里的(cl_tagger_1_02/、V1_onnx/):最后一层要是它,上一层对上仓库。
     final at = m.files.first.lastIndexOf('/');
@@ -158,7 +205,12 @@ bool inRepoFolder(String dir, String repo, [String? id]) {
       s == base ||
       s == id ||
       s.endsWith(base) && '-_ '.contains(s[s.length - base.length - 1]);
-  return dir.toLowerCase().split(RegExp(r'[\\/]')).any(hit);
+  // ModelScope 的缓存把名字里的点写成 ___(pixai-tagger-v0___9-onnx)。
+  return dir
+      .toLowerCase()
+      .replaceAll('___', '.')
+      .split(RegExp(r'[\\/]'))
+      .any(hit);
 }
 
 final _hash = RegExp(r'^[0-9a-f]{16,}$');

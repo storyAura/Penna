@@ -60,7 +60,7 @@ List<String> _moved<T>(
 
 /// 「Tag 反推」:打标模型清单(按系列分组、拖动排序)、选模型、调阈值、打标。
 extension LocalTagger on LocalModel {
-  /// 文件夹里找到、但不在清单里的打标模型,id 用这个开头接文件夹路径。
+  /// 文件夹里找到、但不在清单里的打标模型,id 用这个开头接模型文件的路径。
   static const _local = 'local:';
 
   /// 能选的打标模型:清单里的,加上文件夹里找到的别的打标模型(按标签表认种类,阈值用常见的默认值)。
@@ -72,7 +72,7 @@ extension LocalTagger on LocalModel {
           (
             id: '$_local$d',
             series: '本机',
-            name: tr('[本机] {0}', [folderTitle(d)]),
+            name: tr('[本机] {0}', [folderTitle(taggerDir(d))]),
             repo: '',
             note: d,
             kind: kind,
@@ -87,10 +87,14 @@ extension LocalTagger on LocalModel {
           ),
   ];
 
-  TaggerKind? _localKind(String dir) => taggerLabelFiles.entries
-      .where((e) => File('$dir$_sep${e.key}').existsSync())
-      .firstOrNull
-      ?.value;
+  /// 「名字.onnx」配同名 .csv 的(ComfyUI 的放法)是 WD;model.onnx 看旁边是哪种标签表。
+  TaggerKind? _localKind(String model) =>
+      fileName(model).toLowerCase() != taggerModelFile
+      ? TaggerKind.wd
+      : taggerLabelFiles.entries
+            .where((e) => File(taggerLabelsAt(model, e.key)).existsSync())
+            .firstOrNull
+            ?.value;
 
   /// 打标模型按系列分好组,按用户拖好的顺序。
   List<ModelGroup<TaggerModel>> get taggerGroups =>
@@ -113,14 +117,14 @@ extension LocalTagger on LocalModel {
   List<RemoteFile> taggerFiles(TaggerModel m) => [
     for (final f in m.files)
       (
-        url: hfFileUrl(source, m.repo, f),
+        url: hfFileUrl(m.repo, f),
         path: '${_taggerFolder(m)}$_sep${fileName(f)}',
         size: null,
         sha256: null,
       ),
   ];
 
-  /// 打标模型在文件夹里找到的位置;自己下载过的不算。
+  /// 打标模型在文件夹里找到的模型文件;自己下载过的不算。
   String? foundTagger(TaggerModel m) => m.id.startsWith(_local)
       ? m.id.substring(_local.length)
       : _found.taggers.where((d) => catalogTaggerFor(d) == m.id).firstOrNull;
@@ -134,13 +138,10 @@ extension LocalTagger on LocalModel {
         labels: '$folder$_sep${fileName(m.labels)}',
       );
     }
-    final dir = foundTagger(m);
-    return dir == null
+    final found = foundTagger(m);
+    return found == null
         ? null
-        : (
-            model: '$dir$_sep$taggerModelFile',
-            labels: '$dir$_sep${fileName(m.labels)}',
-          );
+        : (model: found, labels: taggerLabelsAt(found, fileName(m.labels)));
   }
 
   /// 下载一个打标模型。要申请访问的模型得先在设置里填 HuggingFace Token。
@@ -153,6 +154,7 @@ extension LocalTagger on LocalModel {
       m.id,
       taggerFiles(m),
       headers: m.gated ? {'Authorization': 'Bearer $token'} : const {},
+      estimate: m.size,
     );
   }
 

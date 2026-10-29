@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/version-1.0.3--261029--6--dev-F26D7D" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.3--261029--7--dev-F26D7D" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-4F7CF7" alt="license">
 </p>
 
@@ -86,8 +86,8 @@ Agent 与润色的结果以待确认改动的形式提交。改动按行以红�
 - **LLM 反推**:从 API 管理中已启用的模型里选择一个或两个,同时反推并排显示结果,便于比较;写法跟随当前 Preset。
 - 开启「压缩大图」时,大图放入后自动缩小并转为 WebP。
 - 两类模型均按系列折叠显示,系列与模型都可以拖动调整顺序。
-- 模型与运行时可从 HuggingFace 或国内镜像下载,支持断点续传与完整性校验;需要申请访问的模型使用设置中的 HuggingFace Token 下载。
-- 在「设置 → 本地反推」中可以添加模型文件夹:连同子文件夹一起查找已有的模型(兼容 BooruDatasetTagManagerPlus、NLapt 与 HuggingFace 缓存的目录结构),找到的模型直接使用;llama.cpp 运行时、运行参数与看图要求也在这里设置。
+- 模型的下载来源可选官方源、HuggingFace 加速、ModelScope 或自定义地址,llama.cpp 运行时可选官方源或 GitHub 加速;选中的来源下载不了时自动换用其他来源。下载支持断点续传与完整性校验;需要申请访问的模型使用设置中的 HuggingFace Token 下载。
+- 在「设置 → 本地反推」中可以添加模型文件夹:连同子文件夹一起查找已有的模型(兼容 BooruDatasetTagManagerPlus、ComfyUI-WD14-Tagger、NLapt、HuggingFace 与 ModelScope 缓存的目录结构),本地反推页的「模型」一栏也可以直接添加;HuggingFace 与 ModelScope 的缓存文件夹自动查找。找到的模型直接使用;llama.cpp 运行时、运行参数与看图要求也在这里设置。
 - 看图描述的要求可以像 Preset 一样保存多条,命名并随时切换。
 - 结果可以复制、发送给 Agent 或放到成稿。
 

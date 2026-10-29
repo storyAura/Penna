@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/harness/local/llama_server.dart';
+import '../../../core/harness/local/model_sources.dart';
 import '../../../data/models/app_config.dart';
 import '../../../data/services/config_service.dart';
 import '../../core/theme.dart';
@@ -34,17 +35,56 @@ class LocalSection extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                _label(tr('模型')),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final MapEntry(key: id, value: label)
+                        in modelSources.entries)
+                      PennaChip(
+                        label: tr(label),
+                        selected: local.source == id,
+                        onTap: () => local.update(() => local.source = id),
+                      ),
+                  ],
+                ),
+                if (local.source == 'custom') ...[
+                  gap,
+                  PennaField(
+                    label: tr('自定义来源'),
+                    hint: 'https://hf-mirror.com',
+                    value: local.customSource,
+                    onChanged: (v) =>
+                        local.update(() => local.customSource = v.trim()),
+                  ),
+                  if (local.customSource.isNotEmpty &&
+                      sourceBase(local.customSource) == null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        tr('地址要以 http:// 或 https:// 开头'),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: PennaColors.diffDelText,
+                        ),
+                      ),
+                    ),
+                ],
+                gap,
+                _label(tr('llama.cpp 运行时')),
                 Wrap(
                   spacing: 6,
                   children: [
-                    for (final (id, label) in [
-                      ('mirror', tr('国内镜像')),
-                      ('huggingface', 'HuggingFace'),
+                    for (final (accel, label) in [
+                      (false, tr('官方源')),
+                      (true, tr('GitHub 加速')),
                     ])
                       PennaChip(
                         label: label,
-                        selected: local.source == id,
-                        onTap: () => local.update(() => local.source = id),
+                        selected: local.githubAccel == accel,
+                        onTap: () =>
+                            local.update(() => local.githubAccel = accel),
                       ),
                   ],
                 ),
@@ -90,6 +130,14 @@ Widget _card(String title, Widget child, {Widget? trailing}) => PennaCard(
   ),
 );
 
+Widget _label(String text) => Padding(
+  padding: const EdgeInsets.only(bottom: 6),
+  child: Text(
+    text,
+    style: TextStyle(fontSize: 11.5, color: PennaColors.slate500),
+  ),
+);
+
 Widget _path(String text) => Tooltip(
   message: text,
   child: Text(
@@ -108,24 +156,26 @@ class _Folders extends StatelessWidget {
 
   Future<void> _add() async {
     final path = await getDirectoryPath();
-    if (path != null) local.addFolder(path);
+    if (path != null) await local.addFolder(path);
   }
 
   @override
   Widget build(BuildContext context) {
-    final f = local.found;
-    final counts = [
-      if (f.taggers.isNotEmpty) tr('{0} 个打标模型', [f.taggers.length]),
-      if (f.ggufs.isNotEmpty) tr('{0} 个 GGUF 模型', [f.ggufs.length]),
-      if (f.florences.isNotEmpty) tr('{0} 个 Florence-2', [f.florences.length]),
-      if (f.servers.isNotEmpty) 'llama-server',
-    ];
+    final any = local.modelFolders.isNotEmpty || local.autoFolders.isNotEmpty;
+    Widget row(String folder, Widget end) => Row(
+      children: [
+        Icon(Icons.folder_outlined, size: 15, color: PennaColors.slate500),
+        const SizedBox(width: 6),
+        Expanded(child: _path(folder)),
+        end,
+      ],
+    );
     return _card(
       tr('模型文件夹'),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (local.modelFolders.isNotEmpty)
+          if (any)
             IconButton(
               tooltip: tr('重新扫描'),
               iconSize: 16,
@@ -146,40 +196,34 @@ class _Folders extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (final folder in local.modelFolders)
-            Row(
-              children: [
-                Icon(
-                  Icons.folder_outlined,
-                  size: 15,
-                  color: PennaColors.slate500,
+            row(
+              folder,
+              IconButton(
+                tooltip: tr('移除'),
+                iconSize: 14,
+                visualDensity: VisualDensity.compact,
+                color: PennaColors.slate400,
+                icon: const Icon(Icons.close),
+                onPressed: () => local.removeFolder(folder),
+              ),
+            ),
+          // HuggingFace、ModelScope 的缓存:在就自动找,不能移除。
+          for (final folder in local.autoFolders)
+            row(
+              folder,
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
                 ),
-                const SizedBox(width: 6),
-                Expanded(child: _path(folder)),
-                IconButton(
-                  tooltip: tr('移除'),
-                  iconSize: 14,
-                  visualDensity: VisualDensity.compact,
-                  color: PennaColors.slate400,
-                  icon: const Icon(Icons.close),
-                  onPressed: () => local.removeFolder(folder),
+                child: Text(
+                  tr('自动'),
+                  style: TextStyle(fontSize: 11, color: PennaColors.slate400),
                 ),
-              ],
+              ),
             ),
           Text(
-            local.scanning
-                ? tr('扫描中…')
-                : local.modelFolders.isEmpty
-                ? tr('添加已有模型的文件夹,子文件夹一起查找')
-                : counts.isEmpty
-                ? tr('没有找到可用的模型')
-                : tr(
-                    '找到 {0}'
-                    '{1}',
-                    [
-                      counts.join(tr('、')),
-                      f.truncated ? tr('(文件太多,只查了一部分)') : '',
-                    ],
-                  ),
+            any ? local.foundSummary : tr('添加已有模型的文件夹,子文件夹一起查找'),
             style: TextStyle(fontSize: 11.5, color: PennaColors.slate500),
           ),
         ],

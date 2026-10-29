@@ -202,17 +202,7 @@ class LlamaServer {
       if (_stopped == process) {
         throw LocalServerException(tr('已停止'));
       }
-      if (exited) {
-        final why = _tail.where((l) => l.trim().isNotEmpty).lastOrNull;
-        throw LocalServerException(
-          tr(
-            'llama-server 启动后退出了'
-            '{0}。'
-            '常见原因是显存不够,可以调低 GPU 层数或上下文长度',
-            [why == null ? '' : ':${_short(why)}'],
-          ),
-        );
-      }
+      if (exited) throw LocalServerException(exitReason(_tail, spec.exe));
       if (await _isHealthy(health) && _process == process) return baseUrl!;
       await Future<void>.delayed(poll);
     }
@@ -235,6 +225,29 @@ class LlamaServer {
     process.kill();
     await _exited?.timeout(const Duration(seconds: 10), onTimeout: () {});
   }
+}
+
+/// llama-server 启动后马上退出时,按它最后的错误输出 [tail] 说原因。
+/// 不认参数的多半不是 llama.cpp 的 llama-server(或版本差太多);
+/// 只有输出里提到内存、显存时才说显存不够。
+String exitReason(List<String> tail, String exe) {
+  final why = tail.where((l) => l.trim().isNotEmpty).lastOrNull;
+  final said = why == null ? '' : ':${_short(why)}';
+  final all = tail.join('\n').toLowerCase();
+  if (RegExp(r'unknown (command|argument|option)|unrecognized|invalid argument')
+      .hasMatch(all)) {
+    return tr(
+      '{0} 不认 Penna 用的启动参数{1}。它可能不是 llama.cpp 的 llama-server;'
+      '在「设置 → 本地反推」下载运行时,或换一个 llama-server',
+      [exe, said],
+    );
+  }
+  if (RegExp(
+    r'out of (device )?memory|erroroutofdevicememory|(failed|unable) to allocate',
+  ).hasMatch(all)) {
+    return tr('llama-server 启动后退出了{0}。显存不够,可以调低 GPU 层数或上下文长度', [said]);
+  }
+  return tr('llama-server 启动后退出了{0}', [said]);
 }
 
 String _short(String line) =>

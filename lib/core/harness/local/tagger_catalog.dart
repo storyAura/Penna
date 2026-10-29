@@ -179,12 +179,3 @@ final taggerModels = <TaggerModel>[
       gated: false,
     ),
 ];
-
-/// 下载来源:官方和国内镜像,地址写法一样。
-const hfSources = {
-  'huggingface': 'https://huggingface.co',
-  'mirror': 'https://hf-mirror.com',
-};
-
-String hfFileUrl(String source, String repo, String file) =>
-    '${hfSources[source] ?? hfSources['huggingface']}/$repo/resolve/main/$file';

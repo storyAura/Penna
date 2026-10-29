@@ -43,6 +43,7 @@ class _TagTab extends StatelessWidget {
       children: [
         _Block(
           title: tr('模型'),
+          trailing: _AddFolder(model: model),
           child: _GroupedModelList(
             current: current.series,
             groups: [

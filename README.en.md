@@ -85,8 +85,8 @@ Drop in an image and a model turns it back into tags or a prompt. There are thre
 - **LLM Analysis**: pick one or two enabled models from API Management; they interrogate at the same time and the results are shown side by side for comparison. The writing style follows the current Preset.
 - With **Compress large images** on, large images are shrunk and converted to WebP when added.
 - Both kinds of models are grouped by family; families and models can be dragged to reorder.
-- Models and runtimes download from HuggingFace or a mirror, with resumable downloads and integrity checks. Gated models use the HuggingFace token from Settings.
-- **Settings → Local Interrogate** can add model folders. Folders are searched with their subfolders for existing models (compatible with the folder layouts of BooruDatasetTagManagerPlus, NLapt and the HuggingFace cache), and the models found are used directly. The llama.cpp runtime, run options and captioning instructions are set here as well.
+- Models download from the official source, a HuggingFace mirror, ModelScope or a custom address; the llama.cpp runtime downloads from the official source or a GitHub mirror. When the chosen source fails, the other sources are tried in turn. Downloads are resumable and integrity-checked. Gated models use the HuggingFace token from Settings.
+- **Settings → Local Interrogate** can add model folders. Folders are searched with their subfolders for existing models (compatible with the folder layouts of BooruDatasetTagManagerPlus, ComfyUI-WD14-Tagger, NLapt and the HuggingFace and ModelScope caches), and folders can also be added from the Models panel of the Local Interrogate page. The HuggingFace and ModelScope cache folders are searched automatically, and the models found are used directly. The llama.cpp runtime, run options and captioning instructions are set here as well.
 - Captioning instructions can be saved like Presets: keep several, name them and switch at any time.
 - Results can be copied, sent to the Agent or put into the draft.
 

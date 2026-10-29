@@ -120,6 +120,7 @@ class _NlTab extends StatelessWidget {
     final picked = model.pickedCaption;
     return _Block(
       title: tr('模型'),
+      trailing: _AddFolder(model: model),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

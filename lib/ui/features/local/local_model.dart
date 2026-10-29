@@ -13,6 +13,7 @@ import '../../../core/harness/local/florence.dart';
 import '../../../core/harness/local/llama_server.dart';
 import '../../../core/harness/local/local_tools.dart';
 import '../../../core/harness/local/model_scan.dart';
+import '../../../core/harness/local/model_sources.dart';
 import '../../../core/harness/local/tagger.dart';
 import '../../../core/harness/providers/llm_http.dart';
 import '../../../data/services/florence_engine.dart';
@@ -65,6 +66,7 @@ class LocalModel extends ChangeNotifier {
     LlamaServer? server,
     Future<OnnxModel> Function(String path)? loadOnnx,
     String Function()? hfToken,
+    this.autoFolders = const [],
   }) : server = server ?? LlamaServer(),
        hfToken = hfToken ?? (() => ''),
        _loadOnnx = loadOnnx ?? OnnxModel.load {
@@ -80,8 +82,16 @@ class LocalModel extends ChangeNotifier {
   /// HuggingFace 的 Token(存在设置的机密里);下要申请访问的模型时用。
   final String Function() hfToken;
 
+  /// 不用添加也会找的文件夹(HuggingFace、ModelScope 的缓存,见 [cacheFolders])。
+  final List<String> autoFolders;
+
   // —— 存盘的设置 ——
-  String source = 'mirror';
+  /// 模型的下载来源(见 [modelSources]),和「自定义」时的地址。
+  String source = 'huggingface';
+  String customSource = '';
+
+  /// llama.cpp 运行时先走 GitHub 加速;关着时先直连 GitHub,下不了再走加速。
+  bool githubAccel = false;
 
   /// 选中的打标模型的 id(WD14 的就是仓库名,和以前存的对得上)。
   String taggerRepo = _defaultTagger.id;
@@ -164,6 +174,23 @@ class LocalModel extends ChangeNotifier {
   FoundModels get found => _found;
   bool get scanning => _scanning;
 
+  /// 扫到了什么,给人看的一句话。
+  String get foundSummary {
+    if (_scanning) return tr('扫描中…');
+    final f = _found;
+    final counts = [
+      if (f.taggers.isNotEmpty) tr('{0} 个打标模型', [f.taggers.length]),
+      if (f.ggufs.isNotEmpty) tr('{0} 个 GGUF 模型', [f.ggufs.length]),
+      if (f.florences.isNotEmpty) tr('{0} 个 Florence-2', [f.florences.length]),
+      if (f.servers.isNotEmpty) 'llama-server',
+    ];
+    if (counts.isEmpty) return tr('没有找到可用的模型');
+    return tr('找到 {0}{1}', [
+      counts.join(tr('、')),
+      f.truncated ? tr('(文件太多,只查了一部分)') : '',
+    ]);
+  }
+
   /// 正在下载的东西(按 [download] 时给的名字)和进度。
   Progress? progressOf(String key) => _downloads[key];
   bool get downloading => _downloads.isNotEmpty;
@@ -192,10 +219,11 @@ class LocalModel extends ChangeNotifier {
 
   // —— 模型文件夹 ——
 
-  void addFolder(String path) {
+  /// 加一个模型文件夹,扫完才返回。
+  Future<void> addFolder(String path) async {
     if (modelFolders.contains(path)) return;
     update(() => modelFolders = List.unmodifiable([...modelFolders, path]));
-    rescan();
+    await rescan();
   }
 
   void removeFolder(String path) {
@@ -209,7 +237,8 @@ class LocalModel extends ChangeNotifier {
 
   /// 重新扫一遍模型文件夹。在别的 isolate 里扫,文件多也不卡界面。
   Future<void> rescan() async {
-    final roots = modelFolders;
+    final folders = modelFolders;
+    final roots = [...folders, ...autoFolders];
     _scanning = true;
     notifyListeners();
     FoundModels result = noModels;
@@ -219,7 +248,7 @@ class LocalModel extends ChangeNotifier {
       debugPrint(tr('扫描模型文件夹失败:{0}', [e.runtimeType]));
     }
     // 扫的时候文件夹又变了:以后面那次为准。
-    if (!identical(roots, modelFolders)) return;
+    if (!identical(folders, modelFolders)) return;
     _found = result;
     _scanning = false;
     notifyListeners();
@@ -249,18 +278,27 @@ class LocalModel extends ChangeNotifier {
 
   // —— 下载 ——
 
-  /// 依次下载 [files],进度记在 [key] 下。失败时返回给用户看的原因。
+  /// 下 [f] 时依次试的地址:模型按「下载来源」,llama.cpp 运行时按「GitHub 加速」。
+  /// [gated] 的要带 Token,只发给 HuggingFace 和它的加速站。
+  List<String> _urlsOf(RemoteFile f, {bool gated = false}) {
+    final urls = modelUrls(f.url, source, custom: customSource, gated: gated);
+    return urls.length > 1 ? urls : downloadUrls(f, proxyFirst: githubAccel);
+  }
+
+  /// 依次下载 [files],进度记在 [key] 下。文件大小不全知道时,进度按 [estimate] 算。
+  /// 失败时返回给用户看的原因。
   Future<String?> download(
     String key,
     List<RemoteFile> files, {
     Map<String, String> headers = const {},
+    int? estimate,
   }) async {
     if (dir == null) return tr('没有存放的地方');
     if (_downloads.containsKey(key)) return tr('正在下载');
     final cancel = _cancels[key] = DownloadCancel();
     final sizes = [for (final f in files) f.size];
     final total = sizes.contains(null)
-        ? null
+        ? estimate
         : sizes.fold<int>(0, (a, b) => a + b!);
     var before = 0;
     _downloads[key] = (received: 0, total: total);
@@ -272,6 +310,7 @@ class LocalModel extends ChangeNotifier {
           f,
           cancel: cancel,
           headers: headers,
+          urls: _urlsOf(f, gated: headers.isNotEmpty),
           onProgress: (got, all) {
             _downloads[key] = (
               received: before + got,
@@ -363,6 +402,8 @@ class LocalModel extends ChangeNotifier {
 
   Map<String, Object> toJson() => {
     'source': source,
+    'customSource': customSource,
+    'githubAccel': githubAccel,
     'taggerRepo': taggerRepo,
     'general': general,
     'character': character,
@@ -400,10 +441,17 @@ class LocalModel extends ChangeNotifier {
 
   Future<void> load() async {
     final file = _file;
-    if (file == null || !file.existsSync()) return;
+    if (file != null && file.existsSync()) await _read(file);
+    // 不等它扫完:文件夹大的话要好一会儿,不拦着程序启动。
+    if (modelFolders.isNotEmpty || autoFolders.isNotEmpty) rescan();
+  }
+
+  Future<void> _read(File file) async {
     try {
       final j = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       source = j['source'] as String? ?? source;
+      customSource = j['customSource'] as String? ?? '';
+      githubAccel = j['githubAccel'] as bool? ?? false;
       taggerRepo = j['taggerRepo'] as String? ?? taggerRepo;
       general = (j['general'] as num?)?.toDouble() ?? general;
       character = (j['character'] as num?)?.toDouble() ?? character;
@@ -446,8 +494,6 @@ class LocalModel extends ChangeNotifier {
         for (final p in j['llmPicks'] as List? ?? const [])
           (llm: (p as Map)['llm'] as String, model: p['model'] as String),
       ]);
-      // 不等它扫完:文件夹大的话要好一会儿,不拦着程序启动。
-      if (modelFolders.isNotEmpty) rescan();
       notifyListeners();
     } on Object {
       // 读不了就用默认设置,不拦着程序启动。

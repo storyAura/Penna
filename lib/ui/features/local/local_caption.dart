@@ -99,7 +99,7 @@ extension LocalCaption on LocalModel {
       '$_home${_sep}models${_sep}gguf$_sep${m.id}';
 
   RemoteFile _remote(CaptionModel m, ModelFile f) => (
-    url: hfFileUrl(source, m.repo, f.path),
+    url: hfFileUrl(m.repo, f.path),
     path: '${_folderOf(m)}$_sep${fileName(f.path)}',
     size: f.size,
     sha256: f.sha256,

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/lighting.dart';
 import 'package:penna/core/harness/local/caption_catalog.dart';
+import 'package:penna/core/harness/local/model_sources.dart';
 import 'package:penna/core/harness/local/tagger_catalog.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/archive_store.dart';
@@ -57,6 +58,7 @@ void main() {
       for (final m in captionModels) ...[m.name, m.note],
       for (final m in taggerModels) m.note,
       '本机',
+      ...modelSources.values,
       for (final o in [...builtinSkills, ...builtinTools]) ...[o.label, o.hint],
       for (final a in defaultQuickActions) ...[a.label, a.prompt],
       for (final e in mtEngines) ...[

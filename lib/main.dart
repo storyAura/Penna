@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/harness/characters/character_dict.dart';
+import 'core/harness/local/model_scan.dart';
 import 'core/harness/providers/llm_router.dart';
 import 'core/harness/tags/tag_dictionary.dart';
 import 'core/harness/tags/tag_search.dart';
@@ -117,6 +118,7 @@ Future<void> main() async {
     dir: home,
     streamChat: streamChat,
     hfToken: () => config.config.secrets[hfTokenSecret] ?? '',
+    autoFolders: cacheFolders(Platform.environment),
   );
   await local.load();
   // Agent 在对话里要用本地模型反推时,交给本地反推页这一份。

@@ -9,6 +9,7 @@ import 'package:penna/core/harness/local/caption_catalog.dart';
 import 'package:penna/core/harness/local/download.dart';
 import 'package:penna/core/harness/local/llama_server.dart';
 import 'package:penna/core/harness/local/model_scan.dart';
+import 'package:penna/core/harness/local/model_sources.dart';
 import 'package:penna/core/harness/local/tagger.dart';
 import 'package:penna/ui/features/local/local_model.dart';
 
@@ -97,6 +98,21 @@ void main() {
   });
 
   group('llama-server', () {
+    test('退出的原因:不认参数的说换程序,提到内存的才说显存不够', () {
+      expect(
+        exitReason(["error: unknown command '-m'"], r'F:\x\llama-server.exe'),
+        allOf(contains(r'F:\x\llama-server.exe'), contains('不认')),
+      );
+      expect(
+        exitReason(['ggml_vulkan: ErrorOutOfDeviceMemory'], 'a.exe'),
+        contains('显存不够'),
+      );
+      expect(
+        exitReason(['failed to load model'], 'a.exe'),
+        isNot(contains('显存')),
+      );
+    });
+
     test('参数:-1 层是全部放进显卡,有视觉组件才带 --mmproj', () {
       final spec = (
         exe: 'a.exe',
@@ -238,6 +254,8 @@ void main() {
         ranges.add(range);
         if (request.uri.path == '/missing') {
           request.response.statusCode = 404;
+        } else if (request.uri.path == '/short') {
+          request.response.add(body.sublist(0, 400));
         } else if (range != null) {
           final from = int.parse(range.split('=')[1].split('-')[0]);
           request.response.statusCode = HttpStatus.partialContent;
@@ -285,6 +303,55 @@ void main() {
       expect(downloadUrls(at('https://hf-mirror.com/a', 'ab')), [
         'https://hf-mirror.com/a',
       ]);
+    });
+
+    test('下了一些才断的不换地址,.part 留着下次接着下', () async {
+      final good = file(sha: '${sha256.convert(body)}');
+      await expectLater(
+        downloadFile(
+          good,
+          urls: ['http://127.0.0.1:${http.port}/short', good.url],
+        ),
+        throwsA(isA<DownloadException>()),
+      );
+      expect(ranges, [null]);
+      expect(File('${tmp.path}/out.bin.part').lengthSync(), 400);
+    });
+
+    test('GitHub 加速关着时先直连,再走加速', () {
+      const url = 'https://github.com/o/r/releases/download/v1/a.zip';
+      expect(
+        downloadUrls((
+          url: url,
+          path: 'x',
+          size: null,
+          sha256: 'ab',
+        ), proxyFirst: false),
+        [url, for (final p in githubProxies) '$p$url'],
+      );
+    });
+
+    test('模型来源:选中的先试,再按官方、ModelScope、加速、自定义;没有的跳过', () {
+      final wd = hfFileUrl('SmilingWolf/wd-vit-tagger-v3', 'model.onnx');
+      const ms =
+          'https://modelscope.cn/models/fireicewolf/wd-vit-tagger-v3/resolve/master/model.onnx';
+      const mirror =
+          'https://hf-mirror.com/SmilingWolf/wd-vit-tagger-v3/resolve/main/model.onnx';
+      expect(modelUrls(wd, 'huggingface'), [wd, ms, mirror]);
+      expect(modelUrls(wd, 'modelscope'), [ms, wd, mirror]);
+      expect(modelUrls(wd, 'custom', custom: 'https://my.mirror/ '), [
+        'https://my.mirror/SmilingWolf/wd-vit-tagger-v3/resolve/main/model.onnx',
+        wd,
+        ms,
+        mirror,
+      ]);
+      // 地址不对的自定义来源不试;要 Token 的只发给 HuggingFace 和加速站。
+      expect(modelUrls(wd, 'custom', custom: 'ftp://x'), [wd, ms, mirror]);
+      expect(modelUrls(wd, 'modelscope', gated: true), [wd, mirror]);
+      // ModelScope 上没有的跳过;不是 HuggingFace 文件的原样。
+      final oo = hfFileUrl('Grio43/OppaiOracle', 'V1_onnx/model.onnx');
+      expect(modelUrls(oo, 'modelscope'), hasLength(2));
+      expect(modelUrls('https://x.com/a', 'modelscope'), ['https://x.com/a']);
     });
 
     test('一个地址下不了就换下一个,从头下', () async {
@@ -363,6 +430,17 @@ void main() {
         'llm/qwen/mmproj-qwen.gguf',
         'llm/text-only.gguf',
         'bin/$llamaServerFileName',
+        'bin/ggml.dll',
+        // 别的程序也叫 llama-server,旁边没有 llama.cpp 的库,不算
+        'node-tool/$llamaServerFileName',
+        // ComfyUI-WD14-Tagger 的放法:名字.onnx + 名字.csv
+        'comfy/models/wd-v1-4-moat-tagger-v2.onnx',
+        'comfy/models/wd-v1-4-moat-tagger-v2.csv',
+        'comfy/models/my-comfy-tagger.onnx',
+        'comfy/models/my-comfy-tagger.csv',
+        // ModelScope 缓存:名字里的点写成 ___
+        'ms/hub/models/deepghs/pixai-tagger-v0___9-onnx/model.onnx',
+        'ms/hub/models/deepghs/pixai-tagger-v0___9-onnx/selected_tags.csv',
         // 跳过的文件夹
         'node_modules/x/model.gguf',
       ]);
@@ -371,10 +449,12 @@ void main() {
     test('一层层往下找;认得清单里的模型,跳过 node_modules', () {
       final f = scanModelFolders([root.path]);
 
-      expect(f.taggers, hasLength(4));
+      expect(f.taggers, hasLength(7));
       expect(f.taggers.map(catalogTaggerFor).toSet(), {
         'SmilingWolf/wd-vit-tagger-v3',
         'SmilingWolf/wd-swinv2-tagger-v3',
+        'SmilingWolf/wd-v1-4-moat-tagger-v2',
+        'pixai:v0.9',
         'cl:Nonene/cl_tagger:1_02',
         null,
       });
@@ -424,6 +504,18 @@ void main() {
       // CL 的标签表是 tag_mapping.json。
       final cl = taggerModels.firstWhere((m) => m.kind == TaggerKind.clV1);
       expect(model.taggerPaths(cl)!.labels, endsWith('tag_mapping.json'));
+      // ComfyUI 的:标签表是同名的 .csv。
+      final moat = taggerModels.firstWhere(
+        (m) => m.id == 'SmilingWolf/wd-v1-4-moat-tagger-v2',
+      );
+      final paths = model.taggerPaths(moat)!;
+      expect(paths.model, endsWith('wd-v1-4-moat-tagger-v2.onnx'));
+      expect(paths.labels, endsWith('wd-v1-4-moat-tagger-v2.csv'));
+      final comfy = model.taggers.firstWhere(
+        (m) => m.name == '[本机] my-comfy-tagger',
+      );
+      expect(comfy.kind, TaggerKind.wd);
+      expect(model.taggerPaths(comfy)!.labels, endsWith('my-comfy-tagger.csv'));
 
       final torii = captionModels.firstWhere((m) => m.id == 'toriigate-0.5');
       expect(model.useCaption(torii), isTrue);
@@ -449,7 +541,7 @@ void main() {
       while (again.scanning) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
-      expect(again.found.taggers, hasLength(4));
+      expect(again.found.taggers, hasLength(7));
 
       model.removeFolder(root.path);
       while (model.scanning) {

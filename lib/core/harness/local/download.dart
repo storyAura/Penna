@@ -41,16 +41,15 @@ const githubProxies = [
   'https://gh.llkk.cc/',
 ];
 
-/// 下 [f] 时依次试的地址:GitHub 上的文件先走加速前缀,最后是原地址。
+/// 下 [f] 时依次试的地址:GitHub 上的文件先走加速前缀、最后是原地址
+/// ([proxyFirst] 为假时先原地址、再加速)。
 /// 没有 SHA256 的不走加速:那是别人的服务器,内容被换了校验不出来。
-List<String> downloadUrls(RemoteFile f) {
+List<String> downloadUrls(RemoteFile f, {bool proxyFirst = true}) {
   final host = Uri.tryParse(f.url)?.host;
   final github = host == 'github.com' || host == 'raw.githubusercontent.com';
-  return [
-    if (github && f.sha256 != null)
-      for (final p in githubProxies) '$p${f.url}',
-    f.url,
-  ];
+  if (!github || f.sha256 == null) return [f.url];
+  final proxied = [for (final p in githubProxies) '$p${f.url}'];
+  return proxyFirst ? [...proxied, f.url] : [f.url, ...proxied];
 }
 
 /// 文件已经在了(知道大小时大小也对得上)。
@@ -63,7 +62,8 @@ bool isDownloaded(RemoteFile f) {
 /// 下完并校验通过才改成正式的名字,所以半截文件不会被当成下好了。
 /// 已经下好的直接返回;`.part` 还在时从断开的地方接着下。
 /// 地址按 [urls](默认 [downloadUrls])依次试:一个下不了就换下一个,从头下;
-/// 都不行报最后一个的错。停下([cancel])时抛 [DownloadException],`.part` 留着。
+/// 都不行报最后一个的错。已经下了一些才断的不换(多半是网络晃了一下),`.part` 留着,
+/// 再点一次从同一个地址接着下。停下([cancel])时抛 [DownloadException],`.part` 留着。
 Future<void> downloadFile(
   RemoteFile f, {
   DownloadProgress? onProgress,
@@ -76,6 +76,7 @@ Future<void> downloadFile(
   await part.parent.create(recursive: true);
   final tries = urls ?? downloadUrls(f);
   for (var i = 0; ; i++) {
+    final had = part.existsSync() ? part.lengthSync() : 0;
     try {
       return await _downloadFrom(
         tries[i],
@@ -87,6 +88,7 @@ Future<void> downloadFile(
       );
     } on DownloadException {
       if ((cancel?.cancelled ?? false) || i == tries.length - 1) rethrow;
+      if (part.existsSync() && part.lengthSync() > had) rethrow;
       // 换个地址从头下:不同服务器给的半截不一定接得上。
       if (part.existsSync()) await part.delete();
     }
