@@ -218,6 +218,11 @@ void main() {
         contains('cure arcana shadow'),
       );
       expect(real.parentOf('yuki miku'), 'hatsune miku');
+      // 更正版里形态继承了本体的别名:按译名也找得到。
+      expect(
+        real.search('露露卡', limit: 10).map((h) => h.name),
+        containsAll(['moria luluka', 'moria luluka (civilian)']),
+      );
     });
   });
 

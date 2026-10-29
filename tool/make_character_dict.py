@@ -157,6 +157,7 @@ def main(folder: str, review: bool) -> None:
 
 FINISHED = ['name', 'series', 'looks', 'outfit', 'alias']
 FORMS = 'danbooru_character_forms.csv'
+BASE = 'base_character'
 
 
 def parents(folder: str, rows: list[list[str]]) -> dict[str, str]:
@@ -215,19 +216,28 @@ def parents(folder: str, rows: list[list[str]]) -> dict[str, str]:
 
 def from_table(path: str) -> None:
     """已经分好外貌、服装的整表(列是 FINISHED 那五个,按热门程度排好)直接打包。
-    每行最后多一列:它是哪个角色的形态(见 [parents]),不是形态的留空。"""
+    每行最后多一列:它是哪个角色的形态,不是形态的留空。
+    更正版(danbooru_character_appearance_corrected.csv)多一列 base_character
+    (形态填本体,本体填自己),有它就照它;没有才用 [parents] 自己推。"""
     rows = []
+    base = {}
     with io.open(path, encoding='utf-8-sig', newline='') as f:
         reader = csv.DictReader(f)
-        if reader.fieldnames != FINISHED:
-            sys.exit(f'{path} 的列应该是 {", ".join(FINISHED)}')
+        fields = reader.fieldnames or []
+        if fields not in (FINISHED, [*FINISHED, BASE]):
+            sys.exit(f'{path} 的列应该是 {", ".join(FINISHED)}(可以再加 {BASE})')
         for row in reader:
             name = clean(row['name'])
             if name:
                 rows.append([
                     name, clean(row['series']), clean(row['looks']),
                     clean(row['outfit']), cut(row['alias'])])
-    parent = parents(os.path.dirname(path), rows)
+                base[name] = clean(row.get(BASE) or '')
+    if BASE in fields:
+        # 本体不在表里的也留着:同一个家族的形态之间还能互相找到。
+        parent = {n: b for n, b in base.items() if b and b != n}
+    else:
+        parent = parents(os.path.dirname(path), rows)
     lines = ['\t'.join([*r, parent.get(r[0], '')]) for r in rows]
     out = os.path.join('assets', 'danbooru_characters.tsv.gz')
     with io.open(out, 'wb') as f:

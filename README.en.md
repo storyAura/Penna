@@ -300,7 +300,7 @@ Penna's source code is released under the [MIT](LICENSE) license.
 
 Third-party content shipped with the app keeps its own license:
 
-- `assets/danbooru_characters.tsv.gz`: packed from `danbooru_character_appearance.csv` in [StoryAura/Danbooru-Dataset-csv](https://huggingface.co/datasets/StoryAura/Danbooru-Dataset-csv). That table extends [Laxhar/noob-wiki](https://huggingface.co/datasets/Laxhar/noob-wiki) (Apache-2.0); the extensions are MIT and the original tags remain under Apache-2.0. The links between characters and their forms come from the parent tags in `danbooru_character_tags.csv` of the same dataset and from [Danbooru](https://danbooru.donmai.us) character wiki pages.
+- `assets/danbooru_characters.tsv.gz`: packed from `danbooru_character_appearance_corrected.csv` in [StoryAura/Danbooru-Dataset-csv](https://huggingface.co/datasets/StoryAura/Danbooru-Dataset-csv). That table extends [Laxhar/noob-wiki](https://huggingface.co/datasets/Laxhar/noob-wiki) (Apache-2.0); the extensions are MIT and the original tags remain under Apache-2.0. The links between characters and their forms (the `base_character` column) are compiled from Danbooru tag implications and character wiki pages.
 - `font/MapleMono-Regular.ttf`: SIL OFL 1.1, see [font/MapleMono-LICENSE.txt](font/MapleMono-LICENSE.txt).
 - `font/LXGW975YuanSC-500W.ttf`: SIL OFL 1.1, see [font/LXGW975Yuan-LICENSE.txt](font/LXGW975Yuan-LICENSE.txt).
 - `onnxruntime.dll`: [ONNX Runtime](https://github.com/microsoft/onnxruntime), MIT.
