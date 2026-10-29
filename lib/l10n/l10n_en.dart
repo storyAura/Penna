@@ -1074,4 +1074,5 @@ const en = <String, String>{
   'GitHub 加速': 'GitHub mirror',
   '自动': 'Auto',
   'HuggingFace 加速': 'HuggingFace mirror',
+  '视觉组件 {0} 和模型 {1} 不是一套的,换一个视觉组件': 'Vision component {0} does not belong to model {1}; pick another vision component',
 };

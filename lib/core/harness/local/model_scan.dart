@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'caption_catalog.dart';
 import 'florence.dart';
+import 'gguf.dart';
 import 'llama_server.dart';
 import 'tagger.dart';
 
@@ -28,6 +29,9 @@ typedef FoundModels = ({
   /// 放着 Florence-2 四个 ONNX 的文件夹(分词器在它或它的上一层)。
   List<String> florences,
 
+  /// 各个 .gguf 开头的信息(读不了的不在里面),配视觉组件时用,见 [mmprojFor]。
+  Map<String, GgufInfo> gguf,
+
   /// 文件太多,没扫完就停了。
   bool truncated,
 });
@@ -38,6 +42,7 @@ const noModels = (
   mmprojs: <String>[],
   servers: <String>[],
   florences: <String>[],
+  gguf: <String, GgufInfo>{},
   truncated: false,
 );
 
@@ -63,6 +68,7 @@ FoundModels scanModelFolders(
 }) {
   final taggers = <String>[], ggufs = <String>[], mmprojs = <String>[];
   final servers = <String>[], florences = <String>[];
+  final gguf = <String, GgufInfo>{};
   var seen = 0;
   var truncated = false;
   final queue = <(Directory, int)>[for (final r in roots) (Directory(r), 0)];
@@ -94,7 +100,11 @@ FoundModels scanModelFolders(
       } else if (type == FileSystemEntityType.file) {
         files[name] = e.path;
         if (name.endsWith('.gguf')) {
-          (isMmproj(name) ? mmprojs : ggufs).add(e.path);
+          final info = readGguf(e.path);
+          if (info != null) gguf[e.path] = info;
+          // 名字里没写 mmproj 的视觉组件,看它的架构(clip)也认得出来。
+          final vision = isMmproj(name) || info?.arch == 'clip';
+          (vision ? mmprojs : ggufs).add(e.path);
         }
       }
     }
@@ -134,6 +144,7 @@ FoundModels scanModelFolders(
     mmprojs: mmprojs,
     servers: servers,
     florences: florences,
+    gguf: gguf,
     truncated: truncated,
   );
 }
@@ -230,9 +241,27 @@ String _parent(String path) {
   return cut < 0 ? '' : path.substring(0, cut);
 }
 
-/// 给模型本体配一个视觉组件:同一个文件夹里的优先。没有就是空串。
-String mmprojFor(String gguf, List<String> mmprojs) =>
-    mmprojs.where((p) => _parent(p) == _parent(gguf)).firstOrNull ?? '';
+/// 给模型本体配一个视觉组件([info] 是扫到的各文件开头的信息,见 [ggufFits]):
+/// 同一个文件夹里配得上的优先(宽度对不上的不要,不知道的算能配,确定配得上的排前面);
+/// 再找别处宽度对得上、名字里有模型架构的。都没有就是空串。
+String mmprojFor(
+  String gguf,
+  List<String> mmprojs, [
+  Map<String, GgufInfo> info = const {},
+]) {
+  final model = info[gguf];
+  bool? fits(String p) => ggufFits(model, info[p]);
+  final here = [
+    for (final p in mmprojs)
+      if (_parent(p) == _parent(gguf) && fits(p) != false) p,
+  ];
+  return here.where((p) => fits(p) == true).firstOrNull ??
+      here.firstOrNull ??
+      mmprojs
+          .where((p) => fits(p) == true && ggufNamed(model!, info[p]!))
+          .firstOrNull ??
+      '';
+}
 
 /// 清单里的 GGUF 看图模型在扫到的文件里有没有:任何一个量化档的文件名对上就算,
 /// [prefer] 那一档优先;视觉组件按文件名找,同一个文件夹里的优先。

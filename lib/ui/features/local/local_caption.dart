@@ -20,7 +20,7 @@ extension LocalCaption on LocalModel {
     return [
       for (final g in _found.ggufs)
         if (!known.contains(fileName(g)))
-          (model: g, mmproj: mmprojFor(g, _found.mmprojs)),
+          (model: g, mmproj: mmprojFor(g, _found.mmprojs, _found.gguf)),
     ];
   }
 

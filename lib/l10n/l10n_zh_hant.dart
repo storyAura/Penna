@@ -1051,4 +1051,5 @@ const zhHant = <String, String>{
   'GitHub 加速': 'GitHub 加速',
   '自动': '自動',
   'HuggingFace 加速': 'HuggingFace 加速',
+  '视觉组件 {0} 和模型 {1} 不是一套的,换一个视觉组件': '視覺元件 {0} 和模型 {1} 不是一套的,換一個視覺元件',
 };

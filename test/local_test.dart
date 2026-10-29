@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/local/caption_catalog.dart';
 import 'package:penna/core/harness/local/download.dart';
+import 'package:penna/core/harness/local/gguf.dart';
 import 'package:penna/core/harness/local/llama_server.dart';
 import 'package:penna/core/harness/local/model_scan.dart';
 import 'package:penna/core/harness/local/model_sources.dart';
@@ -226,6 +227,57 @@ void main() {
       );
     });
 
+    test('视觉组件和模型不是一套时不启动,说清是哪两个', () async {
+      final model = File('${tmp.path}/gemma.gguf')
+        ..writeAsBytesSync(_gguf('gemma4', 'Gemma 4', 3840));
+      final mmproj = File('${tmp.path}/mmproj-BF16.gguf')
+        ..writeAsBytesSync(_gguf('clip', 'Qwen3-VL-4B', 2560));
+      final exe = File('${tmp.path}/s.exe')..writeAsStringSync('');
+      final server = LlamaServer(start: (_, _) => fail('不该启动'));
+      await expectLater(
+        server.start((
+          exe: exe.path,
+          model: model.path,
+          mmproj: mmproj.path,
+          port: 1,
+          context: 1,
+          gpuLayers: 0,
+        )),
+        throwsA(
+          isA<LocalServerException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('mmproj-BF16.gguf'), contains('gemma.gguf')),
+          ),
+        ),
+      );
+    });
+
+    test('GGUF 开头:取架构、名字和宽度,跳过前面的数组', () {
+      final model = parseGguf(_gguf('gemma4', 'Gemma 4', 3840))!;
+      expect(
+        (model.arch, model.name, model.width),
+        ('gemma4', 'Gemma 4', 3840),
+      );
+      final vision = parseGguf(_gguf('clip', 'Gemma-4-12B-It', 3840))!;
+      expect(vision.width, 3840);
+      expect(ggufFits(model, vision), isTrue);
+      expect(ggufNamed(model, vision), isTrue);
+      expect(ggufFits(model, parseGguf(_gguf('clip', 'q', 2560))), isFalse);
+      // 不写宽度的(LLaVA 的 mmproj 是 0):说不准。
+      expect(ggufFits(model, parseGguf(_gguf('clip', 'vit', 0))), isNull);
+      expect(
+        parseGguf(Uint8List.fromList(utf8.encode('not a gguf file....'))),
+        isNull,
+      );
+      // 文件被截断:用读到的。
+      final cut = _gguf('llama', 'L', 4096);
+      expect(
+        parseGguf(Uint8List.sublistView(cut, 0, cut.length - 3))?.arch,
+        'llama',
+      );
+    });
+
     test('在解开的运行时里找最浅的 llama-server', () {
       Directory('${tmp.path}/a/b').createSync(recursive: true);
       File('${tmp.path}/a/b/$llamaServerFileName').writeAsStringSync('');
@@ -388,6 +440,40 @@ void main() {
             contains('404'),
           ),
         ),
+      );
+    });
+  });
+
+  group('配视觉组件', () {
+    test('同文件夹里宽度对不上的不配;去别处找宽度对得上、名字有架构的', () {
+      void put(String path, Uint8List bytes) => File('${tmp.path}/$path')
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(bytes);
+      // 截图里的情形:gemma 和 Qwen3-VL 放在同一个文件夹,只有 Qwen 的视觉组件。
+      put('qwen/gemma-4-12B.gguf', _gguf('gemma4', 'gemma4', 3840));
+      put('qwen/Qwen3VL-4B.gguf', _gguf('qwen3vl', 'Qwen3-VL', 2560));
+      put('qwen/mmproj-BF16.gguf', _gguf('clip', 'Qwen3-VL-4B-Instruct', 2560));
+      put('gemma/mmproj-F16.gguf', _gguf('clip', 'Gemma-4-12B-It', 3840));
+      // 名字里没写 mmproj,但架构是 clip:也是视觉组件。
+      put('other/vision.gguf', _gguf('clip', 'Llama-3-8B', 4096));
+
+      final f = scanModelFolders([tmp.path]);
+      String pair(String name) => fileName(
+        mmprojFor(
+          f.ggufs.firstWhere((p) => p.endsWith(name)),
+          f.mmprojs,
+          f.gguf,
+        ),
+      );
+      expect(f.mmprojs, hasLength(3));
+      expect(pair('Qwen3VL-4B.gguf'), 'mmproj-BF16.gguf');
+      expect(
+        mmprojFor(
+          f.ggufs.firstWhere((p) => p.endsWith('gemma-4-12B.gguf')),
+          f.mmprojs,
+          f.gguf,
+        ),
+        endsWith('gemma${Platform.pathSeparator}mmproj-F16.gguf'),
       );
     });
   });
@@ -674,4 +760,40 @@ void main() {
       ));
     });
   });
+}
+
+/// 造一个只有开头信息的 GGUF:前面先放一个字符串数组(像真文件里的那样要跳过),
+/// 再放架构、名字和宽度(模型写 <架构>.embedding_length,视觉组件写 projection_dim)。
+Uint8List _gguf(String arch, String name, int width) {
+  final b = BytesBuilder();
+  void u32(int v) =>
+      b.add((ByteData(4)..setUint32(0, v, Endian.little)).buffer.asUint8List());
+  void u64(int v) =>
+      b.add((ByteData(8)..setUint64(0, v, Endian.little)).buffer.asUint8List());
+  void str(String s) {
+    final bytes = utf8.encode(s);
+    u64(bytes.length);
+    b.add(bytes);
+  }
+
+  b.add(ascii.encode('GGUF'));
+  u32(3);
+  u64(0);
+  u64(4);
+  str('general.tags');
+  u32(9);
+  u32(8);
+  u64(2);
+  str('a');
+  str('bc');
+  str('general.architecture');
+  u32(8);
+  str(arch);
+  str('general.name');
+  u32(8);
+  str(name);
+  str(arch == 'clip' ? 'clip.vision.projection_dim' : '$arch.embedding_length');
+  u32(4);
+  u32(width);
+  return b.toBytes();
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../../l10n/l10n.dart';
+import 'gguf.dart';
 
 // 本地自然语言反推:在本机起一个 llama.cpp 的 llama-server,加载 GGUF 视觉模型,
 // 之后和联网的模型一样走 OpenAI 兼容接口。做法照 NLapt 的 nlapt/local/server.py。
@@ -150,6 +151,16 @@ class LlamaServer {
         throw LocalServerException(tr('找不到{0}:{1}', [what, path]));
       }
     }
+    // 视觉组件和模型不是一套时 llama-server 加载完才退出,还说不清原因;先看文件开头比一下。
+    if (spec.mmproj.isNotEmpty &&
+        ggufFits(readGguf(spec.model), readGguf(spec.mmproj)) == false) {
+      throw LocalServerException(
+        tr('视觉组件 {0} 和模型 {1} 不是一套的,换一个视觉组件', [
+          _name(spec.mmproj),
+          _name(spec.model),
+        ]),
+      );
+    }
     await stop();
     // 端口被别的程序(比如上次没关掉的 llama-server)占着时,新起的会马上退出,
     // 而 /health 却可能是那个旧程序在回答,看着像起来了。先试着占一下这个端口。
@@ -249,6 +260,8 @@ String exitReason(List<String> tail, String exe) {
   }
   return tr('llama-server 启动后退出了{0}', [said]);
 }
+
+String _name(String path) => path.split(RegExp(r'[\\/]')).last;
 
 String _short(String line) =>
     line.length > 160 ? '${line.substring(0, 160)}…' : line;
