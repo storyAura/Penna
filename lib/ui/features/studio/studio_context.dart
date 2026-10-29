@@ -161,7 +161,11 @@ extension StudioContext on StudioViewModel {
     if (unknown.isEmpty) return;
     _updateReply(
       (m) => m.copyWith(
-        toolSummary: tr('{0} 个标签不在词库里', [unknown.length]),
+        // 接在已有的记录(比如程序按名字查了角色库)后面,不盖掉。
+        toolSummary: [
+          ?m.toolSummary,
+          tr('{0} 个标签不在词库里', [unknown.length]),
+        ].join(' · '),
         toolDetails: unknown,
       ),
     );
@@ -402,6 +406,8 @@ extension StudioContext on StudioViewModel {
         '【固定区】成稿里下面这些片段由用户固定,一个字都不能改,也不能挪走:\n'
             '${_blocks.where((b) => b.pinned).map((b) => b.text).join('\n')}\n'
             '它们会自动留在原位,<draft> 里不要重复写。',
+      // 放在最后:有的模型读到后面就忘了技能里写的"先查"。
+      _lookupFirstPrompt(cfg),
     ].where((s) => s.isNotEmpty).join('\n\n');
   }
 
@@ -423,6 +429,7 @@ extension StudioContext on StudioViewModel {
     if (side?.messages.isNotEmpty ?? false) sideNoteForMain,
     _namingNote('layout'),
     _layoutPrompt,
+    _lookupFirstPrompt(cfg),
   ].where((s) => s.isNotEmpty).join('\n\n');
 
   /// 告诉模型用户自己存了哪些角色,它才知道提到这些名字时该去查。

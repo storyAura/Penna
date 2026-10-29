@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/attachment.dart';
 import 'package:penna/core/harness/characters/character_dict.dart';
+import 'package:penna/core/harness/characters/character_mentions.dart';
+import 'package:penna/core/harness/tags/tag_dictionary.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/character_store.dart';
@@ -383,6 +385,70 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('hatsune miku, vocaloid'), findsOneWidget);
       expect(find.text('genshin impact'), findsOneWidget);
+    });
+  });
+
+  group('程序替模型先查角色库', () {
+    test('从一句话里认出角色:中日文别名、英文整词;普通的词不当人名', () {
+      final dict = CharacterDict.parse(
+        '$_tsv\n'
+        'ninja (final fantasy)\tfinal fantasy\t1boy\t\t忍者, 忍者(FF)\n'
+        'tenma\tinazuma eleven\t1boy\t\t松風天馬, 拓天, 雨天\n',
+      );
+      final mentions = CharacterMentions(
+        dict,
+        tags: TagDictionary.parse('ninja\t100\t忍者, しのび\n'),
+      );
+      expect(mentions.inText('画一张初音未来和甘雨的合照'), [
+        'hatsune miku',
+        'ganyu (genshin impact)',
+      ]);
+      expect(mentions.inText('draw Ganyu at the beach'), [
+        'ganyu (genshin impact)',
+      ]);
+      // ganyuu 不是 ganyu;「忍者」是通用标签的意思;「雨天」排在后面的别名里不算。
+      expect(mentions.inText('ganyuu, 一个忍者在雨天奔跑'), isEmpty);
+      expect(mentions.inText('松風天馬踢球'), ['tenma']);
+      expect(mentions.inText('甘雨 初音未来 松風天馬', limit: 2), hasLength(2));
+    });
+
+    test('模型不查也拿得到:提到的角色查好接在消息后面,回复上记一笔;系统提示最后钉着先查再写', () async {
+      final seen = <LlmRequest>[];
+      final store = CharacterStore()
+        ..put(name: '小绿', prompt: 'green hair girl');
+      final vm = _studio(['好了', '好了', '好了'], seen: seen, store: store);
+
+      vm.send('画初音未来在雨里唱歌');
+      await pumpEventQueue();
+      final system = seen.last.messages.first['content']!;
+      expect(system, contains('【先查再写】'));
+      expect(system.indexOf('【先查再写】'), greaterThan(system.indexOf('【可用的技能】')));
+      final asked = seen.last.messages.last['content']!;
+      expect(asked, startsWith('画初音未来在雨里唱歌'));
+      expect(asked, contains('【程序已按用户这句话里的名字查了角色库】'));
+      expect(asked, contains('触发词:hatsune miku, vocaloid'));
+      expect(vm.messages.last.toolSummary, '已按名字查了角色库:hatsune miku');
+
+      // 用户自己存的也认;没提到角色的就不带。
+      vm.send('给小绿画一张');
+      await pumpEventQueue();
+      expect(
+        seen.last.messages.last['content'],
+        contains('提示词:green hair girl'),
+      );
+      // 上一条的查询结果不再重发。
+      expect(
+        seen.last.messages[1]['content'],
+        isNot(contains('【程序已按用户这句话里的名字查了角色库】')),
+      );
+
+      vm.config.update(
+        vm.config.config.copyWith(disabledSkills: const {'character-lib'}),
+      );
+      vm.send('再画一张初音未来');
+      await pumpEventQueue();
+      expect(seen.last.messages.last['content'], '再画一张初音未来');
+      expect(vm.messages.last.toolSummary, isNull);
     });
   });
 

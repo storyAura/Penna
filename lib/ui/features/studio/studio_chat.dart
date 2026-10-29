@@ -151,16 +151,33 @@ extension StudioChat on StudioViewModel {
     final chain = _usable(cfg.agentChain);
     if (chain.isEmpty) return tr('请先在设置里添加模型并填写模型名称');
 
-    _messages = List.unmodifiable([
-      ...history,
-      ChatMessage(fromUser: false, text: '', time: time),
-    ]);
-    final preset = cfg.activePreset;
     // 出错的、被停在开头的空回复不算历史,有的接口会拒收空内容。
     final sent = [
       for (final m in history)
         if (m.fromUser || !m.failed && m.text.isNotEmpty) m,
     ];
+    // 用户这次的话里提到的角色,先替模型查好,接在那条消息后面(查工具那几轮也一直带着)。
+    final ask = sent.where((m) => m.fromUser && !m.tool).lastOrNull;
+    final found = ask == null
+        ? const <String, List<CharacterHit>>{}
+        : _mentioned(ask);
+    final auto = _autoLookupText(found);
+    _messages = List.unmodifiable([
+      ...history,
+      ChatMessage(
+        fromUser: false,
+        text: '',
+        time: time,
+        toolSummary: found.isEmpty
+            ? null
+            : tr('已按名字查了角色库:{0}', [found.keys.join(tr('、'))]),
+      ),
+    ]);
+    final preset = cfg.activePreset;
+    final enabled = {
+      for (final s in skills?.all ?? const <UserSkill>[])
+        if (!cfg.disabledSkills.contains(s.id)) s.id,
+    };
     final requests = _requests(cfg, chain, preset, [
       {
         'role': 'system',
@@ -171,10 +188,9 @@ extension StudioChat on StudioViewModel {
       for (final (i, m) in sent.indexed)
         {
           'role': m.fromUser ? 'user' : 'assistant',
-          'content': switch (_withReferences(m, {
-            for (final s in skills?.all ?? const <UserSkill>[])
-              if (!cfg.disabledSkills.contains(s.id)) s.id,
-          })) {
+          'content': switch (identical(m, ask) && auto.isNotEmpty
+              ? '${_withReferences(m, enabled)}\n\n$auto'
+              : _withReferences(m, enabled)) {
             // 自己以前写的布局、透视、灯光不重发:画板可能已被用户改过。
             // 后面紧跟着工具结果的是查资料的那条,里面的布局没放上画板。
             final text when !m.fromUser => forgetLighting(

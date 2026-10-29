@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/version-1.0.3--261029--3--dev-F26D7D" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.3--261029--4--dev-F26D7D" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-4F7CF7" alt="license">
 </p>
 
@@ -136,7 +136,7 @@ Agent 与润色的结果以待确认改动的形式提交。改动按行以红�
 - 搜索角色时一并列出它的其他形态(变身、换装后另起名字的角色标签,整理自 Danbooru 的角色 wiki),本体和各形态的特征词都能取用。
 - 「我的」「内置」「收藏」分页显示。「我的」保存自己的角色(名称、别名、简介、提示词和一张图),每个角色可保存多套命名的服装,可拖动排序。
 - 内置的系列和角色都可以加入收藏,在「收藏」页集中查看。
-- Agent 在对话中可以查询角色库(按名称或别名,连同简介和各套服装),也可以把角色存进去。
+- Agent 在对话中可以查询角色库(按名称或别名,连同简介和各套服装),也可以把角色存进去。对话中提到角色库里的角色时,程序预先查好它的触发词和特征词,随消息一并交给 Agent。
 
 ### 润色与翻译
 

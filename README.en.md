@@ -134,7 +134,7 @@ A three-page comic laid out in Penna and rendered with MOSS-Image:
 - A character search also lists the character's other forms (transformations and costumes tagged under a different name, collected from Danbooru's character wiki pages), with the feature tags of each form.
 - Separate **Mine**, **Built-in** and **Favorites** tabs. **Mine** holds your own characters (a name, aliases, a description, a prompt and a picture), each with any number of named outfits, and can be reordered by dragging.
 - Built-in series and characters can be added to **Favorites** for quick access.
-- The Agent can search the character library during a chat (by name or alias, including descriptions and outfits) and save characters to it.
+- The Agent can search the character library during a chat (by name or alias, including descriptions and outfits) and save characters to it. When a message names a character from the library, its trigger and feature tags are looked up in advance and sent to the Agent with the message.
 
 ### Polish and translate
 

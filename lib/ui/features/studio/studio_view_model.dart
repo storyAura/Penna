@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/characters/character_dict.dart';
+import '../../../core/harness/characters/character_mentions.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
@@ -28,6 +29,7 @@ import '../../../l10n/l10n.dart';
 
 export 'chat_message.dart';
 
+part 'studio_auto_lookup.dart';
 part 'studio_chat.dart';
 part 'studio_context.dart';
 part 'studio_draft.dart';
@@ -153,6 +155,11 @@ class StudioViewModel extends ChangeNotifier {
 
   /// 消息附件另存的文件夹:[saveFile] 旁边的 attachments\<存档名>\(两场对话各一个,
   /// 清理时互不相干)。不存盘时是 null。
+  /// 从用户的话里认内置角色名(程序替模型先查角色库用),第一次用时才建索引。
+  late final CharacterMentions? _mentions = characterDict == null
+      ? null
+      : CharacterMentions(characterDict!, tags: tagDictionary);
+
   late final AttachmentFiles? _files = () {
     final file = saveFile;
     if (file == null) return null;

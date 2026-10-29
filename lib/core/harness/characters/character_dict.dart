@@ -56,6 +56,9 @@ class CharacterDict {
 
   int get length => _rows.length;
 
+  /// 全部角色,图多的在前。
+  Iterable<CharacterHit> get all => _rows;
+
   /// 各个作品(系列)和它名下有几个角色,角色多的在前;没写作品的不算。只算一次。
   late final List<({String name, int count})> series = () {
     final counts = <String, int>{};

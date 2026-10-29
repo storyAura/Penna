@@ -88,6 +88,9 @@ class TagDictionary {
 
   int get length => _rows.length;
 
+  /// 全部标签和它们的中文含义(含日文等别的叫法,逗号隔开)。
+  Iterable<TagHit> get all => _rows;
+
   /// 词库里有没有这个标签;写成空格、带权重、带转义的都认。
   bool has(String tag) => _known.contains(normalizeTag(tag));
 
