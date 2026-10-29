@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/version-1.0.3--261029--1--dev-F26D7D" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.3--261029--2--dev-F26D7D" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-4F7CF7" alt="license">
 </p>
 
@@ -72,7 +72,7 @@ Agent 与润色的结果以待确认改动的形式提交。改动按行以红�
 - Agent 的提问以竖排选项列出,支持单选和多选;选择成稿中的段落时,直接列出当前页的各段。
 - 要求 Tag 反推或指定本地模型反推时,Agent 调用本机模型处理对话中的图片;所需模型尚未安装时,由用户选择下载或改用已安装的模型。
 - 要求把成稿转成 JSON 或按位置排版时,Agent 把任务交给区域控制工作台的 Agent;布局写好后显示在区域控制工作台,JSON 同时放入成稿区新建的系列。
-- 图片(最大 10 MB)和文本文件可以通过按钮、拖放或 Ctrl+V 作为附件发送,随对话一起保存。
+- 图片(最大 10 MB)和文本文件可以通过按钮、拖放或 Ctrl+V 作为附件发送,随对话一起保存;点对话里的图片可查看大图、复制,或再次附到输入框。
 - 输入 `@` 引用某个 Skill;输入框上方的快捷操作接在已输入的内容之后,可以自定义。
 - 多场对话以标签页并列,关闭的对话保留在历史中。
 - 每个 Preset 有独立的系统提示、温度和 Top P。

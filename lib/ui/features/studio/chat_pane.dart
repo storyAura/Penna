@@ -400,6 +400,7 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
         onAddSkill: _addSkill,
         onAdoptLayout: _adoptLayout,
         onOpenLayout: widget.onOpenLayout,
+        onReuseAttachment: _reuse,
         streaming: widget.vm.isStreaming && last,
         onRetry: !widget.vm.isStreaming && last && !message.fromUser
             ? _retry
@@ -615,6 +616,17 @@ mixin _Attachments<T extends StatefulWidget> on State<T> {
       showToast(context, tr('大图已压缩为 WebP,可在软件设置里关闭'));
     }
     if (attachment.isImage) _onImage(attachment);
+  }
+
+  /// 对话里以前发过的图(看大图时点「附到输入框」)再附一次。
+  void _reuse(Attachment attachment) {
+    if (_attachments.length >= maxAttachments) {
+      showToast(context, tr('最多 {0} 个附件', [maxAttachments]), warn: true);
+      return;
+    }
+    // 已经附着同一张的不再加。
+    if (!_attachments.contains(attachment)) _add(attachment);
+    _inputFocus.requestFocus();
   }
 
   void _removeAttachment(int i) => setState(() {

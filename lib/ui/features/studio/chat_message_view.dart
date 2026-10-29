@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/harness/attachment.dart';
 import '../../../core/harness/characters/character_dict.dart';
 import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/draft_block.dart';
@@ -52,6 +53,7 @@ class ChatMessageView extends StatelessWidget {
     this.onOpenLayout,
     this.lookups = const [],
     this.onOption,
+    this.onReuseAttachment,
     this.draftSections = const [],
   });
 
@@ -60,6 +62,9 @@ class ChatMessageView extends StatelessWidget {
 
   /// 用户点了回复里的一个选项;为 null 时选项只是灰的(不是最后一条回复,或正在生成)。
   final ValueChanged<String>? onOption;
+
+  /// 看大图时点了「附到输入框」:把那张图加进输入框的附件。
+  final ValueChanged<Attachment>? onReuseAttachment;
 
   /// 写这条回复之前查标签的那几次记录,合成一块显示。
   final List<ChatMessage> lookups;
@@ -300,7 +305,10 @@ class ChatMessageView extends StatelessWidget {
                 const SizedBox(height: 10),
               ],
               if (m.attachments.isNotEmpty) ...[
-                AttachmentStrip(attachments: m.attachments),
+                AttachmentStrip(
+                  attachments: m.attachments,
+                  onReuse: onReuseAttachment,
+                ),
                 if (m.text.isNotEmpty) const SizedBox(height: 6),
               ],
               // 只发了附件、没写字的消息不画空气泡。

@@ -71,7 +71,7 @@ Each page is a separate prompt, and pages can be grouped into series. There can 
 - Questions from the Agent appear as stacked options with single or multiple choice; when the choice is about sections of the draft, the sections of the current page are listed directly.
 - When asked for tag interrogation or a specific local model, the Agent runs the model on this PC against the image in the chat; when the model is not installed yet, you choose whether to download it or use an installed one instead.
 - When asked to turn the draft into JSON or lay it out by position, the Agent hands the task to the Region Control Agent. The finished layout appears in Region Control, and the JSON is also placed into a new series in the draft.
-- Images (up to 10 MB) and text files can be attached with the button, by drag and drop, or with Ctrl+V, and are saved with the conversation.
+- Images (up to 10 MB) and text files can be attached with the button, by drag and drop, or with Ctrl+V, and are saved with the conversation; clicking an image in the chat opens it full size, where it can be copied or attached again.
 - Type `@` to cite a Skill. Quick actions above the input box append to what you have typed and can be customized.
 - Several conversations sit side by side as tabs; closed conversations stay in History.
 - Each Preset has its own system prompt, temperature and Top P.

@@ -259,6 +259,7 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
       userSkills: vm.skills?.skills ?? const [],
       onAddSkill: pane._addSkill,
       onAdoptLayout: pane._adoptLayout,
+      onReuseAttachment: _reuse,
       streaming: chat.isStreaming && last,
       onRetry: !chat.isStreaming && last && !row.message.fromUser
           ? _retry

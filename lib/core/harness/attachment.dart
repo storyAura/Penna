@@ -215,6 +215,18 @@ Future<Attachment> compressImage(Attachment a) async {
   );
 }
 
+/// 复制到剪贴板用:Windows 那边(GDI+)读不了 WebP,统一转成 PNG,在另一个线程里做。
+/// 本来就是 PNG 的原样返回;读不了返回 null。
+Future<Uint8List?> toPng(Attachment a) async {
+  final bytes = a.bytes;
+  if (bytes == null || bytes.isEmpty) return null;
+  if (a.mime == 'image/png') return bytes;
+  return Isolate.run(() {
+    final image = img.decodeImage(bytes);
+    return image == null ? null : img.encodePng(image);
+  });
+}
+
 /// 档案库、角色库的预览图:长边缩到这么大。
 const previewMaxSide = 768;
 
