@@ -306,8 +306,22 @@ void main() {
         ranges.add(range);
         if (request.uri.path == '/missing') {
           request.response.statusCode = 404;
+        } else if (request.uri.path == '/forbidden') {
+          request.response.statusCode = 403;
+        } else if (request.uri.path == '/cut') {
+          // 下到一半连接断了。
+          request.response.contentLength = body.length;
+          final socket = await request.response.detachSocket();
+          socket.add(body.sublist(0, 400));
+          await socket.flush();
+          socket.destroy();
+          return;
         } else if (request.uri.path == '/short') {
+          request.response.contentLength = 400;
           request.response.add(body.sublist(0, 400));
+        } else if (request.uri.path == '/page') {
+          request.response.headers.contentType = ContentType.html;
+          request.response.write('<html>502</html>');
         } else if (range != null) {
           final from = int.parse(range.split('=')[1].split('-')[0]);
           request.response.statusCode = HttpStatus.partialContent;
@@ -357,17 +371,91 @@ void main() {
       ]);
     });
 
-    test('下了一些才断的不换地址,.part 留着下次接着下', () async {
+    test('下到一半断了:能校验的换下一个地址接着下', () async {
       final good = file(sha: '${sha256.convert(body)}');
+      await downloadFile(
+        good,
+        urls: ['http://127.0.0.1:${http.port}/cut', good.url],
+      );
+      expect(ranges, [null, 'bytes=400-']);
+      expect(File('${tmp.path}/out.bin').readAsBytesSync(), body);
+    });
+
+    test('下到一半断了:校验不了的换下一个地址从头下', () async {
+      final plain = file();
+      await downloadFile(
+        plain,
+        urls: ['http://127.0.0.1:${http.port}/cut', plain.url],
+      );
+      expect(ranges, [null, null]);
+      expect(File('${tmp.path}/out.bin').readAsBytesSync(), body);
+    });
+
+    test('最后一个地址也断了:.part 留着,下次接着下', () async {
+      final good = file(path: '/cut', sha: '${sha256.convert(body)}');
       await expectLater(
-        downloadFile(
-          good,
-          urls: ['http://127.0.0.1:${http.port}/short', good.url],
-        ),
+        downloadFile(good, urls: [good.url]),
         throwsA(isA<DownloadException>()),
       );
-      expect(ranges, [null]);
       expect(File('${tmp.path}/out.bin.part').lengthSync(), 400);
+    });
+
+    test('前面下的半截不被后面下不了的地址删掉', () async {
+      File('${tmp.path}/out.bin.part').writeAsBytesSync(body.sublist(0, 400));
+      final good = file(sha: '${sha256.convert(body)}');
+      await downloadFile(
+        good,
+        urls: ['http://127.0.0.1:${http.port}/missing', good.url],
+      );
+      expect(ranges, ['bytes=400-', 'bytes=400-']);
+      expect(File('${tmp.path}/out.bin').readAsBytesSync(), body);
+    });
+
+    test('回的不是这个文件(长度不对、报错网页)不写进 .part,换下一个', () async {
+      final sha = '${sha256.convert(body)}';
+      final good = file(sha: sha);
+      await downloadFile(
+        good,
+        urls: ['http://127.0.0.1:${http.port}/short', good.url],
+      );
+      expect(ranges, [null, null]);
+      expect(File('${tmp.path}/out.bin').readAsBytesSync(), body);
+
+      File('${tmp.path}/out.bin').deleteSync();
+      ranges.clear();
+      final RemoteFile noSize = (
+        url: good.url,
+        path: good.path,
+        size: null,
+        sha256: sha,
+      );
+      await downloadFile(
+        noSize,
+        urls: ['http://127.0.0.1:${http.port}/page', good.url],
+      );
+      expect(ranges, [null, null]);
+      expect(File('${tmp.path}/out.bin').readAsBytesSync(), body);
+    });
+
+    test('被拒绝时只有 HuggingFace 上的模型才提登录', () async {
+      Matcher says(Matcher text) => throwsA(
+        isA<DownloadException>().having((e) => e.message, 'message', text),
+      );
+      final refused = file(path: '/forbidden');
+      await expectLater(
+        downloadFile(refused, urls: [refused.url]),
+        says(allOf(contains('403'), isNot(contains('模型')))),
+      );
+      final RemoteFile model = (
+        url: 'https://huggingface.co/a/b/resolve/main/model.onnx',
+        path: refused.path,
+        size: null,
+        sha256: null,
+      );
+      await expectLater(
+        downloadFile(model, urls: [refused.url]),
+        says(allOf(contains('403'), contains('登录'))),
+      );
     });
 
     test('GitHub 加速关着时先直连,再走加速', () {
@@ -406,15 +494,23 @@ void main() {
       expect(modelUrls('https://x.com/a', 'modelscope'), ['https://x.com/a']);
     });
 
-    test('一个地址下不了就换下一个,从头下', () async {
+    test('校验不了的:一个地址下不了就换下一个,从头下', () async {
       File('${tmp.path}/out.bin.part').writeAsBytesSync([1, 2, 3]);
-      final good = file(sha: '${sha256.convert(body)}');
+      final plain = file();
       await downloadFile(
-        good,
-        urls: ['http://127.0.0.1:${http.port}/missing', good.url],
+        plain,
+        urls: ['http://127.0.0.1:${http.port}/missing', plain.url],
       );
       expect(File('${tmp.path}/out.bin').readAsBytesSync(), body);
       expect(ranges, ['bytes=3-', null]);
+    });
+
+    test('接上的半截校验不对:删掉,换下一个地址从头下', () async {
+      File('${tmp.path}/out.bin.part').writeAsBytesSync([1, 2, 3]);
+      final good = file(sha: '${sha256.convert(body)}');
+      await downloadFile(good, urls: [good.url, good.url]);
+      expect(ranges, ['bytes=3-', null]);
+      expect(File('${tmp.path}/out.bin').readAsBytesSync(), body);
     });
 
     test('校验不对就删掉;找不到文件说人话', () async {

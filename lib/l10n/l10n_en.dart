@@ -18,6 +18,8 @@ const en = <String, String>{
       'Checksum failed. The file was deleted, please download again',
   '下载被拒绝(HTTP {0}):这个模型可能要登录才能下':
       'Download refused (HTTP {0}): this model may require signing in',
+  '下载被拒绝(HTTP {0})': 'Download refused (HTTP {0})',
+  '服务器回的不是这个文件': 'The server did not return this file',
   '找不到这个文件(HTTP 404)': 'File not found (HTTP 404)',
   '下载失败(HTTP {0})': 'Download failed (HTTP {0})',
   '标签': 'Tags',
