@@ -7,7 +7,7 @@ part of 'chat_pane.dart';
 const _sideOpacity = 0.9;
 const _sideWidth = 440.0;
 
-/// 浮窗里的快捷操作最多露出几个,多的横着滚。
+/// 浮窗里的快捷操作最多露出几个,多的用两头的箭头翻。
 const _maxSideQuickActions = 4;
 
 /// 快捷操作那一排最右边的开关。
@@ -225,12 +225,15 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
             ),
           ),
           IconButton(
-            tooltip: tr('清空副聊天'),
+            tooltip: tr('新对话'),
             iconSize: 16,
             visualDensity: VisualDensity.compact,
-            onPressed: widget.chat.messages.isEmpty ? null : widget.chat.clear,
-            icon: const Icon(Icons.delete_sweep_outlined),
+            onPressed: widget.chat.messages.isEmpty
+                ? null
+                : widget.chat.newChat,
+            icon: const Icon(Icons.add_comment_outlined),
           ),
+          _history(),
           IconButton(
             tooltip: tr('关闭'),
             iconSize: 16,
@@ -239,6 +242,79 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
             icon: const Icon(Icons.close),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 历史副聊天:点一场接着聊(眼前这场收进历史),叉掉是删。
+  Widget _history() {
+    final chat = widget.chat;
+    final past = chat.pastChats;
+    return PopupMenuButton<String>(
+      tooltip: tr('历史对话'),
+      enabled: !chat.isStreaming && past.isNotEmpty,
+      position: PopupMenuPosition.under,
+      constraints: const BoxConstraints(maxWidth: 320, maxHeight: 420),
+      onSelected: chat.openChat,
+      itemBuilder: (menu) => [
+        for (final c in past)
+          PopupMenuItem(
+            value: c.id,
+            height: 34,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        chatTitle(c.messages),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: PennaColors.slate700,
+                        ),
+                      ),
+                      Text(
+                        tr('{0} · {1} 条', [
+                          shortTime(c.messages.first.time),
+                          c.messages.length,
+                        ]),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: PennaColors.slate400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: tr('删除这场对话'),
+                  iconSize: 14,
+                  visualDensity: VisualDensity.compact,
+                  color: PennaColors.slate400,
+                  icon: const Icon(Icons.close),
+                  onPressed: () {
+                    chat.deleteChat(c.id);
+                    Navigator.pop(menu);
+                  },
+                ),
+              ],
+            ),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(
+          Icons.history,
+          size: 16,
+          color: past.isEmpty
+              ? PennaColors.slate400.withValues(alpha: 0.4)
+              : PennaColors.slate500,
+        ),
       ),
     );
   }

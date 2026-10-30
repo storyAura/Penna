@@ -135,6 +135,36 @@ void main() {
     expect(side.messages, isEmpty);
   });
 
+  test('副聊天有历史:换页、新对话时收进历史,能接着聊、能删;跟着工作台存盘读回', () async {
+    final seen = <LlmRequest>[];
+    final (vm, side) = _chats(['第一场', '第二场'], seen);
+
+    side.send('一');
+    await pumpEventQueue();
+    side.newChat();
+    expect(side.messages, isEmpty);
+    expect(side.pastChats.single.messages.last.text, '第一场');
+
+    side.send('二');
+    await pumpEventQueue();
+    final first = side.pastChats.single.id;
+    expect(side.openChat(first), isTrue);
+    expect(side.messages.last.text, '第一场');
+    expect(side.pastChats.single.messages.last.text, '第二场');
+
+    // 存下来再读回:眼前这场和历史都在。
+    final copy = StudioViewModel(config: vm.config, streamChat: vm.streamChat)
+      ..restore(vm.toJson());
+    final again = SideChat(copy);
+    copy.side = again;
+    expect(again.messages.last.text, '第一场');
+    expect(again.pastChats.single.messages.last.text, '第二场');
+
+    again.deleteChat(again.pastChats.single.id);
+    expect(again.pastChats, isEmpty);
+    expect(copy.toJson()['sideChats'], isEmpty);
+  });
+
   test('副聊天能带图和文本文件:图随请求发出,文件包进那条消息', () async {
     final seen = <LlmRequest>[];
     final (_, side) = _chats(['看到了'], seen);

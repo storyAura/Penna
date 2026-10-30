@@ -33,7 +33,7 @@ part 'side_chat_panel.dart';
 const _byOrder = '#order';
 const _manageModels = '#manage';
 
-/// 快捷操作最多露出几个,多的横着滚。
+/// 快捷操作最多露出几个,多的用两头的箭头翻。
 const _maxQuickActions = 6;
 
 /// 右栏:Agent 对话时间线 + 输入框。

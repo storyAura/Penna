@@ -16,7 +16,10 @@ import 'studio_view_model.dart';
 // 副聊天:工作台旁边另开的一场对话。用自己指定的模型和穿甲弹开关,读得到工作区,
 // 写出的 <draft> 和主聊天一样放进成稿(有内容时是待确认改动);
 // 和主聊天各说各的,要看对方说了什么就写标签(见 chat_peek.dart)。
-// ponytail: 记录只在内存里,关掉程序就没了;要留得住再存进 workspace.json。
+// 眼前这场和历史跟着主聊天的存档一起存(StudioViewModel.sideSaved)。
+
+/// 副聊天的历史最多留几场。
+const _maxPast = 30;
 
 /// 交给另一边看的记录最多几条、每条最多几个字。
 const _logMessages = 20;
@@ -55,6 +58,12 @@ String chatLog(
 
 class SideChat extends ChangeNotifier {
   SideChat(this.main) {
+    final (:now, :past) = main.sideSaved;
+    if (now != null) {
+      _id = now.id;
+      _messages = now.messages;
+    }
+    _past = past;
     _seen = _workspace;
     main.addListener(_follow);
   }
@@ -62,7 +71,28 @@ class SideChat extends ChangeNotifier {
   /// 主聊天:工作区从它读,请求也借它拼(同一套模型列表和 [StudioViewModel.streamChat])。
   final StudioViewModel main;
 
+  String _id = _newId();
   List<ChatMessage> _messages = const [];
+
+  /// 收起的副聊天,新的在前;不含眼前这场。
+  List<ChatSession> _past = const [];
+  List<ChatSession> get pastChats => _past;
+
+  /// 要存盘的:眼前这场(空的不存;正在生成的那条记成已停止)和历史。
+  ({ChatSession? now, List<ChatSession> past}) get saved => (
+    now: _messages.isEmpty
+        ? null
+        : (
+            id: _id,
+            messages: _reply == null
+                ? _messages
+                : List.unmodifiable([
+                    ..._messages.take(_messages.length - 1),
+                    _messages.last.copyWith(stopped: true),
+                  ]),
+          ),
+    past: _past,
+  );
   StreamSubscription<String>? _reply;
   int _rounds = 0;
 
@@ -92,7 +122,7 @@ class SideChat extends ChangeNotifier {
       final now = _workspace;
       if (_disposed || now == _seen) return;
       _seen = now;
-      if (_messages.isNotEmpty) clear();
+      if (_messages.isNotEmpty) newChat();
     });
   }
 
@@ -124,12 +154,41 @@ class SideChat extends ChangeNotifier {
     unawaited(_reply?.cancel());
     _reply = null;
     _update((m) => m.copyWith(stopped: true));
+    main.sideChanged();
   }
 
-  void clear() {
+  /// 眼前这场收进历史,开一场新的;正在生成就先停下。
+  void newChat() {
     stop();
-    _messages = const [];
+    _switch(null);
+  }
+
+  /// 眼前这场收进历史,接着聊历史里的某一场。生成中不能换,返回 false。
+  bool openChat(String id) {
+    if (isStreaming || !_past.any((c) => c.id == id)) return false;
+    _switch(id);
+    return true;
+  }
+
+  void deleteChat(String id) {
+    _past = List.unmodifiable(_past.where((c) => c.id != id));
     notifyListeners();
+    main.sideChanged();
+  }
+
+  void _switch(String? id) {
+    final next = _past.where((c) => c.id == id).firstOrNull;
+    _past = List.unmodifiable(
+      [
+        if (_messages.isNotEmpty) (id: _id, messages: _messages),
+        for (final c in _past)
+          if (c.id != id) c,
+      ].take(_maxPast),
+    );
+    _id = next?.id ?? _newId();
+    _messages = next?.messages ?? const [];
+    notifyListeners();
+    main.sideChanged();
   }
 
   /// 重新运行:丢掉最后一条回复,把最后一条用户消息再发一次。不能运行时返回原因。
@@ -250,9 +309,11 @@ class SideChat extends ChangeNotifier {
                 failed: true,
               ),
             );
+            main.sideChanged();
           },
           onDone: () {
             _reply = null;
+            main.sideChanged();
             if (_peek() || _lookup() || _askLayout()) return;
             _deliver();
             notifyListeners();
@@ -359,3 +420,5 @@ class SideChat extends ChangeNotifier {
     super.dispose();
   }
 }
+
+String _newId() => DateTime.now().microsecondsSinceEpoch.toString();

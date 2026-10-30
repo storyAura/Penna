@@ -44,6 +44,17 @@ extension StudioStorage on StudioViewModel {
       for (final p in _promptLog)
         {'time': p.time.toIso8601String(), 'text': p.text},
     ],
+    if (_side.now case final c?) 'sideChat': _sessionJson(c),
+    'sideChats': [for (final c in _side.past) _sessionJson(c)],
+  };
+
+  /// 副聊天要存的:建好了问它要最新的,还没建就是读回来的那份。
+  ({ChatSession? now, List<ChatSession> past}) get _side =>
+      side?.saved ?? sideSaved;
+
+  Map<String, dynamic> _sessionJson(ChatSession c) => {
+    'id': c.id,
+    'messages': [for (final m in c.messages) m.toJson(files: _files)],
   };
 
   /// 用 [toJson] 存下的内容换掉当前的工作台。格式不对时抛异常,什么都不改。
@@ -84,6 +95,12 @@ extension StudioStorage on StudioViewModel {
       for (final c in (j['chats'] as List?) ?? const [])
         (id: c['id'] as String, messages: messages(c['messages'])),
     ]);
+    ChatSession session(Object? c) =>
+        (id: (c as Map)['id'] as String, messages: messages(c['messages']));
+    final sideNow = j['sideChat'] == null ? null : session(j['sideChat']);
+    final sidePast = List<ChatSession>.unmodifiable([
+      for (final c in (j['sideChats'] as List?) ?? const []) session(c),
+    ]);
     final prompts = List<PromptRecord>.unmodifiable([
       for (final p in (j['prompts'] as List?) ?? const [])
         (time: DateTime.parse(p['time'] as String), text: p['text'] as String),
@@ -103,6 +120,8 @@ extension StudioStorage on StudioViewModel {
     );
     _messages = current;
     _archive = archive;
+    _sideNow = sideNow;
+    _sidePast = sidePast;
     _promptLog = prompts;
     _changed();
   }

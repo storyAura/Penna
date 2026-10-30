@@ -204,6 +204,16 @@ class StudioViewModel extends ChangeNotifier {
   /// 同样建好之后才接上,布局页的对话没有。
   SideChat? side;
 
+  /// 读回的副聊天(眼前那场 + 历史,新的在前);[side] 建好时从这里拿,
+  /// 之后存盘问 [side] 要最新的。
+  ChatSession? _sideNow;
+  List<ChatSession> _sidePast = const [];
+  ({ChatSession? now, List<ChatSession> past}) get sideSaved =>
+      (now: _sideNow, past: _sidePast);
+
+  /// 副聊天有了要存的改动(说完一条、换了对话、删了历史):和工作台一起存。
+  void sideChanged() => _scheduleSave();
+
   /// 布局页右边那场对话用的:系统提示只讲布局,回复里的 `<layout>` 放到 [layout] 上,
   /// 不往成稿里送。界面和工作台的对话是同一个 `ChatPane`。
   final bool layoutOnly;
