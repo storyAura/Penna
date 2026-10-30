@@ -79,6 +79,9 @@ cp -a "$bundle/." "$appdir/usr/bin/"
 # 插件的 .so 记着编译机上的绝对路径(RUNPATH),onnxruntime 的库也只按不带版本号的名字打进来:
 # 把插件要的 onnxruntime 按它要的名字补进 lib/,再让带 RUNPATH 的库只在自己旁边找。
 lib="$appdir/usr/bin/lib"
+# jni 包是 path_provider_android 带进来的,只有 Android 才用。机器上有 JDK 时它才编出这个库,
+# 还要 libjvm.so;没有 JDK 的机器压根不编,Penna 也不调用,所以删掉,结果和没有 JDK 时一样。
+rm -f "$lib/libdartjni.so"
 for so in "$lib"/*.so*; do
   for need in $(patchelf --print-needed "$so" 2>/dev/null || true); do
     case "$need" in

@@ -10,6 +10,9 @@ on:
       tag:
         description: 发行版的 tag,如 v1.0.3
         required: true
+      ref:
+        description: 从哪个提交打,不填就用 tag。只修了打包脚本、版本号没变时填,如 dev
+        required: false
 
 permissions:
   contents: write
@@ -28,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ inputs.ref || env.TAG }}
       - run: |
           sudo apt-get update
           sudo apt-get install -y clang cmake ninja-build pkg-config \
