@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
@@ -6,10 +5,11 @@ import '../../core/widgets.dart';
 import 'studio_view_model.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
+import '../../core/scroll_strip.dart';
 
 /// 对话顶栏下面的一行标签:一个标签一场对话(`vm.chatTabs`)。
 /// 点一下换过去;叉掉只是关标签,对话还在历史里;最后的加号开一场新的。
-/// 标签多了横着滚:底下有滚动条,鼠标滚轮也能滚。
+/// 标签多了用两头的箭头翻(和快捷操作同一个 [ScrollStrip]),鼠标滚轮也能滚。
 // ponytail: 同一时间只有眼前这场在生成,生成中换不了标签;
 // 要几场同时生成,得让每场对话各有自己的回复流,而不是共用 vm 里那一个。
 class ChatTabs extends StatefulWidget {
@@ -22,19 +22,11 @@ class ChatTabs extends StatefulWidget {
 }
 
 class _ChatTabsState extends State<ChatTabs> {
-  final _scroll = ScrollController();
-
   /// 眼前这场对话的标签;换了对话就把它滚进视野。
   final _current = GlobalKey();
   late String _shown = widget.vm.chatId;
 
   StudioViewModel get vm => widget.vm;
-
-  @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
-  }
 
   void _reveal() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -62,51 +54,24 @@ class _ChatTabsState extends State<ChatTabs> {
       child: Row(
         children: [
           Expanded(
-            // 鼠标滚轮本来是上下滚的,这里把它当成左右滚。
-            child: Listener(
-              onPointerSignal: (event) {
-                if (event is! PointerScrollEvent || !_scroll.hasClients) return;
-                final delta = event.scrollDelta.dy != 0
-                    ? event.scrollDelta.dy
-                    : event.scrollDelta.dx;
-                _scroll.jumpTo(
-                  (_scroll.offset + delta).clamp(
-                    0,
-                    _scroll.position.maxScrollExtent,
+            child: ScrollStrip(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              children: [
+                for (final chat in chats)
+                  _Tab(
+                    key: chat.id == vm.chatId ? _current : null,
+                    title: chatTitle(chat.messages),
+                    selected: chat.id == vm.chatId,
+                    onTap: busy || chat.id == vm.chatId
+                        ? null
+                        : () => vm.openChat(chat.id),
+                    onClose: () {
+                      if (!vm.closeChat(chat.id)) {
+                        showToast(context, tr('正在生成,请先停止当前回复'), warn: true);
+                      }
+                    },
                   ),
-                );
-              },
-              child: Scrollbar(
-                controller: _scroll,
-                thumbVisibility: true,
-                thickness: 4,
-                radius: const Radius.circular(2),
-                child: ListView.separated(
-                  controller: _scroll,
-                  scrollDirection: Axis.horizontal,
-                  // 底下多留一点给滚动条,免得压在标签上。
-                  padding: const EdgeInsets.fromLTRB(10, 5, 10, 9),
-                  itemCount: chats.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 6),
-                  itemBuilder: (context, i) {
-                    final chat = chats[i];
-                    final selected = chat.id == vm.chatId;
-                    return _Tab(
-                      key: selected ? _current : null,
-                      title: chatTitle(chat.messages),
-                      selected: selected,
-                      onTap: busy || selected
-                          ? null
-                          : () => vm.openChat(chat.id),
-                      onClose: () {
-                        if (!vm.closeChat(chat.id)) {
-                          showToast(context, tr('正在生成,请先停止当前回复'), warn: true);
-                        }
-                      },
-                    );
-                  },
-                ),
-              ),
+              ],
             ),
           ),
           Tooltip(
@@ -150,6 +115,7 @@ class _Tab extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: Motion.base,
+      height: 26,
       padding: const EdgeInsets.only(left: 9, right: 3),
       decoration: BoxDecoration(
         color: selected ? PennaColors.card : Colors.transparent,

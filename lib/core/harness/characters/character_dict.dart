@@ -262,7 +262,8 @@ String formatCharacterResults(
     '查「${_plain(query, 80)}」:\n'
         '${hits.isEmpty ? '没有找到' : hits.map((h) => _describe(h, formOf)).join('\n')}'
         '${_mixed(hits) ? '\n这个名字同时对上了用户自己存的角色和内置的角色:先用 <options> 问用户指的是哪一个'
-                  '(用户存的写它的名字,内置的写触发词),不要自己挑;问清楚之前不写 <draft> 和 <layout>。' : ''}',
+                  '(用户存的写它的名字,内置的写触发词),不要自己挑;问清楚之前不写 <draft> 和 <layout>。'
+                  '用户已经说了是哪一个(回答过你问的,或话里写明是自己存的、哪部作品的)就照用户说的写,不要再问一遍。' : ''}',
   '</character-results>',
 ].join('\n\n');
 

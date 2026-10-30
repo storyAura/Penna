@@ -78,28 +78,11 @@ class _Composer extends StatelessWidget {
           if (quickActions.isNotEmpty || trailing != null) ...[
             Row(
               children: [
-                if (quickActions.isNotEmpty) ...[
-                  Text(
-                    tr('快捷操作:'),
-                    style: TextStyle(fontSize: 11, color: PennaColors.slate400),
-                  ),
-                  const SizedBox(width: 6),
-                ],
                 Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: ScrollStrip(
-                      visible: _maxQuickActions,
-                      children: [
-                        for (final action in quickActions)
-                          PennaButton(
-                            // 默认的两个按界面语言翻译,自己加的原样。
-                            label: tr(action.label),
-                            background: PennaColors.slate100,
-                            onPressed: () => onQuickAction(tr(action.prompt)),
-                          ),
-                      ],
-                    ),
+                  child: _QuickActions(
+                    actions: quickActions,
+                    visible: _maxQuickActions,
+                    onTap: onQuickAction,
                   ),
                 ),
                 if (trailing != null) ...[const SizedBox(width: 8), trailing!],
@@ -329,6 +312,51 @@ class _ComposerFrameState extends State<_ComposerFrame> {
         ),
         child: widget.child,
       ),
+    );
+  }
+}
+
+/// 快捷操作那一排,主聊天和副聊天浮窗共用:点了把话接在输入框末尾;
+/// 最多露出 [visible] 个,放不下时两头出箭头翻。
+class _QuickActions extends StatelessWidget {
+  const _QuickActions({
+    required this.actions,
+    required this.visible,
+    required this.onTap,
+  });
+
+  final List<QuickAction> actions;
+  final int visible;
+  final ValueChanged<String> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (actions.isEmpty) return const SizedBox.shrink();
+    return Row(
+      children: [
+        Text(
+          tr('快捷操作:'),
+          style: TextStyle(fontSize: 11, color: PennaColors.slate400),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ScrollStrip(
+              visible: visible,
+              children: [
+                for (final action in actions)
+                  PennaButton(
+                    // 默认的两个按界面语言翻译,自己加的原样。
+                    label: tr(action.label),
+                    background: PennaColors.slate100,
+                    onPressed: () => onTap(tr(action.prompt)),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -450,6 +450,26 @@ void main() {
       expect(seen.last.messages.last['content'], '再画一张初音未来');
       expect(vm.messages.last.toolSummary, isNull);
     });
+
+    test('点了上一条的选项:查回来的资料里写明这是回答,不要再问一遍', () async {
+      final seen = <LlmRequest>[];
+      final store = CharacterStore()..put(name: 'ganyu', prompt: 'my ganyu');
+      final vm = _studio(
+        ['<options>\nganyu(自己存的)\nganyu (genshin impact)\n</options>', '好了'],
+        seen: seen,
+        store: store,
+      );
+
+      vm.send('画 ganyu');
+      await pumpEventQueue();
+      expect(seen.last.messages.last['content'], isNot(contains('在回答你上一条')));
+
+      vm.send('ganyu(自己存的)');
+      await pumpEventQueue();
+      final asked = seen.last.messages.last['content']!;
+      expect(asked, contains('用户这句话是在回答你上一条用 <options> 问的问题'));
+      expect(asked, contains('不要再问一遍'));
+    });
   });
 
   group('Agent 用角色库', () {

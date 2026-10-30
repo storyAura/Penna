@@ -73,7 +73,11 @@ extension LocalAgent on LocalModel {
       text:
           '<reverse-results>\n用「${m.name}」反推出的 Danbooru 标签(按把握从高到低):\n'
           '角色:${join(t.characters)}\n通用:${join(t.general)}\n'
-          '分级:${t.rating ?? '无'}\n</reverse-results>',
+          '分级:${t.rating ?? '无'}\n</reverse-results>'
+          // 用户反馈:认出了丰川祥子和三角初华,转成自然语言后只剩「蓝发少女」。
+          '${t.characters.isEmpty ? '' : '\n认出的角色要写进提示词:写标签就把上面的角色标签原样放最前;'
+                    '写成句子也要点名(用角色名和作品,比如 "Togawa Sakiko from BanG Dream!"),'
+                    '后面用名字指代谁在做什么,不要只写成「蓝发少女」这种外貌描述。'}',
       note: tr('Tag 反推 · {0} · {1} 个标签', [
         m.name,
         t.characters.length + t.general.length,

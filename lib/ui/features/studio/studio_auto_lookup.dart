@@ -43,11 +43,17 @@ extension StudioAutoLookup on StudioViewModel {
         ? const <String, List<CharacterHit>>{}
         : _mentioned(ask);
     if (found.isEmpty) return (ask: ask, text: '', note: null);
+    // 用户点了上一条回复里的选项:这句就是回答(用户反馈:选了「小葱(用户自存设定)」,
+    // 又查出同名的两个,模型照着「先问是哪一个」又问了一遍)。
+    final last = sent.take(sent.indexOf(ask!)).where((m) => !m.tool).lastOrNull;
+    final answering =
+        last != null && !last.fromUser && last.text.contains('<options');
     return (
       ask: ask,
       text:
           '【程序已按用户这句话里的名字查了角色库】下面这几个不用再查;'
           '和用户说的对不上的就不用管,别的角色照样先用 <search-character> 查。\n'
+          '${answering ? '用户这句话是在回答你上一条用 <options> 问的问题:照用户选的写,同名的不要再问。\n' : ''}'
           '${formatCharacterResults(found, formOf: characterDict?.parentOf)}',
       note: tr('已按名字查了角色库:{0}', [found.keys.join(tr('、'))]),
     );

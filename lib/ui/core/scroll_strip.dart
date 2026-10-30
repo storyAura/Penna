@@ -4,20 +4,23 @@ import 'package:flutter/material.dart';
 import 'motion.dart';
 import 'theme.dart';
 
-/// 横着的一排小按钮:最多露出前 [visible] 个那么宽,多出来的藏在后面,
-/// 两头的箭头一次翻一截(鼠标滚轮也能滚),翻到头的那边箭头变灰。
-/// 地方不够时照样缩窄、能翻。
+/// 横着的一排小按钮、标签:放不下时多出来的藏在后面,两头出箭头一次翻一截
+/// (鼠标滚轮也能滚),翻到头的那边箭头变灰;放得下就没有箭头。
+/// 给了 [visible] 时最多露出前几个那么宽;不给就占满给它的宽度。
+/// 快捷操作、对话标签都用它,样子一致(用户要求:同类的一排统一)。
 class ScrollStrip extends StatefulWidget {
   const ScrollStrip({
     super.key,
     required this.children,
-    required this.visible,
+    this.visible,
     this.gap = 6,
+    this.padding = EdgeInsets.zero,
   });
 
   final List<Widget> children;
-  final int visible;
+  final int? visible;
   final double gap;
+  final EdgeInsets padding;
 
   @override
   State<ScrollStrip> createState() => _ScrollStripState();
@@ -100,47 +103,55 @@ class _ScrollStripState extends State<ScrollStrip> {
 
   @override
   Widget build(BuildContext context) {
-    final strip = Stack(
-      children: [
-        // 看不见,只用来量出前 visible 个有多宽多高;整排就是这么大。
-        ExcludeSemantics(
-          child: IgnorePointer(
-            child: Opacity(
-              opacity: 0,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                physics: const NeverScrollableScrollPhysics(),
-                child: _row(widget.children.take(widget.visible)),
-              ),
-            ),
-          ),
+    // 第一次排好、条目增减、窗口变宽变窄时都重新看两头还有没有。
+    final scroller = Listener(
+      onPointerSignal: _wheel,
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: (_) {
+          _edges();
+          return false;
+        },
+        child: SingleChildScrollView(
+          controller: _scroll,
+          scrollDirection: Axis.horizontal,
+          padding: widget.padding,
+          child: _row(widget.children),
         ),
-        Positioned.fill(
-          child: Listener(
-            onPointerSignal: _wheel,
-            // 第一次排好、按钮增减、窗口变窄时都重新看两头还有没有。
-            child: NotificationListener<ScrollMetricsNotification>(
-              onNotification: (_) {
-                _edges();
-                return false;
-              },
-              child: SingleChildScrollView(
-                controller: _scroll,
-                scrollDirection: Axis.horizontal,
-                child: _row(widget.children),
-              ),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
-    if (widget.children.length <= widget.visible) return strip;
+    final visible = widget.visible;
+    final strip = visible == null
+        ? scroller
+        : Stack(
+            children: [
+              // 看不见,只用来量出前 visible 个有多宽多高;整排就是这么大。
+              ExcludeSemantics(
+                child: IgnorePointer(
+                  child: Opacity(
+                    opacity: 0,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: widget.padding,
+                      child: _row(widget.children.take(visible)),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(child: scroller),
+            ],
+          );
+    // 有箭头时排得下的那一截窄了 40,还是放不下,箭头不会来回闪。
+    final arrows = _back || _forward;
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: visible == null ? MainAxisSize.max : MainAxisSize.min,
       children: [
-        _arrow(Icons.chevron_left, _back, -1),
-        Flexible(child: strip),
-        _arrow(Icons.chevron_right, _forward, 1),
+        if (arrows) _arrow(Icons.chevron_left, _back, -1),
+        // 带上 key:箭头出现、消失时这一截不被重建,滚到的位置不丢。
+        visible == null
+            ? Expanded(key: const ValueKey('strip'), child: strip)
+            : Flexible(key: const ValueKey('strip'), child: strip),
+        if (arrows) _arrow(Icons.chevron_right, _forward, 1),
       ],
     );
   }

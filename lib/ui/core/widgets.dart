@@ -363,7 +363,9 @@ class _PennaFieldState extends State<PennaField> {
       borderRadius: BorderRadius.circular(6),
       borderSide: BorderSide(color: PennaColors.border),
     );
+    // 只占自己那么高:放进弹窗时不把弹窗撑满(用户反馈:起名的弹窗空着一大截)。
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(

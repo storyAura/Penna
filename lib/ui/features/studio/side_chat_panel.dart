@@ -367,19 +367,10 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (quick.isNotEmpty) ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: ScrollStrip(
-                visible: _maxSideQuickActions,
-                children: [
-                  for (final action in quick)
-                    PennaButton(
-                      label: tr(action.label),
-                      background: PennaColors.slate100,
-                      onPressed: () => _quick(tr(action.prompt)),
-                    ),
-                ],
-              ),
+            _QuickActions(
+              actions: quick,
+              visible: _maxSideQuickActions,
+              onTap: _quick,
             ),
             const SizedBox(height: 6),
           ],
