@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'llm_http.dart';
+import 'responses_provider.dart' show sourcesText;
 import '../../../l10n/l10n.dart';
 
 const _normalFinish = {'STOP', 'MAX_TOKENS', 'FINISH_REASON_UNSPECIFIED'};
@@ -57,6 +58,27 @@ Map<String, Object?> geminiBody(LlmRequest req) {
       'temperature': req.temperature,
       if (req.topP < 1) 'topP': req.topP,
     },
+    if (req.webSearch)
+      'tools': [
+        {'google_search': <String, Object>{}},
+      ],
+  };
+}
+
+/// 一行 SSE 里 Google 搜索用到的网页:网址 → 标题。
+Map<String, String> parseGeminiSources(String line) {
+  final json = sseJson(line);
+  final candidates = json is Map ? json['candidates'] : null;
+  final first = candidates is List && candidates.isNotEmpty
+      ? candidates.first
+      : null;
+  final grounding = first is Map ? first['groundingMetadata'] : null;
+  final chunks = grounding is Map ? grounding['groundingChunks'] : null;
+  return {
+    if (chunks is List)
+      for (final c in chunks)
+        if (c is Map && c['web'] is Map && c['web']['uri'] is String)
+          c['web']['uri'] as String: '${c['web']['title'] ?? ''}',
   };
 }
 
@@ -155,12 +177,16 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
   }, geminiBody(req));
 
   var yielded = false;
+  final sources = <String, String>{};
   await for (final line in lines) {
     final delta = parseGeminiLine(line);
+    reportUsage(req, sseJson(line));
+    if (req.webSearch) sources.addAll(parseGeminiSources(line));
     if (delta != null && delta.isNotEmpty) {
       yielded = true;
       yield delta;
     }
   }
   if (!yielded) throw LlmException(tr('模型没有返回内容'));
+  if (sources.isNotEmpty) yield sourcesText(sources);
 }

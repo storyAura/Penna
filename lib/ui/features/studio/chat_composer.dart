@@ -19,7 +19,11 @@ class _Composer extends StatelessWidget {
     required this.dragging,
     this.queued = const [],
     this.trailing,
+    this.meter,
   });
+
+  /// 上下文用了多少;没有可用的模型时为 null。
+  final ContextMeter? meter;
 
   /// 快捷操作那一排最右边的按钮(副聊天的开关)。
   final Widget? trailing;
@@ -153,6 +157,7 @@ class _Composer extends StatelessWidget {
                       onPressed: () => onAutoApprove(!autoApprove),
                     ),
                     const Spacer(),
+                    if (meter case final m?) _ContextRing(meter: m),
                     Bouncy(
                       child: IconButton.filled(
                         onPressed: onStop ?? onSend,

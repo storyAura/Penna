@@ -6,15 +6,18 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/chat_peek.dart';
+import '../../../core/harness/context_meter.dart';
 import '../../../core/harness/characters/character_dict.dart';
 import '../../../core/harness/characters/character_mentions.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
+import '../../../core/harness/providers/grok_auth.dart';
 import '../../../core/harness/providers/llm_router.dart';
 import '../../../core/harness/providers/openai_provider.dart';
 import '../../../core/harness/tags/tag_dictionary.dart';
 import '../../../core/harness/tags/tag_search.dart';
+import '../../../core/harness/web_search.dart';
 import '../../../data/models/app_config.dart';
 import '../../../data/services/character_store.dart';
 import '../../../data/services/config_service.dart';
@@ -35,8 +38,10 @@ part 'studio_context.dart';
 part 'studio_draft.dart';
 part 'studio_history.dart';
 part 'studio_layout_pages.dart';
+part 'studio_meter.dart';
 part 'studio_pages.dart';
 part 'studio_rewrite.dart';
+part 'studio_skills.dart';
 part 'studio_storage.dart';
 
 /// 成稿的一块文字。[pinned] 为真时是固定区:润色和 Agent 都改不到它。
@@ -280,6 +285,9 @@ class StudioViewModel extends ChangeNotifier {
   /// Agent 要另起系列却满了时的提醒(见 [StudioPages.seriesAlert])。
   String? _seriesAlert;
 
+  /// 上一次因为「这是另一张画」新开了一页,是在回答哪条消息(见 `draftPageFor`)。
+  ChatMessage? _newPageFor;
+
   void _changed() {
     if (layoutOnly) _syncBoard();
     notifyListeners();
@@ -381,6 +389,14 @@ class StudioViewModel extends ChangeNotifier {
   final _foundTags = <String>{};
 
   bool _disposed = false;
+
+  /// 这次运行里最后一条报了用量的回复是哪个时刻的;别的回复算切过来的旧对话(见 `contextMeter`)。
+  DateTime? _liveUsageAt;
+
+  /// 估算过的上下文,和当时的对话、成稿(见 `_contextTokens`)。
+  _ContextTokens? _estimate;
+  List<ChatMessage>? _estimateFor;
+  List<Block>? _estimateBlocks;
 
   void _updateReply(ChatMessage Function(ChatMessage) change) {
     _messages = List.unmodifiable([

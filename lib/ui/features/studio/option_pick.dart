@@ -84,11 +84,18 @@ class SinglePick extends StatelessWidget {
 
 /// 多选的选项:竖着一行一项,勾上几个(或点「全选」),再点「确定」一起当成回答发出去。
 /// 挑成稿里的段时,每行后面是那段提示词的开头。
+/// [headings] 是分类小标题:排在第几项前面 → 标题。
 /// [onSubmit] 为 null 时只是摆着看(不是最新那条回复,或正在生成)。
 class MultiPick extends StatefulWidget {
-  const MultiPick({super.key, required this.items, required this.onSubmit});
+  const MultiPick({
+    super.key,
+    required this.items,
+    this.headings = const {},
+    required this.onSubmit,
+  });
 
   final List<PickItem> items;
+  final Map<int, String> headings;
   final ValueChanged<String>? onSubmit;
 
   @override
@@ -180,7 +187,24 @@ class _PickState extends State<MultiPick> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (final (i, item) in items.indexed) ...[
-                if (i > 0) const SizedBox(height: 4),
+                if (widget.headings[i] case final heading?)
+                  Padding(
+                    padding: EdgeInsets.only(
+                      top: i > 0 ? 10 : 0,
+                      bottom: 4,
+                      left: 2,
+                    ),
+                    child: Text(
+                      heading,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: PennaColors.slate500,
+                      ),
+                    ),
+                  )
+                else if (i > 0)
+                  const SizedBox(height: 4),
                 _row(item),
               ],
               const SizedBox(height: 10),

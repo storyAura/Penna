@@ -506,6 +506,9 @@ void main() {
         model: '',
       );
       config.update(const AppConfig().putLlm(llm));
+      tester.view.physicalSize = const Size(1000, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -558,6 +561,9 @@ void main() {
           ),
         ),
       );
+      tester.view.physicalSize = const Size(1000, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -612,6 +618,9 @@ void main() {
           const LlmProfile(id: 'a', name: 'A', baseUrl: '', model: ''),
         ),
       );
+      tester.view.physicalSize = const Size(1000, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

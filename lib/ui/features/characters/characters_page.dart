@@ -45,10 +45,11 @@ const _seriesGap = 10.0;
 /// 「我的」大缩略图的格子至少这么宽。
 const _mineTileWidth = 180.0;
 
-/// 角色库的三页:用户自己存的、内置的、收藏的内置系列和角色。
-enum _Tab { mine, builtin, favorites }
+/// 角色库的几页:一起查的全部、用户自己存的、内置的、收藏的内置系列和角色。
+enum _Tab { all, mine, builtin, favorites }
 
-/// 角色库:用户自己存的角色(名字、图、提示词)、内置的 Danbooru 角色、收藏,各占一页。
+/// 角色库:用户自己存的角色(名字、图、提示词)、内置的 Danbooru 角色、收藏,各占一页;
+/// 「全部」把自己存的和内置的放在一起查。
 class CharactersPage extends StatefulWidget {
   const CharactersPage({super.key, required this.store, required this.dict});
 
@@ -73,7 +74,7 @@ class _CharactersPageState extends State<CharactersPage> {
     super.dispose();
   }
 
-  var _tab = _Tab.mine;
+  var _tab = _Tab.all;
 
   /// 打开一个系列看它名下的角色;从搜索结果、收藏点进来的,先把搜索清掉、切到内置。
   void _openSeries(String name) {
@@ -341,6 +342,21 @@ class _CharactersPageState extends State<CharactersPage> {
       for (final card in mine) ...[_mine(card), const SizedBox(height: 8)],
   ];
 
+  /// 「全部」那一页:自己存的在上,内置的在下。收藏的都在内置里,不再单列。
+  List<Widget> _allPage(
+    List<CharacterCard> mine,
+    CharacterDict dict,
+    String q,
+  ) => [
+    if (mine.isNotEmpty) ...[
+      _Heading(tr('我的'), tr('{0} 个', [mine.length])),
+      const SizedBox(height: 8),
+      ..._minePage(mine, q),
+      const SizedBox(height: 14),
+    ],
+    _builtinAnimated(dict, q),
+  ];
+
   Widget _searchBox() => PennaCard(
     padding: const EdgeInsets.symmetric(horizontal: 10),
     child: TextField(
@@ -350,7 +366,7 @@ class _CharactersPageState extends State<CharactersPage> {
       style: const TextStyle(fontSize: 13),
       decoration: InputDecoration(
         icon: Icon(Icons.search, size: 17, color: PennaColors.slate400),
-        hintText: _tab == _Tab.mine
+        hintText: _tab == _Tab.mine || widget.dict == null
             ? tr('按名字找')
             : tr('按名字或系列找:初音未来、甘雨、genshin impact'),
         hintStyle: TextStyle(fontSize: 12.5, color: PennaColors.slate400),
@@ -372,6 +388,7 @@ class _CharactersPageState extends State<CharactersPage> {
         final q = _query.trim();
         final mine = q.isEmpty ? store.cards : store.find(q);
         final count = switch (tab) {
+          _Tab.all => store.cards.length + dict!.length,
           _Tab.mine => store.cards.length,
           _Tab.builtin => dict!.length,
           _Tab.favorites =>
@@ -397,6 +414,7 @@ class _CharactersPageState extends State<CharactersPage> {
                   const SizedBox(width: 24),
                   if (dict != null)
                     for (final (t, label) in [
+                      (_Tab.all, tr('全部')),
                       (_Tab.mine, tr('我的')),
                       (_Tab.builtin, tr('内置')),
                       (_Tab.favorites, tr('收藏')),
@@ -419,7 +437,7 @@ class _CharactersPageState extends State<CharactersPage> {
                       ),
                     ),
                   ),
-                  if (tab == _Tab.mine) ...[
+                  if (tab == _Tab.mine || tab == _Tab.all) ...[
                     ViewSwitch(
                       grid: _grid,
                       onChanged: (g) => setState(() => _grid = g),
@@ -446,6 +464,7 @@ class _CharactersPageState extends State<CharactersPage> {
                         const SizedBox(height: 14),
                       ],
                       ...switch (tab) {
+                        _Tab.all => _allPage(mine, dict!, q),
                         _Tab.mine => _minePage(mine, q),
                         _Tab.builtin => [_builtinAnimated(dict!, q)],
                         _Tab.favorites => [_favorites(dict!)],

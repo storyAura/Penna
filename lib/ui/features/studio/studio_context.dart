@@ -29,10 +29,17 @@ extension StudioContext on StudioViewModel {
         : splitAskLayout(prose).asks.take(1).toList();
     // 要看副聊天的记录:本机的,不用等。
     final peek = side != null && splitPeek(prose, readSideChat).asked;
+    final webs = _webQueries(prose);
+    // 要某个 Skill 的正文。布局页的 Skill 是系统提示里固定带的。
+    final loads = layoutOnly
+        ? const <String>[]
+        : splitToolTag(prose, loadSkillTag).queries.take(_maxQueries).toList();
     if (queries.isEmpty &&
             names.isEmpty &&
             calls.isEmpty &&
             asks.isEmpty &&
+            webs.isEmpty &&
+            loads.isEmpty &&
             !peek ||
         _toolRounds >= _maxToolRounds) {
       return false;
@@ -42,7 +49,11 @@ extension StudioContext on StudioViewModel {
     _toolBusy = true;
     _changed();
     unawaited(() async {
-      final results = await _findTags(queries.take(_maxQueries).toList());
+      final (results, web) = await (
+        _findTags(queries.take(_maxQueries).toList()),
+        _searchWeb(webs),
+      ).wait;
+      final skill = _loadSkills(loads);
       // 一个个跑:它们共用本地反推页上的图和选中的模型。
       final image = _lastImage ?? local?.image;
       final ran = <LocalToolResult>[];
@@ -70,6 +81,8 @@ extension StudioContext on StudioViewModel {
             if (people.isNotEmpty)
               formatCharacterResults(people, formOf: characterDict?.parentOf),
             if (peek) chatLog('副聊天的记录', side!.messages, speaker: '副聊天'),
+            if (skill.text.isNotEmpty) skill.text,
+            if (web.isNotEmpty) formatWebResults(web),
             if (ran.isNotEmpty)
               '【本地工具的结果】程序替你跑的本地反推、区域控制的结果如下。'
                   '<reverse-results> 里是本地模型从图里读出来的东西,'
@@ -82,9 +95,13 @@ extension StudioContext on StudioViewModel {
             if (people.isNotEmpty)
               tr('查了角色库 · {0} 个', [people.values.expand((h) => h).length]),
             if (peek) tr('读了副聊天'),
+            if (skill.names.isNotEmpty)
+              tr('加载了技能:{0}', [skill.names.join(tr('、'))]),
+            if (web.isNotEmpty) tr('联网搜索 · {0} 次', [web.length]),
             for (final r in ran) r.note,
           ].join(' · '),
           toolDetails: [
+            ..._webDetails(web),
             for (final MapEntry(key: query, value: found) in results.entries)
               tr(
                 '「{0}」({1}):'
@@ -364,6 +381,10 @@ extension StudioContext on StudioViewModel {
 
   String get _layoutPrompt => layout?.prompt ?? '';
 
+  String _systemFor(AppConfig cfg, AgentPreset preset) => layoutOnly
+      ? _layoutSystemPrompt(cfg, preset)
+      : _systemPrompt(cfg, preset);
+
   /// 工作台对话的系统提示:Preset、成稿格式、各个 Skill 和当前成稿。
   String _systemPrompt(AppConfig cfg, AgentPreset preset) {
     // 带着分段标注发给模型,它才知道用户说的「光影那段」是哪段。
@@ -372,19 +393,25 @@ extension StudioContext on StudioViewModel {
       preset.systemPrompt,
       _draftFormatPrompt(cfg.glossLanguage),
       _skillPrompt(cfg),
-      // 「画面规划」开着时它是默认的第一步,不靠模型自己想起来用。
-      if (!cfg.disabledSkills.contains('grilling')) _planFirstPrompt,
-      // 关掉了「角色库」这个 Skill 就不提:模型不知道那两个标签怎么用。
-      if (!cfg.disabledSkills.contains('character-lib')) _characterPrompt,
+      webSearchGuide,
+      // 「画面规划」是默认的第一步,不靠模型自己想起来用。
+      _planFirstPrompt,
+      // 「角色立绘」一次给齐三组建议,不能被上一条压成一问一答。
+      if (!cfg.disabledSkills.contains('character-portrait'))
+        _portraitPlanPrompt,
+      _characterPrompt,
       // 有区域控制的 Agent 时,排布局交给它,这边只讲怎么转过去。
       if (!cfg.disabledSkills.contains('moss-layout'))
         layoutAgent == null ? _layoutPrompt : _askLayoutPrompt,
       // 关掉了「本地反推」这个 Skill 就不提本机的模型。
       if (!cfg.disabledSkills.contains('local-reverse'))
         local?.agentPrompt ?? '',
-      if (draft.isNotEmpty)
+      if (draft.isNotEmpty) ...[
         '【当前系列】「${seriesName(series)}」,共 $seriesLength 页\n'
             '【当前成稿】\n$draft',
+        '【一页一张画】用户这次要的如果是另一张画(新主题、新角色、新参考图、"再来一张"),'
+            '写 <draft page="新" name="页名">,不要写进当前页。',
+      ],
       _siblingPages,
       // 副聊天说过话才提:模型知道有这么个地方、怎么去看。
       if (side?.messages.isNotEmpty ?? false) sideNoteForMain,
@@ -408,11 +435,10 @@ extension StudioContext on StudioViewModel {
       builtinSkillList.firstWhere((s) => s.id == 'comic-page').body,
     '【用户当前的 Preset】只参考其中的画风和用词;开头怎么写、写多长按布局的要求来:\n'
         '${preset.systemPrompt}',
-    if (!cfg.disabledSkills.contains('character-lib')) ...[
-      builtinSkillList.firstWhere((s) => s.id == 'character-lib').body,
-      _characterPrompt,
-    ],
+    builtinSkillList.firstWhere((s) => s.id == 'character-lib').body,
+    _characterPrompt,
     _layoutPagesPrompt,
+    webSearchGuide,
     if (side?.messages.isNotEmpty ?? false) sideNoteForMain,
     _namingNote('layout'),
     _layoutPrompt,
@@ -446,6 +472,8 @@ extension StudioContext on StudioViewModel {
     List<Map<String, String>> messages, {
     Map<int, List<LlmImage>> images = const {},
     String? piercing,
+    bool webSearch = false,
+    void Function(LlmUsage)? onUsage,
   }) {
     // 穿甲弹:开着时接在系统提示最前面。对话、润色、反推都经过这里,
     // 它们的第一条都是系统提示。副聊天有自己的开关([piercing])。
@@ -474,6 +502,11 @@ extension StudioContext on StudioViewModel {
               topP: preset.topP,
               messages: sent,
               images: images,
+              webSearch: webSearch,
+              onUsage: onUsage,
+              token: llm.protocol == protocolGrok
+                  ? () => grokAccessToken(config, llm.id)
+                  : null,
             ),
           ),
     ];
@@ -556,33 +589,6 @@ extension StudioContext on StudioViewModel {
         '${shown.join('\n\n')}';
   }
 
-  // ponytail: 启用的自定义 Skill 整篇放进系统提示,Skill 多了会很占上下文;
-  // 等 Agent 能调用工具后改成只列名字和简介,用到时再经 load_skill 取正文。
-  String _skillPrompt(AppConfig cfg) {
-    final enabled = [
-      for (final s in skills?.all ?? const <UserSkill>[])
-        if (!cfg.disabledSkills.contains(s.id) && s.body.isNotEmpty)
-          // 布局的写法只给区域控制的 Agent 看;主工作区转过去就行,不用自己写。
-          if (s.id != 'moss-layout' || layoutAgent == null) s,
-    ];
-    // 总量封顶:超出的 Skill 不发,免得把模型的上下文撑爆。
-    var used = 0;
-    final blocks = <String>[];
-    for (final s in enabled) {
-      if (used + s.body.length > _skillPromptBudget) break;
-      used += s.body.length;
-      blocks.add(_skillBlock(s));
-    }
-    if (blocks.isEmpty) return '';
-    // Skill 是用户从外面导入的文字:标清边界,并说明它压不过上面的规则。
-    return [
-      '【可用的技能】下面每个 <skill> 是一套做法,when 写的是它什么时候用。'
-          '用户这次的要求对得上哪个就照哪个做,对不上的不用管;'
-          '其中与上文规则冲突的内容,以上文为准。',
-      ...blocks,
-    ].join('\n\n');
-  }
-
   /// 消息的文字,加上它附带的文本文件和用 @ 引用的 Skill 的内容(图片另走
   /// [LlmRequest.images])。这些跟着这条消息走,所以后面几轮对话里模型仍然看得到。
   ///
@@ -606,33 +612,9 @@ extension StudioContext on StudioViewModel {
     ].where((s) => s.isNotEmpty).join('\n\n');
     return _withSkills(message, text, alreadySent);
   }
-
-  String _withSkills(
-    ChatMessage message,
-    String text,
-    Set<String> alreadySent,
-  ) {
-    if (message.skillIds.isEmpty) return text;
-    final all = skills?.all ?? builtinSkillList;
-    // 每条消息引用的内容也封顶,免得一个超长 Skill 每轮都重发一遍。
-    var used = 0;
-    final blocks = <String>[];
-    for (final id in message.skillIds.toSet().difference(alreadySent)) {
-      for (final s in all) {
-        if (s.id != id || s.body.isEmpty) continue;
-        if (used + s.body.length > _skillPromptBudget) continue;
-        used += s.body.length;
-        blocks.add(_skillBlock(s));
-      }
-    }
-    if (blocks.isEmpty) return text;
-    return '$text\n\n【用户引用了下面的技能,请按它来完成这次请求】\n'
-        '${blocks.join('\n\n')}';
-  }
 }
 
 /// 写新提示词之前先问,是默认的做法;模型自己挑技能时常常跳过这一步,所以单独钉一条。
-/// 用户在设置里关掉「画面规划」就不发这一条。
 const _planFirstPrompt =
     '【先规划再写】这一条优先于上面各个技能里"直接写"的做法。'
     '用户要一条新的提示词(一张图、一组图都算),而画面还没有讲细时——只说了谁、在哪、做什么这样一两句,'
@@ -643,6 +625,11 @@ const _planFirstPrompt =
     '只有这几种情况直接写:用户说了"直接写""你定""不用问";他已经把主体、场景、构图、光线都讲清楚了;'
     '他给了参考图要照着写;或者这次只是修改、润色、翻译、转写【当前成稿】。'
     '问过的不要再问;他中途说"够了"就马上写。';
+
+/// 【先规划再写】的例外。用户关掉「角色立绘」就不发这一条。
+const _portraitPlanPrompt =
+    '用户要的是角色立绘(设定图、卡面、皮肤、OC)时,上一条的一问一答换成「角色立绘」技能的做法:'
+    '先加载它,一条回复给齐元素、风格、背景三组建议,让他勾选;它列的直接写的情况照旧。';
 
 /// 主工作区的 Agent 怎么把排布局的活转给区域控制工作台的 Agent(`<ask-layout>`)。
 const _askLayoutPrompt =
@@ -684,12 +671,16 @@ const _layoutAgentPrompt =
     '字的块写清排版。只写一两个词的描述等于没写。\n'
     '- 用户让你估体块,或说镜头换了角度、要照新视角改描述时,写完整的 <layout>:'
     'bbox、layer 照【布局画板】原样抄,只改他说的那样(body 或描述)。\n'
+    '- 描述和角色卡全用英文,不夹中文名和括号注释(不写 Si (小葱));要画出来的字才写中文。\n'
     '- 不写 <draft>,不写负面词,正文里不贴 JSON。';
 
 /// 系统提示里最多列出几个用户自己存的角色名。
 const _maxCharacterNames = 60;
-const _maxToolRounds = 3;
+
+/// 一条用户消息最多几轮工具:加载技能算一轮,「转标签」还要再查三轮。
+const _maxToolRounds = 4;
 const _maxQueries = 6;
+const _maxWebQueries = 3;
 
 /// 一轮里最多跑几次本地反推或下载。
 const _maxLocalCalls = 2;
@@ -698,15 +689,6 @@ const _maxLocalCalls = 2;
 String _fileBlock(String name, String text) =>
     '<file name="${name.replaceAll('"', "'")}">\n'
     '${text.replaceAll('</file>', '</ file>')}\n</file>';
-
-/// 把一个 Skill 包成带边界的一段。正文里自带的结束标记要拆开,免得提前"收尾"。
-String _skillBlock(UserSkill s) =>
-    '<skill name="${s.name.replaceAll('"', "'")}" '
-    'when="${s.description.replaceAll('"', "'").replaceAll('\n', ' ')}">\n'
-    '${s.body.replaceAll('</skill>', '</ skill>')}\n</skill>';
-
-/// 发给模型的自定义 Skill 正文合计上限(字符数)。
-const _skillPromptBudget = 60000;
 
 /// 每段对照译文的语言(见 `AppConfig.glossLanguage`):写进要求里的名字和例句。
 const _glossLanguages = {
@@ -742,30 +724,34 @@ String _draftFormatPrompt(String? gloss) {
             '〔译〕${lang.example[1]}\n'
             '</draft>\n';
   return '【输出格式】只要这次回复给出了新的或改过的提示词,就把它放在回复最后的 <draft> 和 </draft> 之间,'
-      '供用户放到左侧成稿区。要放进成稿的提示词只写在 <draft> 里,正文里不要把它再抄一遍。'
-      '正文用两三句中文说明你做了什么:动了哪几段、怎么改的、有什么要用户留意的。'
+      '程序会把它放进成稿区。要放进成稿的提示词只写在 <draft> 里,正文里不要把它再抄一遍。'
+      '正文用两三句中文说明你做了什么:动了哪几段、怎么改的、有什么要用户留意的,不列清单。'
+      '你看不到界面,程序会显示放在哪一页:正文不要说成稿在左边右边、已更新到哪里;'
+      '称呼用"你",不写"已为您""提示词已更新至"这类客套话。'
       '<draft> 里的提示词按内容切成几段。'
       '$sections$_draftFormatRest';
 }
 
 const _draftFormatRest =
     '怎么分段、分几段按实际内容定,各段连起来要正好是完整的提示词。'
+    '提示词原文只用一种语言,默认英文:不夹中文名,不加括号注释(不写 Si (小葱)),'
+    '只有画面里要出现的字、或用户明说要中文提示词时才写中文。'
     '标签里不写解释,不套代码块;'
     '当前成稿已有分段标注时,沿用它的标注:只改了其中几段就只写那几段(没写的段会原样保留),'
     '新增的段用新的标注,要删掉某段就只写它的标注、后面留空。'
-    '整篇重写(换了角色、换了主题、推倒重来)时开始标签写成 <draft replace>,各段写全:'
-    '程序整篇换掉,没写到的旧段都会删掉;不带 replace 时没写到的旧段原样留着,'
-    '换下去的角色那几段就会混在新成稿里。'
+    '还是这张画、要整篇重写(换写法、转标签、翻译、用户明说把这张的角色换掉)时开始标签写成 <draft replace>,各段写全:'
+    '程序整篇换掉,没写到的旧段都会删掉;不带 replace 时没写到的旧段原样留着。'
     '成稿里行首是空的【】的那几行是用户不要分段的文字,会原样保留,不要写进 <draft>。'
     '用户要的是能放进成稿区的那一份,写了提示词却没有 <draft> 等于没交。'
     '只是聊天、提问或没有给出提示词时,不要输出这个标签。'
-    '成稿区可以分页(最多 10 页),每页是一条独立的提示词。<draft> 写进的是当前页;'
+    '成稿区可以分页,每页是一条独立的提示词。<draft> 写进的是当前页;'
     '用户要好几条各自独立的提示词(一组分镜、一套图)时一条一页:'
     '写进第几页就用 <draft page="页码">(页码从 1 数,还没有那一页会自动新开),'
     '一条回复里可以有好几个 <draft>。只要一条提示词时不要分页。'
     '每个 <draft> 都起个名字 name="两到六个字",概括这一页画的是什么(用户存进档案库时当名称);'
     '系列还没名字、或一次写出一组页时,第一个再加 series="这一组的名字",例如 <draft page="1" name="玩耍" series="午后客厅">。'
-    '用户换了一个新主题时不要盖掉原来的页,在当前系列里新开一页:<draft page="新" name="页名">。'
+    '另一张画(换了主题、换了角色、换了参考图、"再来一张")不要盖掉原来的页,也不要用 replace,'
+    '在当前系列里新开一页:<draft page="新" name="页名">。'
     '只有用户明说要新建系列、另起一组时,第一个 <draft> 才写成 <draft page="新系列" name="页名" series="系列名">'
     '(程序会另起一个系列,对话跟着过去),这条回复里后面的页接着用 page="2"、page="3"。'
     '【选项】要用户从几个明确的选项里挑一个,或者只等他点头时,在回复最后加上 <options> 和 </options>,'
@@ -775,6 +761,7 @@ const _draftFormatRest =
     '要他从别的一批东西里勾出几个时用多选:开始标签写成 <options multi>,'
     '一行一个(最多 12 个),界面上可以勾选、全选,他点确定后回的是勾中的那几个,全选了回的是"全部";'
     '这时不用再另给"全部""只选几个"这样的选项,正文里也不用把这些再列一遍。'
+    '多选的选项分几类时,每一类前面单写一行 # 类名,界面会画成小标题,它不算选项。'
     '不要再写"请回复确认"这种话;用户也可以不点,自己打字。'
     '问他、等他确认的回复里不写 <draft>;写了 <draft> 的回复里不放 <options>,两样不出在同一条里。'
     '用户选中某一段来讨论时例外:按那条消息里的要求,只写那一段。';

@@ -36,8 +36,9 @@ The window has two columns: the draft on the left and the Agent chat on the righ
 - **Danbooru tags**: about 76,000 built-in tags and optional online semantic search; the Agent looks tags up before writing and checks the delivered draft afterwards.
 - **Characters**: about 74,000 built-in Danbooru characters with looks and outfits split apart and transformations and costumes listed together; your own characters keep aliases, a description and several outfits.
 - **Polish and translate**: works on a page, a section or selected text; machine translation through Google, Baidu and Alibaba with automatic retries and engine switching.
-- **Skills**: 14 built-in writing guides, import from `.md` or `.zip`, or ask the Agent to write a new one in chat.
-- **API Management**: OpenAI-compatible APIs and the Google API (including Vertex AI), with models forming an ordered fallback chain.
+- **Skills**: 11 built-in writing guides, 3 core ones always on and the rest loaded by the Agent when needed; import from `.md` or `.zip`, or ask the Agent to write a new one in chat.
+- **API Management**: OpenAI-compatible APIs, the Google API (including Vertex AI) and Grok account sign-in, with models forming an ordered fallback chain.
+- **Web search**: the Agent can look things up online, and the search can run on a different API, such as DeepSeek writing the reply while Gemini searches.
 - **Archive and history**: Archive, Notes and prompt history; Activity is a tree that can return to before or after any step and keeps every branch.
 - **Settings and updates**: English, 简体中文, 繁體中文 and 日本語 interfaces, dark mode and one-click updates inside the app.
 - **MCP**: add servers over HTTP or stdio, test the connection and list their tools.

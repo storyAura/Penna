@@ -7,6 +7,7 @@ import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
 import '../../../core/harness/tags/tag_search.dart';
+import '../../../core/harness/web_search.dart';
 import '../../../data/services/skill_store.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
@@ -104,10 +105,17 @@ class ChatMessageView extends StatelessWidget {
   List<Widget> _reply(BuildContext context) {
     final m = message;
     // 先拆新 Skill:它正文里举例用的成稿标签不能被当成成稿。
+    final peeked = splitPeek(
+      splitPeek(m.text, readSideChat).prose,
+      readMainChat,
+    ).prose;
     final tools = splitLocalTools(
       splitCharacterTags(
         splitTagSearch(
-          splitPeek(splitPeek(m.text, readSideChat).prose, readMainChat).prose,
+          splitToolTag(
+            splitToolTag(peeked, webSearchTag).prose,
+            loadSkillTag,
+          ).prose,
         ).prose,
       ).prose,
     );
@@ -208,7 +216,11 @@ class ChatMessageView extends StatelessWidget {
         const SizedBox(height: 10),
         if (asked.multi)
           PopIn(
-            child: MultiPick(items: picks, onSubmit: onOption),
+            child: MultiPick(
+              items: picks,
+              headings: bySection ? const {} : asked.headings,
+              onSubmit: onOption,
+            ),
           )
         else
           PopIn(

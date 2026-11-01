@@ -115,7 +115,28 @@ class SkillsSection extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(tr(skill.name), style: const TextStyle(fontSize: 13)),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          tr(skill.name),
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      if (coreSkillIds.contains(skill.id)) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          tr('核心'),
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: PennaColors.primary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                   if (skill.description.isNotEmpty)
                     Text(
                       tr(skill.description),
@@ -147,8 +168,11 @@ class SkillsSection extends StatelessWidget {
           scale: 0.8,
           child: Switch(
             value: !service.config.disabledSkills.contains(skill.id),
-            onChanged: (on) =>
-                service.update(service.config.setSkill(skill.id, on: on)),
+            // 核心的关不掉。
+            onChanged: coreSkillIds.contains(skill.id)
+                ? null
+                : (on) =>
+                      service.update(service.config.setSkill(skill.id, on: on)),
           ),
         ),
       ],
@@ -165,7 +189,7 @@ class SkillsSection extends StatelessWidget {
       builder: (context, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SectionHeading('Skills', tr('对所有 Preset 生效')),
+          SectionHeading('Skills', tr('核心常驻 · 其余用到时加载')),
           PennaCard(
             padding: const EdgeInsets.fromLTRB(14, 14, 6, 6),
             child: Column(

@@ -210,6 +210,7 @@ class SideChat extends ChangeNotifier {
     '用户要你参考主聊天里说过的话、或问主聊天的 Agent 说了什么时,只输出 <$readMainChat></$readMainChat>,'
         '程序把主聊天最近的记录交给你,你再接着回答。',
     main.layoutGuide,
+    main.webSearchGuide,
     // 放在最后:有的模型读到后面就忘了"先查"。
     main.lookupGuide,
   ].where((s) => s.isNotEmpty).join('\n\n');
@@ -224,6 +225,7 @@ class SideChat extends ChangeNotifier {
         '程序把主聊天最近的记录交给你,你再接着回答。',
     '【工作区】用户眼前的提示词(每段开头的【】是分段标注,〔译〕行是对照译文):\n'
         '${main.workspaceText}',
+    main.webSearchGuide,
     main.lookupGuide,
   ].where((s) => s.isNotEmpty).join('\n\n');
 
@@ -231,6 +233,15 @@ class SideChat extends ChangeNotifier {
   void _deliver() {
     if (main.layoutOnly) return _deliverLayout();
     final drafts = splitDrafts(_messages.last.text).drafts;
+    final ask = _messages.where((m) => m.fromUser && !m.tool).lastOrNull;
+    final page = ask == null ? null : main.draftPageFor(drafts, ask);
+    if (page != null) {
+      _update(
+        (m) => m.copyWith(
+          toolSummary: [?m.toolSummary, tr('另一张画,放到了新的一页')].join(' · '),
+        ),
+      );
+    }
     final written = <int>{};
     // 新开页、起名、采纳在操作记录里合成一笔,和主聊天一样。
     final problems = main.asAgentStep(
@@ -240,7 +251,7 @@ class SideChat extends ChangeNotifier {
           if (d.complete)
             main.placeDraft(
               d.text,
-              page: d.page,
+              page: d.page ?? page,
               written: written,
               name: d.name,
               seriesTitle: d.series,
@@ -313,6 +324,7 @@ class SideChat extends ChangeNotifier {
           },
           onDone: () {
             _reply = null;
+            _update((m) => m.copyWith(text: cleanReplyPrompts(m.text)));
             main.sideChanged();
             if (_peek() || _lookup() || _askLayout()) return;
             _deliver();
@@ -344,7 +356,8 @@ class SideChat extends ChangeNotifier {
     if (_rounds >= _maxRounds) return false;
     final reply = _messages.last.text;
     if (splitTagSearch(reply).queries.isEmpty &&
-        splitCharacterTags(reply).queries.isEmpty) {
+        splitCharacterTags(reply).queries.isEmpty &&
+        !main.wantsWebSearch(reply)) {
       return false;
     }
     _rounds++;

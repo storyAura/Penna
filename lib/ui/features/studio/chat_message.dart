@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../core/harness/attachment.dart';
+import '../../../core/harness/providers/llm_http.dart';
 import '../../../l10n/l10n.dart';
 
 @immutable
@@ -18,7 +19,11 @@ class ChatMessage {
     this.attachments = const [],
     this.quote,
     this.tool = false,
+    this.usage,
   });
+
+  /// 这条回复用了多少 token(接口报了才有)。
+  final LlmUsage? usage;
 
   /// 这条不是用户写的,是程序替模型查回来的资料(标签搜索结果)。
   /// 发给模型时和用户消息一样走,界面上只显示成一行可展开的记录。
@@ -55,6 +60,7 @@ class ChatMessage {
     String? by,
     String? toolSummary,
     List<String>? toolDetails,
+    LlmUsage? usage,
   }) => ChatMessage(
     fromUser: fromUser,
     text: text ?? this.text,
@@ -68,6 +74,7 @@ class ChatMessage {
     tool: tool,
     toolSummary: toolSummary ?? this.toolSummary,
     toolDetails: toolDetails ?? this.toolDetails,
+    usage: usage ?? this.usage,
   );
 
   /// 存盘用。给了 [files] 才存附件(另存成文件,这里只记文件名)。
@@ -84,6 +91,8 @@ class ChatMessage {
     'quote': ?quote,
     if (tool) 'tool': true,
     'toolSummary': ?toolSummary,
+    if (usage case final u?)
+      'usage': {'input': u.input, 'cached': u.cached, 'output': u.output},
   };
 
   /// 附件的文件没了的就不带上。
@@ -107,6 +116,14 @@ class ChatMessage {
     quote: j['quote'] as String?,
     tool: j['tool'] == true,
     toolSummary: j['toolSummary'] as String?,
+    usage: switch (j['usage']) {
+      {'input': final int i, 'cached': final int c, 'output': final int o} => (
+        input: i,
+        cached: c,
+        output: o,
+      ),
+      _ => null,
+    },
   );
 }
 

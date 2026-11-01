@@ -28,11 +28,12 @@ Penna 左侧图标栏最下方的齿轮 →「设置」→「**API 管理**」�
 
 | 字段 | 说明 |
 | --- | --- |
-| 协议 | 卡片顶部的「OpenAI」或「Google」。绝大多数服务(含国内服务和本地程序)选 **OpenAI**;只有 Google Gemini 官方接口与 Vertex AI 选 **Google**。 |
+| 协议 | 卡片顶部的「OpenAI」「Google」或「Grok 账号」。绝大多数服务(含国内服务和本地程序)选 **OpenAI**;Google Gemini 官方接口与 Vertex AI 选 **Google**;用 Grok 账号登录选 **Grok 账号**(不填 Base URL 和 Key,见下文)。 |
 | 显示名称 | 自己起的名字,只用于界面显示,例如「DeepSeek」。 |
 | 模型名称 | 服务商规定的模型 ID。可以填多个,用英文逗号隔开,例如 `model-a, model-b`;前一个失败时自动换下一个。 |
 | Base URL | 接口地址,写到版本号那一层为止(通常以 `/v1` 结尾)。**不要**带 `/chat/completions` 或 `/models`,Penna 会自动拼上。 |
 | API Key | 服务商后台生成的密钥。本地程序通常不需要,留空即可。 |
+| 上下文上限(K) | 选填,单位是千 token,例如 `1000`。留空时按模型名自动识别;认不出的模型圆环不显示占比。 |
 
 填写完毕后:
 
@@ -40,8 +41,17 @@ Penna 左侧图标栏最下方的齿轮 →「设置」→「**API 管理**」�
 2. 点「**测试连接**」:向每个模型发一句话,收到回应即显示「连接正常」。
 3. 点「**保存**」:改动在点保存后才生效,并提示「已保存」;点「**放弃**」恢复为已保存的内容。
 
+### Grok 账号登录
+
+协议选「Grok 账号」后,点「登录 Grok」:Penna 显示一个代码并打开 xAI 的确认页,在浏览器里确认即可。之后 token 自动续期,加密保存在本机。账号需要有 SuperGrok 或 X Premium 这类订阅,是否开放 API 权限由 xAI 决定;没有权限时会提示 `这个 Grok 账号没有 API 权限`,此时可以改用 xAI 的 API Key(协议选 OpenAI,Base URL 填 `https://api.x.ai/v1`)。
+
+### 联网搜索
+
+页面顶部「联网搜索」一行选「不联网」「自动」或指定接口。Agent 需要查资料时,搜索交给所选接口自带的搜索工具完成,所以写回复的模型本身不必支持联网,例如 DeepSeek 写回复、Gemini 搜索。支持搜索的接口:Google 协议、Grok 账号,以及 Base URL 为 OpenAI、xAI、智谱、阿里云百炼、OpenRouter 官方地址的 OpenAI 协议接口。
+
 ### 地址如何拼接
 
+- Grok 账号:请求固定发往 `https://api.x.ai/v1/responses`,Key 以登录得到的 token 发送。
 - OpenAI 协议:对话请求发往 `Base URL + /chat/completions`,模型列表来自 `Base URL + /models`,Key 以 `Authorization: Bearer <Key>` 发送。
 - Google 协议:请求发往 `Base URL + /models/<模型>:streamGenerateContent`,Key 以请求头 `x-goog-api-key` 发送。
 - Base URL 的主机是 `aiplatform.googleapis.com`(含地区前缀)时视为 Vertex AI,Penna 自动补上 `/publishers/google`。Vertex AI 不提供模型列表,模型名称需手动填写。
@@ -91,10 +101,12 @@ Penna 左侧图标栏最下方的齿轮 →「设置」→「**API 管理**」�
 | `模型没有返回内容` / `模型没有返回可识别的内容` | 模型不支持当前请求(例如向纯文本模型发送了图片),或接口不兼容流式输出。 |
 | `请求被 Google 拦截` / `Google 中止了回复` | Google 的安全策略拦截了内容,调整提示词或改用其他模型。 |
 | `模型接口超时` | 网络慢或模型响应慢,稍后再试。 |
+| `这个 Grok 账号没有 API 权限,可以改用 API Key` | xAI 没有给这个账号开放 API,升级订阅或改用 API Key。 |
+| `Grok 登录已失效,请到设置里重新登录` | 到卡片上退出后重新登录。 |
 
 ## 核对清单(请 AI 在最后给出)
 
-- [ ] 协议选择正确(OpenAI / Google)
+- [ ] 协议选择正确(OpenAI / Google / Grok 账号)
 - [ ] Base URL 写到版本层,没有多余路径
 - [ ] 模型名称与服务商一致,多个时用英文逗号隔开
 - [ ] API Key 已由用户本人填入 Penna(本地程序留空)

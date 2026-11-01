@@ -38,4 +38,35 @@ void main() {
     // 段的预览跟在标注后面。
     expect(find.text('1girl, solo'), findsOneWidget);
   });
+
+  testWidgets('多选:分类小标题点不了,也不算进发出去的字和个数', (tester) async {
+    final sent = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MultiPick(
+            items: const [
+              (label: '按推荐写', detail: ''),
+              (label: '风格A', detail: ''),
+              (label: '背景甲', detail: ''),
+            ],
+            headings: const {1: '风格', 2: '背景'},
+            onSubmit: sent.add,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('风格'), findsOneWidget);
+    expect(find.text('背景'), findsOneWidget);
+    await tester.tap(find.text('风格'));
+    await tester.pumpAndSettle();
+    expect(find.text('已选 0 / 3'), findsOneWidget);
+
+    await tester.tap(find.text('风格A'));
+    await tester.tap(find.text('背景甲'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定'));
+    expect(sent, ['风格A、背景甲']);
+  });
 }

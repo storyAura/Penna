@@ -25,3 +25,23 @@ const readMainChat = 'read-main-chat';
   }
   return (prose: prose.trim(), asked: asked);
 }
+
+/// 拆出里面写着内容的 [tag](`<web-search>`、`<load-skill>`),做法同 [splitPeek]。
+({String prose, List<String> queries}) splitToolTag(String reply, String tag) {
+  final full = RegExp('<$tag\\s*>([\\s\\S]*?)</$tag>');
+  final queries = [
+    for (final m in full.allMatches(reply))
+      if (m[1]!.trim().isNotEmpty) m[1]!.trim(),
+  ];
+  var prose = reply.replaceAll(full, '');
+  final open = '<$tag';
+  final half = prose.indexOf(open);
+  if (half >= 0) prose = prose.substring(0, half);
+  for (var n = open.length - 1; n > 1; n--) {
+    if (prose.endsWith(open.substring(0, n))) {
+      prose = prose.substring(0, prose.length - n);
+      break;
+    }
+  }
+  return (prose: prose.trim(), queries: queries);
+}

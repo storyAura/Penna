@@ -19,20 +19,24 @@ class Option {
   final String hint;
 }
 
+/// 正文常驻系统提示、不能关的 Skill;别的只列名字和简介,用到时模型写 `<load-skill>` 取正文。
+const coreSkillIds = {'writer', 'grilling', 'character-lib'};
+
 const builtinSkills = [
-  Option('writer', '写提示词', '从一个想法写出完整的正面提示词'),
-  Option('local-edit', '局部修改', '只改指定的地方,其余原样不动'),
-  Option('reverse-polish', '整理反推', '把反推出的 Tag 或描述整理成能出图的提示词'),
-  Option('theme-expand', '同题变体', '同一个主题再出 3~5 条不同的写法'),
-  Option('paraphrase', '意译', '换一种语言重写提示词,保留结构,不逐字翻'),
+  Option('writer', '写提示词', '写新的正面提示词,也管局部修改、同题变体和意译'),
+  Option('grilling', '画面规划', '用户只给了大概想法时,写词前先一问一答把画面定下来'),
+  Option('character-lib', '角色库', '用户提到某个具体角色时先查它的触发词和特征;要存角色时也用'),
   Option('skill-creator', '写 Skill', '聊着写出一个新 Skill,自动加入 Skills'),
   Option('danbooru-tags', '转标签', '把提示词改写成 Danbooru 标签,用到的标签都先查词库'),
-  Option('image-remix', '照图写', '用户给了图,要照着它写、或照着它改几处'),
-  Option('grilling', '画面规划', '用户只给了大概想法时,写词前先一问一答把画面定下来'),
+  Option('image-remix', '照图写', '用户给了图要照着写或改几处,或要整理反推出的 Tag 和描述'),
   Option('storyboard', '分镜', '把故事或情节拆成一组镜头,每个镜头一条能单独出图的提示词'),
-  Option('character-lib', '角色库', '用户提到某个具体角色时先查它的触发词和特征;要存角色时也用'),
   Option('moss-layout', '区域控制', '要按位置安排画面(画框、bbox、转成 MOSS-Image 布局 JSON)时写布局'),
   Option('comic-page', '漫画分格', '一张图里排几格漫画:分格、气泡与台词归属、跨格一致,也能排成区域控制布局'),
+  Option(
+    'character-portrait',
+    '角色立绘',
+    '要画角色立绘、设定图、卡面、皮肤或 OC 时,先给元素、风格、背景三组建议供挑选,再写成提示词',
+  ),
   Option('local-reverse', '本地反推', '用户要用 Tag 反推、或点名用本机的某个模型反推图片时,调用本地模型'),
 ];
 
@@ -123,18 +127,27 @@ List<String> normalizeMtOrder(Iterable<String> saved) {
 
 String llmSecretKey(String llmId) => 'llm.$llmId.key';
 
+/// Grok 账号登录的另外两项机密;access token 就放在 [llmSecretKey] 那一项。
+String llmRefreshKey(String llmId) => 'llm.$llmId.refresh';
+String llmExpiresKey(String llmId) => 'llm.$llmId.expires';
+
 /// HuggingFace 的 Token:下要申请访问的本地模型时用。
 const hfTokenSecret = 'hf.token';
 
 const protocolOpenAi = 'openai';
 const protocolGoogle = 'google';
 
+/// Grok 账号登录:不填 Key,用浏览器登录(`grok_auth.dart`)。
+const protocolGrok = 'grok';
+const defaultGrokModel = 'grok-4.7';
+
 const defaultBaseUrls = {
   protocolOpenAi: 'https://api.openai.com/v1',
   protocolGoogle: 'https://generativelanguage.googleapis.com/v1beta',
+  protocolGrok: 'https://api.x.ai/v1',
 };
 
-/// 一个模型接口(OpenAI 或 Google 协议)。Key 不在这里,见 [AppConfig.secrets]。
+/// 一个模型接口(OpenAI、Google 协议或 Grok 账号)。Key 不在这里,见 [AppConfig.secrets]。
 @immutable
 class LlmProfile {
   const LlmProfile({
@@ -144,6 +157,7 @@ class LlmProfile {
     required this.model,
     this.protocol = protocolOpenAi,
     this.enabled = true,
+    this.contextLimit = 0,
   });
 
   factory LlmProfile.fromJson(Map<String, dynamic> j) => LlmProfile(
@@ -151,8 +165,13 @@ class LlmProfile {
     name: j['name'] as String,
     baseUrl: j['baseUrl'] as String,
     model: j['model'] as String,
-    protocol: j['protocol'] == protocolGoogle ? protocolGoogle : protocolOpenAi,
+    protocol: switch (j['protocol']) {
+      protocolGoogle => protocolGoogle,
+      protocolGrok => protocolGrok,
+      _ => protocolOpenAi,
+    },
     enabled: j['enabled'] as bool? ?? true,
+    contextLimit: (j['contextLimit'] as num?)?.toInt() ?? 0,
   );
 
   final String id;
@@ -172,6 +191,9 @@ class LlmProfile {
   /// 关掉的模型不参与任何用途。
   final bool enabled;
 
+  /// 用户填的上下文上限(token 数);0 是按模型名自动认。
+  final int contextLimit;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
@@ -179,6 +201,7 @@ class LlmProfile {
     'model': model,
     'protocol': protocol,
     'enabled': enabled,
+    if (contextLimit > 0) 'contextLimit': contextLimit,
   };
 
   LlmProfile copyWith({
@@ -187,6 +210,7 @@ class LlmProfile {
     String? model,
     String? protocol,
     bool? enabled,
+    int? contextLimit,
   }) => LlmProfile(
     id: id,
     name: name ?? this.name,
@@ -194,6 +218,7 @@ class LlmProfile {
     model: model ?? this.model,
     protocol: protocol ?? this.protocol,
     enabled: enabled ?? this.enabled,
+    contextLimit: contextLimit ?? this.contextLimit,
   );
 }
 
@@ -367,7 +392,6 @@ const factoryPresets = [
     name: '自由改稿',
     systemPrompt:
         '你是提示词改稿助手。按用户的要求大胆改写、扩写或给出多个变体,每个变体单独成段并用一句话说明差异。$_positiveOnly',
-    // 不带 local-edit:它要求"只做最小改动",和这个 Preset 的"大胆改写"相反。
     tools: {'ask_user', 'context_memory', 'load_skill', 'prompt_library'},
     temperature: 0.9,
   ),
@@ -382,6 +406,8 @@ class AppConfig {
     this.polishLlmId,
     this.sideLlmId,
     this.sidePiercing = false,
+    this.webSearch = true,
+    this.webSearchLlmId,
     this.mtOrder = defaultMtOrder,
     this.mtEnabled = defaultMtEnabled,
     this.mtAttempts = defaultMtAttempts,
@@ -427,6 +453,8 @@ class AppConfig {
       polishLlmId: m['polishLlmId'] as String?,
       sideLlmId: m['sideLlmId'] as String?,
       sidePiercing: m['sidePiercing'] as bool? ?? false,
+      webSearch: m['webSearch'] as bool? ?? true,
+      webSearchLlmId: m['webSearchLlmId'] as String?,
       mtOrder: normalizeMtOrder((m['mtOrder'] as List? ?? const []).cast()),
       // 旧版配置没有 mtOrder:那时的开关还没接功能,直接换成新默认(免费引擎)。
       mtEnabled: m['mtOrder'] == null
@@ -475,7 +503,7 @@ class AppConfig {
             ]),
       disabledSkills: {
         ...(m['disabledSkills'] as List? ?? const []).cast<String>(),
-      },
+      }.difference(coreSkillIds),
       mcpServers: [
         for (final s in m['mcpServers'] as List? ?? const [])
           McpServer.fromJson(s as Map<String, dynamic>),
@@ -500,6 +528,14 @@ class AppConfig {
   /// 润色依次尝试的模型。
   List<LlmProfile> get polishChain => _llmChain(polishLlmId);
   List<LlmProfile> get sideChain => _llmChain(sideLlmId);
+
+  /// Agent 能联网搜索。搜索不一定用写回复的模型:[webSearchLlmId] 指定用哪个接口,
+  /// null 是自动(优先用 Agent 对话那个,能搜的才算,见 `web_search.dart`)。
+  final bool webSearch;
+  final String? webSearchLlmId;
+
+  /// 联网搜索依次尝试的接口(还没筛能不能搜)。
+  List<LlmProfile> get searchChain => _llmChain(webSearchLlmId ?? activeLlmId);
 
   List<LlmProfile> _llmChain(String? pinnedId) {
     final usable = llms.where((l) => l.enabled);
@@ -603,6 +639,8 @@ class AppConfig {
     'polishLlmId': polishLlmId,
     'sideLlmId': sideLlmId,
     'sidePiercing': sidePiercing,
+    'webSearch': webSearch,
+    'webSearchLlmId': webSearchLlmId,
     'mtOrder': mtOrder,
     'mtEnabled': mtEnabled.toList(),
     'mtAttempts': mtAttempts,
@@ -648,12 +686,42 @@ class AppConfig {
 
   String llmKey(String llmId) => secrets[llmSecretKey(llmId)] ?? '';
 
+  /// 这个接口登录过 Grok 账号。
+  bool grokSignedIn(String llmId) =>
+      (secrets[llmRefreshKey(llmId)] ?? '').isNotEmpty;
+
+  /// 当前 token 什么时候过期;读不出来算已过期。
+  DateTime grokExpires(String llmId) => DateTime.fromMillisecondsSinceEpoch(
+    int.tryParse(secrets[llmExpiresKey(llmId)] ?? '') ?? 0,
+  );
+
+  /// 记下登录或换新得到的 token([tokens] 的键是 access、refresh、expires)。
+  AppConfig withGrokTokens(String llmId, Map<String, String> tokens) =>
+      copyWith(
+        secrets: {
+          ...secrets,
+          llmSecretKey(llmId): tokens['access']!,
+          llmRefreshKey(llmId): tokens['refresh']!,
+          llmExpiresKey(llmId): tokens['expires']!,
+        },
+      );
+
+  /// 退出 Grok 账号,token 都删掉。
+  AppConfig signOutGrok(String llmId) => copyWith(
+    secrets: {...secrets}
+      ..remove(llmSecretKey(llmId))
+      ..remove(llmRefreshKey(llmId))
+      ..remove(llmExpiresKey(llmId)),
+  );
+
   AppConfig copyWith({
     List<LlmProfile>? llms,
     String? Function()? activeLlmId,
     String? Function()? polishLlmId,
     String? Function()? sideLlmId,
     bool? sidePiercing,
+    bool? webSearch,
+    String? Function()? webSearchLlmId,
     Set<String>? mtEnabled,
     List<String>? mtOrder,
     int? mtAttempts,
@@ -688,6 +756,10 @@ class AppConfig {
     polishLlmId: polishLlmId == null ? this.polishLlmId : polishLlmId(),
     sideLlmId: sideLlmId == null ? this.sideLlmId : sideLlmId(),
     sidePiercing: sidePiercing ?? this.sidePiercing,
+    webSearch: webSearch ?? this.webSearch,
+    webSearchLlmId: webSearchLlmId == null
+        ? this.webSearchLlmId
+        : webSearchLlmId(),
     mtEnabled: mtEnabled ?? this.mtEnabled,
     mtOrder: mtOrder ?? this.mtOrder,
     mtAttempts: mtAttempts ?? this.mtAttempts,
@@ -749,7 +821,11 @@ class AppConfig {
     ],
     activeLlmId: () => activeLlmId == id ? null : activeLlmId,
     polishLlmId: () => polishLlmId == id ? null : polishLlmId,
-    secrets: {...secrets}..remove(llmSecretKey(id)),
+    webSearchLlmId: () => webSearchLlmId == id ? null : webSearchLlmId,
+    secrets: {...secrets}
+      ..remove(llmSecretKey(id))
+      ..remove(llmRefreshKey(id))
+      ..remove(llmExpiresKey(id)),
   );
 
   AppConfig putPreset(AgentPreset preset) => copyWith(

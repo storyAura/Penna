@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// 新成稿里的一段:[label] 是这段写的是什么(没标就是空串),
 /// [zh] 是这段的中文对照(没有就是空串)。
 typedef DraftSection = ({String label, String text, String zh});
@@ -85,6 +87,133 @@ typedef SectionSpan = ({
   int end,
   String zh,
 });
+
+/// 英文后面括号里只有中日文的注释:`Si (小葱)`。
+final _hanNote = RegExp(
+  r'(?<=[A-Za-z0-9.])\s*[(（]\s*[぀-ヿ一-鿿]'
+  r'[぀-ヿ一-鿿·・、,，\s]*[)）]',
+);
+
+/// 去掉英文提示词里 `Si (小葱)` 这样的中文注释(用户反馈:模型把角色的中文名夹进了提示词,
+/// 只靠系统提示管不住)。引号里的是要画出来的字,不动;〔译〕行和整行都是中文的不动。
+// ponytail: 只管括号里的。不带括号直接写「小葱 stands」的认不出来,靠 Skill 里的要求。
+String stripHanNotes(String text) => text
+    .split('\n')
+    .map((line) {
+      if (line.startsWith(zhMark) || _isHan(line)) return line;
+      return line.replaceAllMapped(_hanNote, (m) {
+        final quotes = RegExp('["“”]').allMatches(line.substring(0, m.start));
+        return quotes.length.isOdd ? m[0]! : '';
+      });
+    })
+    .join('\n');
+
+/// 布局 JSON 的描述和角色卡做同样的清理;name(给人看的)和 text(要画出来的字)不动。
+String _cleanLayoutJson(String json) {
+  final Object? read;
+  try {
+    read = jsonDecode(json);
+  } on FormatException {
+    return json;
+  }
+  if (read is! Map) return json;
+  Object? clean(Object? v) => v is String ? stripHanNotes(v) : v;
+  Map<dynamic, dynamic> caption(Map<dynamic, dynamic> m) => {
+    ...m,
+    if (m.containsKey('caption')) 'caption': clean(m['caption']),
+  };
+  final summary = read['summary'];
+  final items = read['items'];
+  final next = jsonEncode({
+    ...read,
+    if (summary is Map)
+      'summary': {
+        ...caption(summary),
+        if (summary['cast'] is Map)
+          'cast': (summary['cast'] as Map).map((k, v) => MapEntry(k, clean(v))),
+      },
+    if (items is List)
+      'items': [for (final i in items) i is Map ? caption(i) : i],
+  });
+  // 没东西可清时原样留着,不把模型排好的版式改掉。
+  return next == jsonEncode(read) ? json : next;
+}
+
+final _draftBlock = RegExp(r'(<draft\b[^>]*>)([\s\S]*?)(</draft>)');
+final _layoutBlock = RegExp(r'(<layout\b[^>]*>)([\s\S]*?)(</layout>)');
+
+/// 回复说完后,清理里面每一份 `<draft>` 和 `<layout>`。写 Skill 的回复不动:
+/// 它正文里的例子不是成稿。
+String cleanReplyPrompts(String reply) {
+  if (reply.contains('<new-skill')) return reply;
+  return reply
+      .replaceAllMapped(
+        _draftBlock,
+        (m) => '${m[1]}${stripHanNotes(m[2]!)}${m[3]}',
+      )
+      .replaceAllMapped(
+        _layoutBlock,
+        (m) => '${m[1]}\n${_cleanLayoutJson(m[2]!.trim())}\n${m[3]}',
+      );
+}
+
+/// 这份成稿并进 [current] 后,旧的段一段都不会留下:同标注的全写了,或两边一个标注都对不上。
+bool rewritesAllSections(String current, String draft) {
+  final old = {
+    for (final s in sectionSpans(current))
+      if (s.label.isNotEmpty) s.label,
+  };
+  final fresh = {for (final s in sectionSpans(draft)) s.label};
+  return old.isEmpty ||
+      fresh.containsAll(old) ||
+      old.intersection(fresh).isEmpty;
+}
+
+final _wordOrHan = RegExp(r'[a-z]{5,}|[一-鿿]{2,}');
+final _han = RegExp(r'[一-鿿]');
+
+/// 一段提示词的词:英文取 5 个字母以上的(with、hair 这种到处都有),中文两个字两个字地取。
+Set<String> _promptWords(String text) => {
+  for (final m in _wordOrHan.allMatches(text.toLowerCase()))
+    if (_han.hasMatch(m[0]!))
+      for (var i = 0; i + 2 <= m[0]!.length; i++) m[0]!.substring(i, i + 2)
+    else
+      m[0]!,
+};
+
+bool _isTags(String text) {
+  final parts = text.split(',');
+  return parts.length >= 4 &&
+      text.trim().split(RegExp(r'\s+')).length / parts.length <= 3.5;
+}
+
+bool _isHan(String text) =>
+    _han.allMatches(text).length * 3 >
+    text.replaceAll(RegExp(r'\s'), '').length;
+
+/// 整篇重写的 [next] 是不是和 [current] 已经不是一张画:写法相同(都是标签或都是句子、
+/// 语言相同),用词却几乎不重合。转标签、翻译虽然也整篇变,但写法变了,不算。
+/// [newImage] 是用户这次发了图:这时门槛放宽,用词一半以上还在才算同一张画
+/// (照图改发色、服装时大部分词不变;照新图复刻时词大多换了,角色、风格的词还会留一些)。
+// ponytail: 按用词估的。同一张画换一套说法、或两张画碰巧用词相近时会认错;
+// 认错的后果只是多开一页,或者照旧提出待确认改动,都不丢东西。
+bool looksLikeAnotherPicture(
+  String current,
+  String next, {
+  bool newImage = false,
+}) {
+  final a = stripSectionLabels(current), b = stripSectionLabels(next);
+  if (_isTags(a) != _isTags(b) || _isHan(a) != _isHan(b)) return false;
+  final x = _promptWords(a), y = _promptWords(b);
+  if (x.length < _minPromptWords || y.length < _minPromptWords) return false;
+  final smaller = x.length < y.length ? x.length : y.length;
+  return x.intersection(y).length / smaller <
+      (newImage ? _samePictureWithImage : _samePictureOverlap);
+}
+
+const _minPromptWords = 8;
+const _samePictureOverlap = 0.25;
+const _samePictureWithImage = 0.5;
 
 /// 按行首的标注把一栏文字切成几段;一个标注都没有时返回空列表。
 /// 第一个标注前面的文字自成一段(标注为空串)。
@@ -357,10 +486,18 @@ final _optionsOpen = RegExp(r'<options(?:\s+(multi|sections))?\s*>');
 const _optionsHalves = ['<options multi>', '<options sections>'];
 const _optionsClose = '</options>';
 
+/// 模型有时会顺手加上列表符号或序号。
+final _optionMark = RegExp(r'^(?:[-*•]|\d+[.、)])\s*');
+
+/// 选项里的分类小标题:`# 风格`。
+final _optionHeading = RegExp(r'^#+\s*(.+)$');
+
 /// 回复里给用户点的选项。[sections] 为真时是挑成稿里的哪几段(也算多选)。
+/// [headings] 是分类小标题:排在第几个选项前面 → 标题(只有多选才画)。
 typedef AskedOptions = ({
   String prose,
   List<String> options,
+  Map<int, String> headings,
   bool multi,
   bool sections,
 });
@@ -374,6 +511,7 @@ AskedOptions splitOptions(String reply) {
     return (
       prose: _optionsHalves.fold(reply, _withoutPartial),
       options: const [],
+      headings: const {},
       multi: false,
       sections: false,
     );
@@ -388,23 +526,32 @@ AskedOptions splitOptions(String reply) {
     if (end >= 0) reply.substring(end + _optionsClose.length).trim(),
   ].where((s) => s.isNotEmpty).join('\n\n');
   if (end < 0) {
-    return (prose: prose, options: const [], multi: multi, sections: sections);
+    return (
+      prose: prose,
+      options: const [],
+      headings: const {},
+      multi: multi,
+      sections: sections,
+    );
+  }
+  final options = <String>[];
+  final headings = <int, String>{};
+  for (final raw in reply.substring(from, end).split('\n')) {
+    final line = raw.trim().replaceFirst(_optionMark, '');
+    if (line.isEmpty) continue;
+    final heading = _optionHeading.firstMatch(line);
+    if (heading != null) {
+      headings[options.length] = heading[1]!;
+    } else if (options.length < (multi ? 12 : 6)) {
+      options.add(line);
+    }
   }
   return (
     multi: multi,
     sections: sections,
     prose: prose,
-    options: List.unmodifiable(
-      reply
-          .substring(from, end)
-          .split('\n')
-          // 模型有时会顺手加上列表符号或序号。
-          .map(
-            (l) => l.trim().replaceFirst(RegExp(r'^(?:[-*•]|\d+[.、)])\s*'), ''),
-          )
-          .where((l) => l.isNotEmpty)
-          .take(multi ? 12 : 6),
-    ),
+    options: List.unmodifiable(options),
+    headings: Map.unmodifiable(headings),
   );
 }
 

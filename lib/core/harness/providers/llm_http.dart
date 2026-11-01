@@ -6,6 +6,9 @@ import 'package:flutter/foundation.dart';
 
 import '../../../l10n/l10n.dart';
 
+/// 一次请求用了多少 token:发过去的([input],含其中命中缓存的 [cached])和回复的。
+typedef LlmUsage = ({int input, int cached, int output});
+
 /// 随某条消息发出的一张图片。
 typedef LlmImage = ({String mime, Uint8List bytes});
 
@@ -20,7 +23,19 @@ class LlmRequest {
     this.temperature = 0.7,
     this.topP = 1,
     this.protocol = 'openai',
+    this.token,
+    this.webSearch = false,
+    this.onUsage,
   });
+
+  /// 接口报了用量时调用;一条回复里可能报好几次,最后一次为准。
+  final void Function(LlmUsage usage)? onUsage;
+
+  /// Grok 账号登录:发请求前才取 token,快过期时在里面换新的。
+  final Future<String> Function()? token;
+
+  /// 让模型用它自家的联网搜索(只给能搜的接口,见 `web_search.dart`)。
+  final bool webSearch;
 
   /// 带图片的消息:[messages] 里的下标 → 那条消息的图片。
   final Map<int, List<LlmImage>> images;
@@ -39,15 +54,18 @@ class LlmRequest {
   /// 小于 1 才发给模型:有的接口不让它和温度一起给。
   final double topP;
 
-  /// 'openai' 或 'google'。
+  /// 'openai'、'google' 或 'grok'(Grok 账号登录)。
   final String protocol;
 }
 
 /// 给用户看的模型调用错误;不含 Key。
 class LlmException implements Exception {
-  const LlmException(this.message);
+  const LlmException(this.message, {this.status});
 
   final String message;
+
+  /// 接口回的状态码;不是接口回的错误时为 null。
+  final int? status;
 
   @override
   String toString() => message;
@@ -137,7 +155,10 @@ const llmStallTimeout = Duration(seconds: 60);
 LlmException _statusError(int status, String body) {
   // 回来的是一张网页:多半是地址填错了,打到了网站而不是接口上。
   if (body.trimLeft().startsWith('<')) {
-    return LlmException(tr('模型接口返回 {0}:地址不对,返回的是网页。请检查 Base URL', [status]));
+    return LlmException(
+      tr('模型接口返回 {0}:地址不对,返回的是网页。请检查 Base URL', [status]),
+      status: status,
+    );
   }
   // 多数接口把原因放在 error.message 里;取得到就只显示这一句,不显示整坨 JSON。
   var reason = body;
@@ -152,10 +173,16 @@ LlmException _statusError(int status, String body) {
   } on FormatException {
     // 不是 JSON,原样显示。
   }
-  final shown = reason.length > _maxErrorBody
-      ? reason.substring(0, _maxErrorBody)
-      : reason;
-  return LlmException(tr('模型接口返回 {0}:{1}', [status, shown]));
+  return LlmException(
+    tr('模型接口返回 {0}:{1}', [status, clipLlmError(reason)]),
+    status: status,
+  );
+}
+
+/// 服务端返回的错误原文,截断后才给用户看。
+String clipLlmError(Object? reason) {
+  final text = '$reason';
+  return text.length > _maxErrorBody ? text.substring(0, _maxErrorBody) : text;
 }
 
 const _getTimeout = Duration(seconds: 30);
@@ -184,6 +211,46 @@ Future<Object?> getJson(Uri uri, Map<String, String> headers) async {
   } on FormatException {
     throw LlmException(tr('接口返回的不是模型列表'));
   }
+}
+
+/// 从回复里取用量:OpenAI(`usage`)、Responses(`response.usage`)、Google(`usageMetadata`)。
+/// 缓存的叫法各家不同,DeepSeek 是 `prompt_cache_hit_tokens`。不带用量时返回 null。
+LlmUsage? parseUsage(Object? json) {
+  if (json is! Map) return null;
+  final response = json['response'];
+  final u =
+      json['usage'] ??
+      json['usageMetadata'] ??
+      (response is Map ? response['usage'] : null);
+  if (u is! Map) return null;
+  int count(Object? v) => v is num ? v.toInt() : 0;
+  final details = u['prompt_tokens_details'] ?? u['input_tokens_details'];
+  final input = count(
+    u['prompt_tokens'] ?? u['input_tokens'] ?? u['promptTokenCount'],
+  );
+  final output =
+      count(
+        u['completion_tokens'] ??
+            u['output_tokens'] ??
+            u['candidatesTokenCount'],
+      ) +
+      count(u['thoughtsTokenCount']);
+  if (input == 0 && output == 0) return null;
+  return (
+    input: input,
+    cached: count(
+      (details is Map ? details['cached_tokens'] : null) ??
+          u['prompt_cache_hit_tokens'] ??
+          u['cachedContentTokenCount'],
+    ),
+    output: output,
+  );
+}
+
+/// 回复里带着用量就告诉 [req] 的 `onUsage`。
+void reportUsage(LlmRequest req, Object? json) {
+  final usage = parseUsage(json);
+  if (usage != null) req.onUsage?.call(usage);
 }
 
 /// 一行 SSE 的 JSON 内容;不是数据行、是结束标记或解析不了时返回 null。

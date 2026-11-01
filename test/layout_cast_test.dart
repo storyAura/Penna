@@ -103,7 +103,7 @@ void main() {
     expect(board.prompt, contains('两人组·1'));
   });
 
-  test('交出的人物块没对上角色卡:程序自己让 Agent 改,最多三轮', () async {
+  test('交出的人物块没对上角色卡:程序自己让 Agent 改,最多四轮', () async {
     final service = tempConfig();
     service.update(
       service.config.putLlm(
@@ -133,12 +133,12 @@ void main() {
     expect(castMisses(board.layout), isEmpty);
     expect(chat.isStreaming, isFalse);
 
-    // 一直改不对也会停:一条消息最多再要三轮。
+    // 一直改不对也会停:一条消息最多再要四轮。
     seen.clear();
     replies = List.filled(10, _layout('小葱·1'));
     chat.send('再画一张');
     await pumpEventQueue();
-    expect(seen, hasLength(4));
+    expect(seen, hasLength(5));
     expect(chat.isStreaming, isFalse);
   });
 

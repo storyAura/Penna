@@ -97,6 +97,7 @@ A three-page comic laid out in Penna and rendered with MOSS-Image:
 - About 74,000 Danbooru characters built in, ordered by popularity and searchable by English name, Chinese and Japanese aliases, or series name.
 - Each character's feature tags are split into **Looks** and **Outfit and other**, so the appearance or the outfit can be used on its own.
 - A character search also lists the character's other forms (transformations and costumes tagged under a different name, collected from Danbooru's character wiki pages), with the feature tags of each form.
+- The **All** tab searches your own characters and the built-in ones together.
 - Separate **Mine**, **Built-in** and **Favorites** tabs. **Mine** holds your own characters (a name, aliases, a description, a prompt and a picture), each with any number of named outfits, and can be reordered by dragging.
 - Built-in series and characters can be added to **Favorites** for quick access.
 - The Agent can search the character library during a chat (by name or alias, including descriptions and outfits) and save characters to it. When a message names a character from the library, its trigger and feature tags are looked up in advance and sent to the Agent with the message.
@@ -111,13 +112,15 @@ A three-page comic laid out in Penna and rendered with MOSS-Image:
 
 A Skill is a writing guide (`SKILL.md`) that decides how the Agent writes prompts.
 
-- 14 are built in, all enabled by default, and each can be switched on or off. "Comic panels" handles multi-panel comic pages in a single image (panel layout, speech bubbles and speakers, consistency across panels) and can lay a comic page out in Region Control, with varied panel sizes and slanted gutters; panels drawn by hand on the canvas are kept as drawn and filled in one by one.
+- 11 are built in. The core ones come first and cannot be turned off; the rest are enabled by default and each can be switched on or off. The writing, scene planning and character library guides are core and always loaded; the others are listed by name and summary, and the Agent loads them when needed or when named with `@`. "Comic panels" handles multi-panel comic pages in a single image (panel layout, speech bubbles and speakers, consistency across panels) and can lay a comic page out in Region Control, with varied panel sizes and slanted gutters; panels drawn by hand on the canvas are kept as drawn and filled in one by one. "Character portrait" suggests elements, styles and backgrounds to tick, then writes a sectioned prompt, drawing on 14 styles and 14 background frames.
 - Import `.md` or `.zip` files, or write one directly in Settings.
 - Ask the Agent in chat to write a new Skill; it is added automatically when done.
 
 ## API Management
 
-- Supports OpenAI-compatible APIs and the Google API (including Vertex AI).
+- Supports OpenAI-compatible APIs, the Google API (including Vertex AI) and Grok account sign-in.
+- Context usage: a ring next to the send button shows how much of the model's context limit the current chat uses; hover for a panel with a color-coded ring showing the share of the system preset, Skills, built-in rules, draft, chat, tool results and attachments, along with input, cache and output counts and the current API and model. Opening an earlier chat shows the estimated context to load. Limits are recognized from the model name and can also be set on the API card.
+- Web search: the Agent can look things up online. The search runs on an API with a search tool (Gemini, Grok, OpenAI, Zhipu, Bailian, OpenRouter), selected automatically or chosen in Settings, so a model without search can still use it.
 - **Providers** prefills the URL and model for DeepSeek, Zhipu GLM, Kimi, Alibaba Cloud Model Studio; add the key to start.
 - Name, URL, models and key take effect after clicking **Save**.
 - One API can hold several models; all models form a fallback chain in order and switch automatically.

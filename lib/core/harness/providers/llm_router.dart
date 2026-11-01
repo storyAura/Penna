@@ -2,12 +2,18 @@ import 'dart:async';
 
 import 'gemini_provider.dart';
 import 'openai_provider.dart';
+import 'responses_provider.dart';
+import '../web_search.dart';
 import '../../../l10n/l10n.dart';
 
 /// 按请求里的协议选对应的接口。
-Stream<String> streamChat(LlmRequest request) => request.protocol == 'google'
-    ? streamGeminiChat(request)
-    : streamOpenAiChat(request);
+Stream<String> streamChat(LlmRequest request) => switch (request.protocol) {
+  'google' => streamGeminiChat(request),
+  'grok' => streamResponsesChat(request),
+  _ when request.webSearch && searchesByResponses(request.baseUrl) =>
+    streamResponsesChat(request),
+  _ => streamOpenAiChat(request),
+};
 
 /// 问接口有哪些模型可用,按名字排序;出错抛 [LlmException]。
 Future<List<String>> listModels({

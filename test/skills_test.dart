@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:penna/core/harness/draft_block.dart';
 import 'package:penna/core/harness/layout.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
 import 'package:penna/data/models/app_config.dart';
@@ -212,8 +213,67 @@ void main() {
     });
 
     test('内置 Skill 都有正文', () {
-      expect(builtinSkillList, hasLength(14));
+      expect(builtinSkillList, hasLength(11));
+      expect(
+        builtinSkillList.where((s) => coreSkillIds.contains(s.id)),
+        hasLength(coreSkillIds.length),
+      );
       expect(builtinSkillList.every((s) => s.body.trim().isNotEmpty), isTrue);
+    });
+
+    test('角色立绘:资料都并进了正文,多选的例子放得下,全部标注都认得出', () {
+      final body = builtinSkillList
+          .firstWhere((s) => s.id == 'character-portrait')
+          .body;
+      // Agent 读不了 Skill 附带的文件,也没有 prompt-pyramid 这个 Skill。
+      expect(body, isNot(contains('references/')));
+      expect(body, isNot(contains('prompt-pyramid')));
+      expect(body, contains('Art Nouveau tarot card'));
+      expect(body, contains('a tall black lacquered folding screen'));
+
+      final options = splitOptions(body);
+      expect(options.multi, isTrue);
+      expect(options.options, hasLength(11));
+      expect(options.options.first, '按推荐写');
+      expect(options.headings, {1: '元素', 5: '风格', 8: '背景'});
+      // 分段的标注成稿那边最多认 6 个字的写法。
+      final labels = RegExp(
+        r'^【(.+?)】',
+        multiLine: true,
+      ).allMatches(body.split('第五步').first).map((m) => m[1]!);
+      expect(labels, contains('镜头'));
+      expect(labels.every((l) => l.length <= 6), isTrue);
+    });
+
+    test('角色立绘:开着时列在系统提示里,并给「先规划再写」开例外;关掉就都没有', () async {
+      final seen = <LlmRequest>[];
+      final config = tempConfig()..update(const AppConfig().putLlm(_llm));
+      final vm = StudioViewModel(
+        config: config,
+        skills: tempSkills(),
+        streamChat: (req) {
+          seen.add(req);
+          return Stream.value('好的');
+        },
+      );
+      const exception = '上一条的一问一答换成';
+
+      vm.send('画一张女钟表匠的立绘');
+      await pumpEventQueue();
+      final on = seen.last.messages.first['content']!;
+      expect(on, contains('- 角色立绘:'));
+      expect(on, contains('【先规划再写】'));
+      expect(on, contains(exception));
+
+      config.update(
+        config.config.copyWith(disabledSkills: const {'character-portrait'}),
+      );
+      vm.send('再画一张');
+      await pumpEventQueue();
+      final off = seen.last.messages.first['content']!;
+      expect(off, isNot(contains('- 角色立绘:')));
+      expect(off, contains('【先规划再写】'));
+      expect(off, isNot(contains(exception)));
     });
 
     test('漫画分格:例子程序读得出来,有斜切的格,人物和气泡都落在自己那一格的形状里', () {
@@ -318,14 +378,14 @@ void main() {
       expect(seen[1].messages[1]['content'], contains('胶片指令'));
 
       // 引用一个开着的:系统提示里已有,消息里不再重复带一份。
-      vm.send('改开头', skillIds: ['local-edit']);
+      vm.send('改开头', skillIds: ['writer']);
       await pumpEventQueue();
-      expect(seen[2].messages.first['content'], contains('最小必要改动'));
+      expect(seen[2].messages.first['content'], contains('<skill name="写提示词"'));
       expect(seen[2].messages.last['content'], '改开头');
       expect(seen[1].messages.last['content'], '再来');
     });
 
-    test('内置 Skill 默认都开着:正文带着"什么时候用"写进系统提示,换 Preset 也一样', () async {
+    test('核心 Skill 的正文进系统提示,别的只列名字和简介;换 Preset 也一样', () async {
       TestWidgetsFlutterBinding.ensureInitialized();
       final config = tempConfig()..update(const AppConfig().putLlm(_llm));
       late LlmRequest seen;
@@ -341,16 +401,15 @@ void main() {
       vm.send('你好');
       await pumpEventQueue();
 
-      expect(seen.messages.first['content'], contains('最小必要改动'));
-      expect(
-        seen.messages.first['content'],
-        contains('<skill name="写 Skill" when="聊着写出一个新 Skill'),
-      );
+      final system = seen.messages.first['content']!;
+      expect(system, contains('<skill name="写提示词" when="'));
+      expect(system, contains('- 写 Skill:聊着写出一个新 Skill'));
+      expect(system, isNot(contains('<new-skill>')));
 
       config.update(config.config.copyWith(activePresetId: 'translate'));
       vm.send('再来');
       await pumpEventQueue();
-      expect(seen.messages.first['content'], contains('最小必要改动'));
+      expect(seen.messages.first['content'], contains('<skill name="写提示词"'));
     });
 
     test('旧配置里 Preset 带着的 skills 字段读得进来,只是不再用', () {
@@ -389,21 +448,21 @@ void main() {
         ),
       );
 
-      await tester.enterText(input, '帮我 @局部');
+      await tester.enterText(input, '帮我 @画面');
       await tester.pump();
-      expect(find.text('局部修改'), findsOneWidget);
+      expect(find.text('画面规划'), findsOneWidget);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pump();
-      expect(find.text('@局部修改'), findsOneWidget);
+      expect(find.text('@画面规划'), findsOneWidget);
       expect(tester.widget<TextField>(input).controller!.text, '帮我 ');
       expect(vm.messages, isEmpty);
 
       await tester.enterText(input, '帮我改开头');
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pump();
-      expect(vm.messages.first.skillIds, ['local-edit']);
-      expect(find.text('@局部修改'), findsOneWidget);
+      expect(vm.messages.first.skillIds, ['grilling']);
+      expect(find.text('@画面规划'), findsOneWidget);
     });
   });
 }

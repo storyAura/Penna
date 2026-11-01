@@ -104,7 +104,7 @@ extension StudioRewrite on StudioViewModel {
     _polishing = true;
     _changed();
     try {
-      final out = (await streamWithFailover(
+      final raw = await streamWithFailover(
         _requests(cfg, chain, cfg.activePreset, [
           {'role': 'system', 'content': _polishSystemPrompt},
           {
@@ -115,7 +115,8 @@ extension StudioRewrite on StudioViewModel {
           },
         ]),
         this.streamChat,
-      ).join()).trim();
+      ).join();
+      final out = stripHanNotes(raw).trim();
       if (out.isEmpty) return tr('模型没有返回内容');
       if (_disposed) return null;
       if (body != text) return tr('成稿在润色期间被改动了,请重试');

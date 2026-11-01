@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'llm_http.dart';
+import '../web_search.dart';
 import '../../../l10n/l10n.dart';
 
 export 'llm_http.dart';
@@ -71,6 +72,25 @@ Stream<String> streamOpenAiChat(LlmRequest req) =>
     runLlmStream((client) => _chat(client, req));
 
 Stream<String> _chat(HttpClient client, LlmRequest req) async* {
+  try {
+    await for (final delta in _send(client, req, usage: true)) {
+      yield delta;
+    }
+  } on LlmException catch (e) {
+    // 有的中转站不认这个字段、整条请求报错:不要用量也得能用。
+    final rejected =
+        e.status == HttpStatus.badRequest ||
+        e.status == HttpStatus.unprocessableEntity;
+    if (!rejected || !e.message.contains('stream_options')) rethrow;
+    yield* _send(client, req, usage: false);
+  }
+}
+
+Stream<String> _send(
+  HttpClient client,
+  LlmRequest req, {
+  required bool usage,
+}) async* {
   final apiKey = req.apiKey.trim();
   final lines = postForLines(
     client,
@@ -82,6 +102,8 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
       'temperature': req.temperature,
       if (req.topP < 1) 'top_p': req.topP,
       'stream': true,
+      if (usage) 'stream_options': {'include_usage': true},
+      if (req.webSearch) ...?chatSearchBody(req.baseUrl),
     },
   );
 
@@ -93,6 +115,7 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
       continue;
     }
     if (line.substring(5).trim() == '[DONE]') break;
+    reportUsage(req, sseJson(line));
     final delta = parseSseLine(line);
     if (delta != null && delta.isNotEmpty) {
       yielded = true;
@@ -101,12 +124,12 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
   }
   if (yielded) return;
   // 有的接口无视 stream:true,直接回一整个 JSON。
-  final whole = _wholeReply(plain.toString());
+  final whole = _wholeReply(plain.toString(), req);
   if (whole == null) throw LlmException(tr('模型没有返回可识别的内容'));
   yield whole;
 }
 
-String? _wholeReply(String body) {
+String? _wholeReply(String body, LlmRequest req) {
   final Object? json;
   try {
     json = jsonDecode(body);
@@ -114,6 +137,7 @@ String? _wholeReply(String body) {
     return null;
   }
   if (json is! Map) return null;
+  reportUsage(req, json);
   final choices = json['choices'];
   if (choices is! List || choices.isEmpty) return null;
   final first = choices.first;

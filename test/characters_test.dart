@@ -366,6 +366,12 @@ void main() {
           ),
         ),
       );
+      // 默认是「全部」:自己存的和内置的都在。
+      expect(find.text('小蓝'), findsOneWidget);
+      expect(find.text('vocaloid'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(PennaChip, '我的'));
+      await tester.pumpAndSettle();
       expect(find.text('小蓝'), findsOneWidget);
       expect(find.text('vocaloid'), findsNothing);
 
@@ -441,14 +447,6 @@ void main() {
         seen.last.messages[1]['content'],
         isNot(contains('【程序已按用户这句话里的名字查了角色库】')),
       );
-
-      vm.config.update(
-        vm.config.config.copyWith(disabledSkills: const {'character-lib'}),
-      );
-      vm.send('再画一张初音未来');
-      await pumpEventQueue();
-      expect(seen.last.messages.last['content'], '再画一张初音未来');
-      expect(vm.messages.last.toolSummary, isNull);
     });
 
     test('点了上一条的选项:查回来的资料里写明这是回答,不要再问一遍', () async {

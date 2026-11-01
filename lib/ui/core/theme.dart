@@ -233,9 +233,12 @@ ThemeData pennaTheme({String latin = '', String cjk = ''}) {
             : PennaColors.slate400,
       ),
       trackColor: WidgetStateProperty.resolveWith(
-        (s) => s.contains(WidgetState.selected)
-            ? PennaColors.primary
-            : PennaColors.slate100,
+        (s) => !s.contains(WidgetState.selected)
+            ? PennaColors.slate100
+            // 点不了的开关是灰的,不能看着和能点的一样。
+            : s.contains(WidgetState.disabled)
+            ? PennaColors.slate400
+            : PennaColors.primary,
       ),
       trackOutlineColor: WidgetStateProperty.resolveWith(
         (s) => s.contains(WidgetState.selected)

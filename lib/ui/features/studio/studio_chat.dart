@@ -86,10 +86,14 @@ extension StudioChat on StudioViewModel {
   void _deliverDraft() {
     if (_messages.length < 2) return;
     // 中间可能隔着查标签的那几条,所以找用户自己发的最后一条。
-    final quote = _messages
-        .lastWhere((m) => m.fromUser && !m.tool, orElse: () => _messages.first)
-        .quote;
+    final ask = _messages.lastWhere(
+      (m) => m.fromUser && !m.tool,
+      orElse: () => _messages.first,
+    );
+    final quote = ask.quote;
     final drafts = splitDrafts(splitNewSkill(_messages.last.text).prose).drafts;
+    final page = draftPageFor(drafts, ask);
+    if (page != null) _note(tr('另一张画,放到了新的一页'));
     // 一条回复可以有好几份,各去各的页;新开页、起名、采纳在操作记录里合成一笔。
     final written = <int>{};
     final problems = asAgentStep(
@@ -99,7 +103,7 @@ extension StudioChat on StudioViewModel {
           if (draft.complete)
             placeDraft(
               draft.text,
-              page: draft.page,
+              page: draft.page ?? page,
               replacing: quote,
               written: written,
               name: draft.name,
@@ -169,46 +173,48 @@ extension StudioChat on StudioViewModel {
       ChatMessage(fromUser: false, text: '', time: time, toolSummary: note),
     ]);
     final preset = cfg.activePreset;
-    final enabled = {
-      for (final s in skills?.all ?? const <UserSkill>[])
-        if (!cfg.disabledSkills.contains(s.id)) s.id,
-    };
-    final requests = _requests(cfg, chain, preset, [
-      {
-        'role': 'system',
-        'content': layoutOnly
-            ? _layoutSystemPrompt(cfg, preset)
-            : _systemPrompt(cfg, preset),
-      },
-      for (final (i, m) in sent.indexed)
-        {
-          'role': m.fromUser ? 'user' : 'assistant',
-          'content': switch (identical(m, ask) && auto.isNotEmpty
-              ? '${_withReferences(m, enabled)}\n\n$auto'
-              : _withReferences(m, enabled)) {
-            // 自己以前写的布局、透视、灯光不重发:画板可能已被用户改过。
-            // 后面紧跟着工具结果的是查资料的那条,里面的布局没放上画板。
-            final text when !m.fromUser => forgetLighting(
-              forgetPerspectives(
-                forgetLayers(
-                  forgetLayouts(
-                    text,
-                    placed: i + 1 >= sent.length || !sent[i + 1].tool,
+    final enabled = _sentSkills(cfg);
+    final requests = _requests(
+      cfg,
+      chain,
+      preset,
+      [
+        {'role': 'system', 'content': _systemFor(cfg, preset)},
+        for (final (i, m) in sent.indexed)
+          {
+            'role': m.fromUser ? 'user' : 'assistant',
+            'content': switch (identical(m, ask) && auto.isNotEmpty
+                ? '${_withReferences(m, enabled)}\n\n$auto'
+                : _withReferences(m, enabled)) {
+              // 自己以前写的布局、透视、灯光不重发:画板可能已被用户改过。
+              // 后面紧跟着工具结果的是查资料的那条,里面的布局没放上画板。
+              final text when !m.fromUser => forgetLighting(
+                forgetPerspectives(
+                  forgetLayers(
+                    forgetLayouts(
+                      text,
+                      placed: i + 1 >= sent.length || !sent[i + 1].tool,
+                    ),
                   ),
                 ),
               ),
-            ),
-            // 布局页里刚发的这条带着参考图:就在这里提醒画布多大,
-            // 模型看了图常照图的比例写宽高(系统提示里说了也会忘)。
-            final text
-                when layoutOnly &&
-                    i == sent.length - 1 &&
-                    m.attachments.any((a) => a.isImage) =>
-              '$text${_canvasReminder()}',
-            final text => text,
+              // 布局页里刚发的这条带着参考图:就在这里提醒画布多大,
+              // 模型看了图常照图的比例写宽高(系统提示里说了也会忘)。
+              final text
+                  when layoutOnly &&
+                      i == sent.length - 1 &&
+                      m.attachments.any((a) => a.isImage) =>
+                '$text${_canvasReminder()}',
+              final text => text,
+            },
           },
-        },
-    ], images: _imagesOf(sent));
+      ],
+      images: _imagesOf(sent),
+      onUsage: (u) {
+        _liveUsageAt = _messages.last.time;
+        _updateReply((m) => m.copyWith(usage: u));
+      },
+    );
     _reply =
         streamWithFailover(
           requests,
@@ -229,6 +235,7 @@ extension StudioChat on StudioViewModel {
           },
           onDone: () {
             _finishReply();
+            _updateReply((m) => m.copyWith(text: cleanReplyPrompts(m.text)));
             // 模型要先查标签:查完它会接着写,成稿等那一条。
             if (_searchTags()) return;
             // 布局页的对话只往布局画板上放,不碰成稿。

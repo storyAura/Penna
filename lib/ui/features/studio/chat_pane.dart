@@ -1,13 +1,16 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:pasteboard/pasteboard.dart';
 
 import '../../../core/harness/attachment.dart';
+import '../../../core/harness/context_meter.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../data/models/app_config.dart';
 import '../../../data/services/config_service.dart';
@@ -26,6 +29,7 @@ import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
 
 part 'chat_composer.dart';
+part 'context_ring.dart';
 part 'chat_header.dart';
 part 'side_chat_panel.dart';
 
@@ -528,6 +532,7 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
           ),
         ),
         _Composer(
+          meter: widget.vm.contextMeter,
           trailing: widget.vm.side == null
               ? null
               : _SideToggle(

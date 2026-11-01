@@ -231,14 +231,14 @@ void main() {
       expect(vm.pending!.added, '【服装】witch hat');
     });
 
-    test('模型没完没了地查:查满三轮就不再理它', () async {
+    test('模型没完没了地查:查满四轮就不再理它', () async {
       final seen = <LlmRequest>[];
       final vm = _studio(seen: seen, reply: (_) => _ask);
 
       vm.send('转成 tag');
       await pumpEventQueue();
 
-      expect(seen, hasLength(4));
+      expect(seen, hasLength(5));
       expect(vm.isStreaming, isFalse);
     });
 
@@ -413,7 +413,7 @@ void main() {
     expect(seen.single.images[1]!.single.mime, 'image/png');
   });
 
-  test('新的两个内置 Skill 默认开着,正文在系统提示里', () async {
+  test('转标签、照图写平时只列名字,画面规划的正文常驻', () async {
     final seen = <LlmRequest>[];
     final vm = _studio(seen: seen, reply: (_) => '好');
 
@@ -421,9 +421,10 @@ void main() {
     await pumpEventQueue();
 
     final system = seen.single.messages.first['content']!;
-    expect(system, contains('<skill name="转标签"'));
+    expect(system, isNot(contains('<skill name="转标签"')));
+    expect(system, contains('- 转标签:'));
     expect(system, contains('<search-tags>'));
-    expect(system, contains('<skill name="照图写"'));
+    expect(system, contains('- 照图写:'));
     expect(system, contains('<skill name="画面规划"'));
   });
 }

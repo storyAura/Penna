@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/harness/providers/grok_auth.dart';
 import '../../../core/harness/providers/llm_http.dart';
 import '../../../core/harness/providers/llm_router.dart';
 import '../../../data/models/app_config.dart';
@@ -9,13 +10,21 @@ import '../../../data/services/config_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../studio/mention.dart';
+import 'settings_grok_login.dart';
 import 'settings_sections.dart';
 import '../../../l10n/l10n.dart';
 
-const _protocolLabels = {protocolOpenAi: 'OpenAI', protocolGoogle: 'Google'};
+part 'settings_model_list.dart';
+
+Map<String, String> get _protocolLabels => {
+  protocolOpenAi: 'OpenAI',
+  protocolGoogle: 'Google',
+  protocolGrok: tr('Grok 账号'),
+};
 
 /// 「常用服务」里预填的接口(地址和模型取自各家 2026-10 的文档)。名字存进设置,不翻译。
 const llmProviders = [
+  (name: 'xAI Grok', baseUrl: 'https://api.x.ai/v1', model: defaultGrokModel),
   (
     name: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
@@ -40,7 +49,12 @@ class LlmSection extends StatelessWidget {
 
   final ConfigService service;
 
-  void _add({String? name, String? baseUrl, String model = ''}) {
+  void _add({
+    String? name,
+    String? baseUrl,
+    String model = '',
+    String protocol = protocolOpenAi,
+  }) {
     service.update(
       service.config.putLlm(
         LlmProfile(
@@ -48,6 +62,7 @@ class LlmSection extends StatelessWidget {
           name: name ?? tr('新模型'),
           baseUrl: baseUrl ?? defaultBaseUrls[protocolOpenAi]!,
           model: model,
+          protocol: protocol,
         ),
       ),
     );
@@ -59,8 +74,16 @@ class LlmSection extends StatelessWidget {
     final picked = await popMenu(
       context,
       box.localToGlobal(box.size.bottomLeft(Offset.zero)),
-      [for (final p in llmProviders) p.name],
+      [for (final p in llmProviders) p.name, _protocolLabels[protocolGrok]!],
     );
+    if (picked == _protocolLabels[protocolGrok]) {
+      return _add(
+        name: 'Grok',
+        baseUrl: grokApiBase,
+        model: defaultGrokModel,
+        protocol: protocolGrok,
+      );
+    }
     final p = llmProviders.where((p) => p.name == picked).firstOrNull;
     if (p != null) _add(name: p.name, baseUrl: p.baseUrl, model: p.model);
   }
@@ -93,6 +116,8 @@ class LlmSection extends StatelessWidget {
                   onPick: (id) =>
                       service.config.copyWith(polishLlmId: () => id),
                 ),
+                gap,
+                WebSearchPicker(service: service),
               ],
             ),
           ),
@@ -238,10 +263,23 @@ class _LlmCardState extends State<_LlmCard> {
       a.name == b.name &&
       a.baseUrl == b.baseUrl &&
       a.model == b.model &&
-      a.protocol == b.protocol;
+      a.protocol == b.protocol &&
+      a.contextLimit == b.contextLimit;
 
+  bool get _grok => llm.protocol == protocolGrok;
+
+  // Grok 账号的 Key 是程序自己换的 token,不算用户改的。
   bool get _dirty =>
-      !_same(_draft, widget.llm) || _key != service.config.llmKey(llm.id);
+      !_same(_draft, widget.llm) ||
+      !_grok && _key != service.config.llmKey(llm.id);
+
+  /// 把草稿存进设置。换成别的协议时 Grok 的 token 一起删掉,不能发给别的地址。
+  AppConfig _commit(AppConfig cfg, LlmProfile draft, String key) {
+    final next = cfg.putLlm(draft);
+    return draft.protocol == protocolGrok
+        ? next
+        : next.signOutGrok(draft.id).setSecret(llmSecretKey(draft.id), key);
+  }
 
   @override
   void didUpdateWidget(_LlmCard old) {
@@ -257,6 +295,9 @@ class _LlmCardState extends State<_LlmCard> {
       baseUrl: pick(_draft.baseUrl, was.baseUrl, now.baseUrl),
       model: pick(_draft.model, was.model, now.model),
       protocol: pick(_draft.protocol, was.protocol, now.protocol),
+      contextLimit: _draft.contextLimit == was.contextLimit
+          ? now.contextLimit
+          : _draft.contextLimit,
     );
     final nextKey = pick(_key, _savedKey, key);
     // 输入框只在创建时读一次值:显示的内容变了才重建它们(刚保存完不用)。
@@ -276,9 +317,7 @@ class _LlmCardState extends State<_LlmCard> {
       Future.microtask(() {
         final cfg = service.config;
         if (!cfg.llms.any((l) => l.id == draft.id)) return;
-        service.update(
-          cfg.putLlm(draft).setSecret(llmSecretKey(draft.id), key),
-        );
+        service.update(_commit(cfg, draft, key));
       });
     }
     super.dispose();
@@ -289,9 +328,11 @@ class _LlmCardState extends State<_LlmCard> {
   Future<void> _save() async {
     setState(() => _saving = true);
     service.update(
-      service.config
-          .putLlm(_draft.copyWith(enabled: widget.llm.enabled))
-          .setSecret(llmSecretKey(_draft.id), _key),
+      _commit(
+        service.config,
+        _draft.copyWith(enabled: widget.llm.enabled),
+        _key,
+      ),
     );
     await service.flushed();
     if (!mounted) return;
@@ -317,8 +358,8 @@ class _LlmCardState extends State<_LlmCard> {
     try {
       models = await listModels(
         protocol: llm.protocol,
-        baseUrl: llm.baseUrl,
-        apiKey: _key,
+        baseUrl: _grok ? grokApiBase : llm.baseUrl,
+        apiKey: _grok ? await grokAccessToken(service, llm.id) : _key,
       );
       if (models.isEmpty) error = tr('接口没有返回模型');
     } on LlmException catch (e) {
@@ -354,6 +395,7 @@ class _LlmCardState extends State<_LlmCard> {
             baseUrl: llm.baseUrl,
             model: model,
             apiKey: _key,
+            token: _grok ? () => grokAccessToken(service, llm.id) : null,
             messages: const [
               {'role': 'user', 'content': 'hi'},
             ],
@@ -398,10 +440,17 @@ class _LlmCardState extends State<_LlmCard> {
     final untouched =
         llm.baseUrl.trim().isEmpty ||
         llm.baseUrl.trim() == defaultBaseUrls[llm.protocol];
+    // 换走时 token 不留在 Key 那一栏:它只能发给 xAI。
+    if (_grok) _key = '';
     _put(
       llm.copyWith(
         protocol: protocol,
-        baseUrl: untouched ? defaultBaseUrls[protocol] : null,
+        baseUrl: untouched || protocol == protocolGrok
+            ? defaultBaseUrls[protocol]
+            : null,
+        model: protocol == protocolGrok && llm.models.isEmpty
+            ? defaultGrokModel
+            : null,
       ),
     );
   }
@@ -497,36 +546,66 @@ class _LlmCardState extends State<_LlmCard> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: PennaField(
-                        key: ValueKey('model-$_picks-$_reverts'),
+                        // 换成 Grok 时可能填上默认模型,要重建才显示得出来。
+                        key: ValueKey(
+                          'model-${llm.protocol}-$_picks-$_reverts',
+                        ),
                         label: tr('模型名称'),
-                        hint: llm.protocol == protocolGoogle
-                            ? tr('gemini-2.5-flash,可填多个')
-                            : tr('gpt-4o-mini,可填多个'),
+                        hint: switch (llm.protocol) {
+                          protocolGoogle => tr('gemini-2.5-flash,可填多个'),
+                          protocolGrok => tr('grok-4.7,可填多个'),
+                          _ => tr('gpt-4o-mini,可填多个'),
+                        },
                         value: llm.model,
                         onChanged: (v) => _put(llm.copyWith(model: v)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 110,
+                      child: PennaField(
+                        key: ValueKey('limit-$_reverts'),
+                        label: tr('上下文上限(K)'),
+                        hint: tr('自动'),
+                        value: llm.contextLimit > 0
+                            ? '${llm.contextLimit ~/ 1000}'
+                            : '',
+                        onChanged: (v) => _put(
+                          llm.copyWith(
+                            contextLimit: (int.tryParse(v.trim()) ?? 0) * 1000,
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
                 gap,
-                PennaField(
-                  // 换协议会改默认地址,要重建输入框才显示得出来。
-                  key: ValueKey('url-${llm.protocol}-$_reverts'),
-                  label: 'Base URL',
-                  hint: defaultBaseUrls[llm.protocol],
-                  value: llm.baseUrl,
-                  onChanged: (v) => _put(llm.copyWith(baseUrl: v)),
-                ),
-                gap,
-                PennaField(
-                  key: ValueKey('key-$_reverts'),
-                  label: 'API Key',
-                  hint: tr('可留空'),
-                  obscure: true,
-                  value: _key,
-                  onChanged: (v) => setState(() => _key = v),
-                ),
-                gap,
+                if (_grok) ...[
+                  GrokLoginRow(
+                    service: service,
+                    draft: _draft.copyWith(enabled: widget.llm.enabled),
+                  ),
+                  gap,
+                ] else ...[
+                  PennaField(
+                    // 换协议会改默认地址,要重建输入框才显示得出来。
+                    key: ValueKey('url-${llm.protocol}-$_reverts'),
+                    label: 'Base URL',
+                    hint: defaultBaseUrls[llm.protocol],
+                    value: llm.baseUrl,
+                    onChanged: (v) => _put(llm.copyWith(baseUrl: v)),
+                  ),
+                  gap,
+                  PennaField(
+                    key: ValueKey('key-${llm.protocol}-$_reverts'),
+                    label: 'API Key',
+                    hint: tr('可留空'),
+                    obscure: true,
+                    value: _key,
+                    onChanged: (v) => setState(() => _key = v),
+                  ),
+                  gap,
+                ],
                 Row(
                   children: [
                     PennaButton(
@@ -614,114 +693,6 @@ class _LlmCardState extends State<_LlmCard> {
                   ),
                 ],
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-const _modelRowHeight = 32.0;
-const _modelListMaxHeight = 224.0;
-
-/// 模型多于这个数才显示筛选框。
-const _filterThreshold = 12;
-
-/// 拉取到的模型列表:点一行就勾选并填进「模型名称」。
-class _ModelList extends StatefulWidget {
-  const _ModelList({
-    required this.models,
-    required this.selected,
-    required this.onPick,
-  });
-
-  final List<String> models;
-  final Set<String> selected;
-  final ValueChanged<String> onPick;
-
-  @override
-  State<_ModelList> createState() => _ModelListState();
-}
-
-class _ModelListState extends State<_ModelList> {
-  String _filter = '';
-
-  @override
-  Widget build(BuildContext context) {
-    final needle = _filter.trim().toLowerCase();
-    final shown = needle.isEmpty
-        ? widget.models
-        : widget.models.where((m) => m.toLowerCase().contains(needle)).toList();
-    return PennaCard(
-      color: PennaColors.slate50,
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (widget.models.length > _filterThreshold)
-            TextField(
-              contextMenuBuilder: pennaTextMenu,
-              onChanged: (v) => setState(() => _filter = v),
-              style: const TextStyle(fontSize: 12.5),
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: tr('筛选 {0} 个模型', [widget.models.length]),
-                hintStyle: TextStyle(color: PennaColors.slate400),
-                prefixIcon: const Icon(Icons.search, size: 16),
-                prefixIconConstraints: const BoxConstraints(minWidth: 34),
-                contentPadding: const EdgeInsets.symmetric(vertical: 9),
-                border: UnderlineInputBorder(
-                  borderSide: BorderSide(color: PennaColors.border),
-                ),
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: PennaColors.border),
-                ),
-              ),
-            ),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: _modelListMaxHeight),
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemExtent: _modelRowHeight,
-              itemCount: shown.length,
-              itemBuilder: (context, i) {
-                final model = shown[i];
-                final picked = widget.selected.contains(model);
-                return InkWell(
-                  onTap: () => widget.onPick(model),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Row(
-                      children: [
-                        Icon(
-                          picked
-                              ? Icons.check_box
-                              : Icons.check_box_outline_blank,
-                          size: 16,
-                          color: picked
-                              ? PennaColors.primary
-                              : PennaColors.slate400,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            model,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: picked
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
             ),
           ),
         ],

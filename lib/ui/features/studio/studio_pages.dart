@@ -445,6 +445,26 @@ extension StudioPages on StudioViewModel {
     return null;
   }
 
+  /// 模型写了一份没带 page 的成稿,却把眼前这页整篇换成了另一张画时返回 `新`:
+  /// 不盖掉,放到新的一页(用户反馈:换了参考图和角色,照样写进了原来的页)。其余情况返回 null。
+  /// 只靠系统提示不够:模型常常不写 page。回答同一条消息只开一次,重新运行不会越开越多。
+  String? draftPageFor(List<AgentDraft> drafts, ChatMessage ask) {
+    final done = drafts.where((d) => d.complete).toList();
+    if (done.length != 1 || done.first.page != null) return null;
+    if (layoutOnly || ask.quote != null || identical(ask, _newPageFor)) {
+      return null;
+    }
+    if (body.trim().isEmpty || _blocks.any((b) => b.pinned)) return null;
+    final draft = done.first;
+    if (!draft.replace && !rewritesAllSections(body, draft.text)) return null;
+    final image = ask.attachments.any((a) => a.isImage);
+    if (!looksLikeAnotherPicture(body, draft.text, newImage: image)) {
+      return null;
+    }
+    _newPageFor = ask;
+    return '新';
+  }
+
   /// 把一份新成稿放到它该去的那一页:那页是空的直接填,有内容就提出待确认改动。
   /// [replacing] 只对眼前这页有用(用户选来讨论的那一段)。放不了时返回原因。
   /// [name] 是 Agent 给这页起的名字,[seriesTitle] 是它给这个系列起的名字;

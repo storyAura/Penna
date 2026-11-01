@@ -679,7 +679,7 @@ void main() {
 
   group('回复里的小部件', () {
     test('选项拆成一个个按钮的字,写完了才算', () {
-      final (:prose, :options, :multi, sections: _) = splitOptions(
+      final (:prose, :options, :multi, sections: _, headings: _) = splitOptions(
         '方案如上。\n<options>\n- 确认,开始写\n2. 我要改一下\n</options>',
       );
 
@@ -688,6 +688,14 @@ void main() {
       final pick = splitOptions('转哪几段?\n<options multi>\n主体\n服装\n</options>');
       expect((pick.prose, pick.multi), ('转哪几段?', true));
       expect(pick.options, ['主体', '服装']);
+      // 分类小标题不算选项,也不占 12 个的名额。
+      final grouped = splitOptions(
+        '<options multi>\n按推荐写\n# 元素\n- 甲\n## 风格\n'
+        '${List.generate(11, (i) => '项$i').join('\n')}\n项11\n</options>',
+      );
+      expect(grouped.options.take(2), ['按推荐写', '甲']);
+      expect(grouped.options, hasLength(12));
+      expect(grouped.headings, {1: '元素', 2: '风格'});
       expect(splitOptions('转哪几段?<options mu').prose, '转哪几段?');
       expect(prose, '方案如上。');
       expect(options, ['确认,开始写', '我要改一下']);

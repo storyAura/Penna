@@ -9,9 +9,8 @@ extension StudioAutoLookup on StudioViewModel {
   static const _maxAuto = 3;
 
   /// [message] 里提到的角色(用户自己存的、内置的),名字 → 查到的结果。
-  /// 关掉了「角色库」这个 Skill、或者一个也没认出来时是空的。
+  /// 一个也没认出来时是空的。
   Map<String, List<CharacterHit>> _mentioned(ChatMessage message) {
-    if (config.config.disabledSkills.contains('character-lib')) return const {};
     final text = message.text;
     if (text.trim().isEmpty) return const {};
     final out = <String, List<CharacterHit>>{};
@@ -61,9 +60,7 @@ extension StudioAutoLookup on StudioViewModel {
 
   /// 系统提示最后那一条:先查再写。关掉的 Skill、没接上的工具不提。
   String _lookupFirstPrompt(AppConfig cfg) {
-    final people =
-        !cfg.disabledSkills.contains('character-lib') &&
-        (characters != null || characterDict != null);
+    final people = characters != null || characterDict != null;
     final tags =
         !cfg.disabledSkills.contains('danbooru-tags') && tagSearch != null;
     if (!people && !tags) return '';
@@ -99,8 +96,73 @@ extension StudioAutoLookup on StudioViewModel {
     return {for (final (i, query) in asked.indexed) query: found[i]};
   }
 
-  /// 副聊天的回复里写了 `<search-tags>` / `<search-character>`:照主聊天的查法查好,
-  /// 拼成交还给模型的那段话([text])和记在那一步上的一句([note])。没有要查的返回 null。
+  /// 系统提示里的【联网搜索】;关着或没有能搜的接口时不提。
+  String get webSearchGuide =>
+      webSearchChain(config.config).isEmpty ? '' : webSearchPrompt;
+
+  /// 回复里要联网搜的东西;关着或没有能搜的接口时是空的。
+  List<String> _webQueries(String prose) =>
+      webSearchChain(config.config).isEmpty
+      ? const []
+      : splitToolTag(prose, webSearchTag).queries.take(_maxWebQueries).toList();
+
+  bool wantsWebSearch(String reply) =>
+      _webQueries(splitNewSkill(reply).prose).isNotEmpty;
+
+  /// 联网搜索:用能搜的接口(不一定是写回复的这个)查好。一个接口搜不了就换下一个,
+  /// 都不行的如实告诉模型。
+  // ponytail: 用户点停止时这里不掐断,搜完的结果丢掉就是,最多多花一次搜索的钱。
+  Future<Map<String, WebResult>> _searchWeb(List<String> asked) async {
+    if (asked.isEmpty) return const {};
+    final cfg = config.config;
+    final chain = webSearchChain(cfg);
+    final found = await Future.wait([
+      for (final query in asked)
+        () async {
+          try {
+            final text = await streamWithFailover(
+              _requests(
+                cfg,
+                chain,
+                cfg.activePreset,
+                [
+                  {'role': 'system', 'content': webSearchSystem},
+                  {'role': 'user', 'content': query},
+                ],
+                piercing: '',
+                webSearch: true,
+              ),
+              this.streamChat,
+            ).join();
+            return (text: text, failed: false);
+          } on Object catch (e) {
+            // 认不出的只报类型,原文可能带着 Key。
+            return (
+              text: e is LlmException ? e.message : '${e.runtimeType}',
+              failed: true,
+            );
+          }
+        }(),
+    ]);
+    return {for (final (i, query) in asked.indexed) query: found[i]};
+  }
+
+  /// 工具记录上列的那几行。
+  List<String> _webDetails(Map<String, WebResult> results) => [
+    for (final MapEntry(key: query, value: r) in results.entries)
+      tr('「{0}」(联网):{1}', [
+        query,
+        r.failed
+            ? tr('没搜到')
+            : r.text.length > 80
+            ? '${r.text.substring(0, 80)}…'
+            : r.text,
+      ]),
+  ];
+
+  /// 副聊天的回复里写了 `<search-tags>` / `<search-character>` / `<web-search>`:
+  /// 照主聊天的查法查好,拼成交还给模型的那段话([text])和记在那一步上的一句([note])。
+  /// 没有要查的返回 null。
   Future<({String text, String note})?> lookupFor(String reply) async {
     final prose = splitNewSkill(reply).prose;
     final queries = tagSearch == null
@@ -109,16 +171,19 @@ extension StudioAutoLookup on StudioViewModel {
     final names = characters == null && characterDict == null
         ? const <String>[]
         : splitCharacterTags(prose).queries.take(_maxQueries).toList();
-    if (queries.isEmpty && names.isEmpty) return null;
-    final results = await _findTags(queries);
+    final webs = _webQueries(prose);
+    if (queries.isEmpty && names.isEmpty && webs.isEmpty) return null;
+    final (results, web) = await (_findTags(queries), _searchWeb(webs)).wait;
     final people = {for (final name in names) name: findCharacters(name)};
     return (
       text: [
         if (results.isNotEmpty) formatTagResults(results),
         if (people.isNotEmpty)
           formatCharacterResults(people, formOf: characterDict?.parentOf),
+        if (web.isNotEmpty) formatWebResults(web),
       ].join('\n\n'),
       note: [
+        if (web.isNotEmpty) tr('联网搜索 · {0} 次', [web.length]),
         if (results.isNotEmpty)
           tr('查了 Danbooru 标签 · {0} 个', [
             results.values.expand((r) => r.hits).length,

@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/version-1.0.3--261031--1--dev-F26D7D" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.3--261101--6--dev-F26D7D" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-4F7CF7" alt="license">
 </p>
 
@@ -37,8 +37,9 @@ Penna 是面向文生图**正面提示词**的创作工具,覆盖撰写、修改
 - **Danbooru 标签**:内置约 7.6 万个标签,可接入在线语义搜索;Agent 写标签前自动查询并在成稿后核对。
 - **角色库**:内置约 7.4 万个 Danbooru 角色,外貌与服装分开取用,一并列出变身、换装后的形态;自己的角色可保存别名、简介和多套服装。
 - **润色与翻译**:可针对整页、某一段或选中的文字;机器翻译支持 Google、百度和阿里,自动重试并切换引擎。
-- **Skills**:内置 14 个写法说明,支持导入 `.md` / `.zip`,也可让 Agent 在对话中写新的 Skill。
-- **API 管理**:支持 OpenAI 兼容接口和 Google 接口(含 Vertex AI),多个模型按顺序组成后备链。
+- **Skills**:内置 11 个写法说明,核心 3 个常驻,其余由 Agent 按需加载;支持导入 `.md` / `.zip`,也可让 Agent 在对话中写新的 Skill。
+- **API 管理**:支持 OpenAI 兼容接口、Google 接口(含 Vertex AI)和 Grok 账号登录,多个模型按顺序组成后备链。
+- **联网搜索**:Agent 可联网查资料,搜索可交给另一个接口完成,例如用 DeepSeek 写回复、用 Gemini 搜索。
 - **档案与记录**:档案库、记事本、历史提示词;操作记录是一棵树,可回到任意一步之前或之后,各分支都保留。
 - **软件设置与更新**:简体中文、繁體中文、English、日本語四种界面语言,深色模式,应用内一键更新。
 - **MCP**:添加 HTTP 或 stdio 方式的服务,测试连接并列出工具。
