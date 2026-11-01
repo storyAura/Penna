@@ -348,7 +348,7 @@ void main() {
     expect(find.text('已在成稿'), findsOneWidget);
     expect(vm.finalPrompt, 'a fox\nsnow');
 
-    await tester.tap(find.text('重新运行'));
+    await tester.tap(find.text('重新回复'));
     await tester.runAsync(pumpEventQueue);
     await tester.pumpAndSettle();
 

@@ -37,6 +37,7 @@ Map<String, Object?> responsesBody(LlmRequest req) => {
     'temperature': req.temperature,
     if (req.topP < 1) 'top_p': req.topP,
   },
+  if (req.effort case final effort?) 'reasoning': {'effort': effort},
   if (req.webSearch)
     'tools': [
       {'type': 'web_search'},
@@ -95,7 +96,7 @@ String sourcesText(Map<String, String> sources) => sources.isEmpty
     : '\n\nSources:\n${[for (final e in sources.entries) '- ${e.value.isEmpty ? e.key : '${e.value} ${e.key}'}'].join('\n')}';
 
 Stream<String> streamResponsesChat(LlmRequest req) =>
-    runLlmStream((client) => _chat(client, req));
+    runLlmStream((client) => effortFallback(req, (r) => _chat(client, r)));
 
 Stream<String> _chat(HttpClient client, LlmRequest req) async* {
   final login = req.token != null;
@@ -105,13 +106,21 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     llmEndpoint(login ? grokApiBase : req.baseUrl, '/responses'),
     {if (key.isNotEmpty) HttpHeaders.authorizationHeader: 'Bearer $key'},
     responsesBody(req),
+    stall: llmStallFor(req),
   );
   var yielded = false;
+  LlmCut? cut = LlmCut.broken;
   final sources = <String, String>{};
   try {
     await for (final line in lines) {
       final event = parseResponsesLine(line);
       reportUsage(req, sseJson(line));
+      cut = switch (sseJson(line)) {
+        {'type': 'response.completed'} => null,
+        {'type': 'response.incomplete', 'response': final Object? response} =>
+          responsesCut(response),
+        _ => cut,
+      };
       sources.addAll(event.sources);
       final delta = event.delta;
       if (delta != null && delta.isNotEmpty) {
@@ -129,5 +138,13 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     rethrow;
   }
   if (!yielded) throw LlmException(tr('模型没有返回内容'));
+  if (cut != null) req.onCut?.call(cut);
   if (req.webSearch && sources.isNotEmpty) yield sourcesText(sources);
 }
+
+/// `response.incomplete` 带的原因。
+LlmCut responsesCut(Object? response) => switch (response) {
+  {'incomplete_details': {'reason': 'content_filter'}} => LlmCut.blocked,
+  {'incomplete_details': {'reason': 'max_output_tokens'}} => LlmCut.length,
+  _ => LlmCut.broken,
+};

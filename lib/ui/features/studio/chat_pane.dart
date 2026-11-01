@@ -409,6 +409,12 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
         onRetry: !widget.vm.isStreaming && last && !message.fromUser
             ? _retry
             : null,
+        pager: last && !message.fromUser ? replyPager(messages) : null,
+        onShowReply: widget.vm.showReplyAt,
+        isLast: last,
+        onEdit: widget.vm.isStreaming || !message.fromUser
+            ? null
+            : (text) => _edit(i, text),
         // 只有最新那条回复的选项能点;点了就当成用户的回答发出去。
         onOption: !widget.vm.isStreaming && last ? _answer : null,
         draftSections: [
@@ -417,6 +423,17 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
         ],
       ),
     );
+  }
+
+  bool _edit(int index, String text) {
+    final problem = widget.vm.editMessage(index, text);
+    if (problem != null) {
+      showToast(context, problem, warn: true);
+      return false;
+    }
+    _follow = true;
+    _toBottom();
+    return true;
   }
 
   void _answer(String option) {
@@ -557,6 +574,10 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
           autoApprove: widget.config.config.autoApprove,
           onAutoApprove: (on) => widget.config.update(
             widget.config.config.copyWith(autoApprove: on),
+          ),
+          thinking: widget.config.config.thinking,
+          onThinking: (level) => widget.config.update(
+            widget.config.config.copyWith(thinking: level),
           ),
           dragging: _dragging,
           queued: [

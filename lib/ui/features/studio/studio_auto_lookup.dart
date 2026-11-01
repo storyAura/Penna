@@ -147,19 +147,6 @@ extension StudioAutoLookup on StudioViewModel {
     return {for (final (i, query) in asked.indexed) query: found[i]};
   }
 
-  /// 工具记录上列的那几行。
-  List<String> _webDetails(Map<String, WebResult> results) => [
-    for (final MapEntry(key: query, value: r) in results.entries)
-      tr('「{0}」(联网):{1}', [
-        query,
-        r.failed
-            ? tr('没搜到')
-            : r.text.length > 80
-            ? '${r.text.substring(0, 80)}…'
-            : r.text,
-      ]),
-  ];
-
   /// 副聊天的回复里写了 `<search-tags>` / `<search-character>` / `<web-search>`:
   /// 照主聊天的查法查好,拼成交还给模型的那段话([text])和记在那一步上的一句([note])。
   /// 没有要查的返回 null。
@@ -182,8 +169,8 @@ extension StudioAutoLookup on StudioViewModel {
           formatCharacterResults(people, formOf: characterDict?.parentOf),
         if (web.isNotEmpty) formatWebResults(web),
       ].join('\n\n'),
+      // 联网搜索不写在这:界面从 [text] 里读出来,单独显示一块。
       note: [
-        if (web.isNotEmpty) tr('联网搜索 · {0} 次', [web.length]),
         if (results.isNotEmpty)
           tr('查了 Danbooru 标签 · {0} 个', [
             results.values.expand((r) => r.hits).length,

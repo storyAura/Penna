@@ -12,6 +12,9 @@ typedef LlmUsage = ({int input, int cached, int output});
 /// 随某条消息发出的一张图片。
 typedef LlmImage = ({String mime, Uint8List bytes});
 
+/// 回复为什么没写完:到了输出上限、被接口拦下、接口没说写完连接就结束了。
+enum LlmCut { length, blocked, broken }
+
 @immutable
 class LlmRequest {
   const LlmRequest({
@@ -26,7 +29,32 @@ class LlmRequest {
     this.token,
     this.webSearch = false,
     this.onUsage,
+    this.effort,
+    this.onCut,
   });
+
+  /// 已经出了字,但这条回复没写完时调用。
+  final void Function(LlmCut cut)? onCut;
+
+  /// 思考强度:low、medium、high、xhigh;null 是不指定,用模型自己的默认。
+  final String? effort;
+
+  /// 只换思考强度的一份。
+  LlmRequest withEffort(String? effort) => LlmRequest(
+    baseUrl: baseUrl,
+    model: model,
+    apiKey: apiKey,
+    messages: messages,
+    images: images,
+    temperature: temperature,
+    topP: topP,
+    protocol: protocol,
+    token: token,
+    webSearch: webSearch,
+    onUsage: onUsage,
+    effort: effort,
+    onCut: onCut,
+  );
 
   /// 接口报了用量时调用;一条回复里可能报好几次,最后一次为准。
   final void Function(LlmUsage usage)? onUsage;
@@ -72,6 +100,30 @@ class LlmException implements Exception {
 }
 
 typedef ChatStreamer = Stream<String> Function(LlmRequest request);
+
+/// 各模型收的强度不一样,收不了的整条请求报 400 / 422:极高先退到高,再不行就不指定。
+/// 认不出是不是这个字段惹的(中转站的说法五花八门),所以这两个状态码都重发;
+/// 真是别的原因时最后还是同一个错。
+// ponytail: 退回了界面上看不出来,滑块还停在原来那档;要显示就给 LlmRequest 加个回调。
+Stream<String> effortFallback(
+  LlmRequest req,
+  Stream<String> Function(LlmRequest req) send,
+) async* {
+  try {
+    await for (final delta in send(req)) {
+      yield delta;
+    }
+  } on LlmException catch (e) {
+    final rejected =
+        e.status == HttpStatus.badRequest ||
+        e.status == HttpStatus.unprocessableEntity;
+    if (req.effort == null || !rejected) rethrow;
+    yield* effortFallback(
+      req.withEffort(req.effort == 'xhigh' ? 'high' : null),
+      send,
+    );
+  }
+}
 
 const _maxErrorBody = 300;
 
@@ -130,15 +182,16 @@ Stream<String> postForLines(
   HttpClient client,
   Uri uri,
   Map<String, String> headers,
-  Map<String, Object?> body,
-) async* {
+  Map<String, Object?> body, {
+  Duration stall = llmStallTimeout,
+}) async* {
   final request = await client.postUrl(uri);
   request.headers.contentType = ContentType.json;
   request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
   headers.forEach(request.headers.set);
   request.add(utf8.encode(jsonEncode(body)));
   // 模型卡住不说话时不能一直等:超时算失败,还没出字就会换下一个模型。
-  final response = await request.close().timeout(llmStallTimeout);
+  final response = await request.close().timeout(stall);
   if (response.statusCode != HttpStatus.ok) {
     throw _statusError(response.statusCode, await utf8.decodeStream(response));
   }
@@ -146,11 +199,18 @@ Stream<String> postForLines(
       .transform(utf8.decoder)
       .transform(const LineSplitter())
       // 推理模型思考时也一直在发数据,隔这么久一行都没有才算卡住。
-      .timeout(llmStallTimeout);
+      .timeout(stall);
 }
 
 /// 等模型回话最多等多久(从发出请求到收到回应,或两段数据之间)。
 const llmStallTimeout = Duration(seconds: 60);
+
+/// 这个请求等多久。用户把思考强度调高时,模型可能好几分钟不说话。
+// ponytail: 5 分钟是估的;调高强度后模型真卡住,要等这么久才换下一个模型。
+Duration llmStallFor(LlmRequest req) =>
+    req.effort == 'high' || req.effort == 'xhigh'
+    ? const Duration(minutes: 5)
+    : llmStallTimeout;
 
 LlmException _statusError(int status, String body) {
   // 回来的是一张网页:多半是地址填错了,打到了网站而不是接口上。

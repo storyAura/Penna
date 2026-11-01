@@ -20,7 +20,18 @@ class ChatMessage {
     this.quote,
     this.tool = false,
     this.usage,
+    this.otherReplies = const [],
+    this.replyAt = 0,
+    this.cut,
   });
+
+  /// 这条回复没写完的原因;写完了、接口没说时是 null。
+  final LlmCut? cut;
+
+  /// 重新回复时另存的那几份:每份是这条消息后面的全部内容(可能带着查资料的几轮)。
+  /// 不含眼前显示的那一份,它排在 [replyAt] 这个位置。
+  final List<List<ChatMessage>> otherReplies;
+  final int replyAt;
 
   /// 这条回复用了多少 token(接口报了才有)。
   final LlmUsage? usage;
@@ -61,6 +72,9 @@ class ChatMessage {
     String? toolSummary,
     List<String>? toolDetails,
     LlmUsage? usage,
+    List<List<ChatMessage>>? otherReplies,
+    int? replyAt,
+    LlmCut? cut,
   }) => ChatMessage(
     fromUser: fromUser,
     text: text ?? this.text,
@@ -75,6 +89,9 @@ class ChatMessage {
     toolSummary: toolSummary ?? this.toolSummary,
     toolDetails: toolDetails ?? this.toolDetails,
     usage: usage ?? this.usage,
+    otherReplies: otherReplies ?? this.otherReplies,
+    replyAt: replyAt ?? this.replyAt,
+    cut: cut ?? this.cut,
   );
 
   /// 存盘用。给了 [files] 才存附件(另存成文件,这里只记文件名)。
@@ -93,6 +110,14 @@ class ChatMessage {
     'toolSummary': ?toolSummary,
     if (usage case final u?)
       'usage': {'input': u.input, 'cached': u.cached, 'output': u.output},
+    'cut': ?cut?.name,
+    if (otherReplies.isNotEmpty) ...{
+      'otherReplies': [
+        for (final reply in otherReplies)
+          [for (final m in reply) m.toJson(files: files)],
+      ],
+      'replyAt': replyAt,
+    },
   };
 
   /// 附件的文件没了的就不带上。
@@ -124,7 +149,111 @@ class ChatMessage {
       ),
       _ => null,
     },
+    otherReplies: List.unmodifiable([
+      for (final reply in (j['otherReplies'] as List?) ?? const [])
+        List<ChatMessage>.unmodifiable([
+          for (final m in reply as List)
+            ChatMessage.fromJson(m as Map<String, dynamic>, files: files),
+        ]),
+    ]),
+    replyAt: j['replyAt'] as int? ?? 0,
+    cut: LlmCut.values.asNameMap()[j['cut']],
   );
+}
+
+/// 重新回复时从哪条消息后面重来:最后一条查询结果也算,查过的资料不用再查一遍
+/// (转区域控制、本地反推再跑一次还会多出东西)。这一轮已经另存过回复时,
+/// 回到存着它们的那一条:新的回复可能又查了几轮,这时最后一条已经往后挪了。
+int replyAnchor(List<ChatMessage> messages) {
+  final ask = messages.lastIndexWhere((m) => m.fromUser && !m.tool);
+  if (ask >= 0) {
+    for (var i = ask; i < messages.length; i++) {
+      if (messages[i].otherReplies.isNotEmpty) return i;
+    }
+  }
+  return messages.lastIndexWhere((m) => m.fromUser);
+}
+
+/// 第几份(从 0 数)、一共几份;只有一份时是 null。
+({int at, int total})? replyPager(List<ChatMessage> messages) {
+  final at = replyAnchor(messages);
+  if (at < 0 || messages[at].otherReplies.isEmpty) return null;
+  final anchor = messages[at];
+  return (at: anchor.replyAt, total: anchor.otherReplies.length + 1);
+}
+
+/// 全部几份回复,按先后排,眼前这份也在里面。
+List<List<ChatMessage>> _allReplies(List<ChatMessage> messages, int at) {
+  final anchor = messages[at];
+  return [
+    ...anchor.otherReplies.take(anchor.replyAt),
+    messages.sublist(at + 1),
+    ...anchor.otherReplies.skip(anchor.replyAt),
+  ];
+}
+
+/// 要重新回复时的上文:眼前这份回复收起来,新写的排在最后。
+/// 出错的、一个字没写就停了的不留。还没有可以回复的消息时是 null。
+// ponytail: 只有最新一轮能翻;发了下一条之后,旧的几份还存着但翻不到了,
+// 因为换掉中间的回复,后面的对话就对不上了。要翻得做成分支。
+List<ChatMessage>? retryHistory(List<ChatMessage> messages) {
+  final at = replyAnchor(messages);
+  if (at < 0) return null;
+  final all = [
+    for (final reply in _allReplies(messages, at))
+      if (reply.isNotEmpty && !reply.last.failed && reply.last.text.isNotEmpty)
+        reply,
+  ];
+  return [
+    ...messages.take(at),
+    messages[at].copyWith(
+      otherReplies: List.unmodifiable(all),
+      replyAt: all.length,
+    ),
+  ];
+}
+
+/// 换成第 [index] 份回复(从 0 数)。
+List<ChatMessage> showReply(List<ChatMessage> messages, int index) {
+  final at = replyAnchor(messages);
+  if (at < 0) return messages;
+  final all = _allReplies(messages, at);
+  if (index < 0 || index >= all.length) return messages;
+  return [
+    ...messages.take(at),
+    messages[at].copyWith(
+      otherReplies: List.unmodifiable([
+        for (final (i, reply) in all.indexed)
+          if (i != index) reply,
+      ]),
+      replyAt: index,
+    ),
+    ...all[index],
+  ];
+}
+
+/// 用户改了第 [index] 条消息后的上文:它后面的都不要了,附件、引用的 Skill 和段照旧。
+/// 算一条新消息,所以时间是 [time],另存的回复也不带。不是用户自己写的消息时是 null。
+List<ChatMessage>? editedHistory(
+  List<ChatMessage> messages,
+  int index,
+  String text,
+  DateTime time,
+) {
+  if (index < 0 || index >= messages.length) return null;
+  final m = messages[index];
+  if (!m.fromUser || m.tool) return null;
+  return [
+    ...messages.take(index),
+    ChatMessage(
+      fromUser: true,
+      text: text,
+      time: time,
+      skillIds: m.skillIds,
+      attachments: m.attachments,
+      quote: m.quote,
+    ),
+  ];
 }
 
 /// 对话里显示的一行:一条消息,加上写它之前查标签的那几次记录。

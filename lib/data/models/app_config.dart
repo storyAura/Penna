@@ -398,6 +398,9 @@ const factoryPresets = [
 ];
 
 /// 全部用户设置。[secrets] 单独加密保存,不进 [toJson]。
+/// 滑块上从左到右的几档;空串是不指定。
+const thinkingLevels = ['', 'low', 'medium', 'high', 'xhigh'];
+
 @immutable
 class AppConfig {
   const AppConfig({
@@ -431,6 +434,7 @@ class AppConfig {
     this.layoutSnap = defaultLayoutSnap,
     this.compressImages = true,
     this.autoApprove = false,
+    this.thinking = '',
     this.characterPreviews = false,
     this.updateChannel = 'main',
     this.quickActions = defaultQuickActions,
@@ -489,6 +493,9 @@ class AppConfig {
           .toInt(),
       compressImages: m['compressImages'] as bool? ?? true,
       autoApprove: m['autoApprove'] as bool? ?? false,
+      thinking: thinkingLevels.contains(m['thinking'])
+          ? m['thinking'] as String
+          : '',
       characterPreviews: m['characterPreviews'] as bool? ?? false,
       updateChannel: m['updateChannel'] == 'dev' ? 'dev' : 'main',
       // 旧配置里没有这一项才给默认的;用户删空了就是空的。
@@ -621,6 +628,9 @@ class AppConfig {
   /// 成稿的待确认改动一出来就自动采纳,不用用户点。
   final bool autoApprove;
 
+  /// 思考强度,[thinkingLevels] 之一;空串是不指定,用模型自己的默认。
+  final String thinking;
+
   /// 内置角色库要不要下载预览图。
   // ponytail: 只是个开关,预览图的仓库还没建;建好后角色库按它去下载、缓存。
   final bool characterPreviews;
@@ -664,6 +674,7 @@ class AppConfig {
     'layoutSnap': layoutSnap,
     'compressImages': compressImages,
     'autoApprove': autoApprove,
+    'thinking': thinking,
     'characterPreviews': characterPreviews,
     'updateChannel': updateChannel,
     'quickActions': [
@@ -745,6 +756,7 @@ class AppConfig {
     int? layoutSnap,
     bool? compressImages,
     bool? autoApprove,
+    String? thinking,
     bool? characterPreviews,
     String? updateChannel,
     List<QuickAction>? quickActions,
@@ -783,6 +795,7 @@ class AppConfig {
     layoutSnap: layoutSnap ?? this.layoutSnap,
     compressImages: compressImages ?? this.compressImages,
     autoApprove: autoApprove ?? this.autoApprove,
+    thinking: thinking ?? this.thinking,
     characterPreviews: characterPreviews ?? this.characterPreviews,
     updateChannel: updateChannel ?? this.updateChannel,
     quickActions: quickActions ?? this.quickActions,

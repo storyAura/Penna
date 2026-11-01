@@ -77,7 +77,9 @@ String formatWebResults(Map<String, WebResult> results) {
     final cut = text.length > _maxResultChars
         ? text.substring(0, _maxResultChars)
         : text;
-    return cut.replaceAll('</web-results>', '</ web-results>');
+    return cut
+        .replaceAll('</web-results>', '</ web-results>')
+        .replaceAll('<web-results', '< web-results');
   }
 
   return [
@@ -85,7 +87,24 @@ String formatWebResults(Map<String, WebResult> results) {
         '搜索失败的照实告诉用户,不要自己编。',
     for (final MapEntry(key: query, value: r) in results.entries)
       '<web-results query="${query.replaceAll('"', "'")}">\n'
-          '${r.failed ? '搜索失败:${clean(r.text)}' : clean(r.text)}\n'
+          '${r.failed ? '$_failedMark${clean(r.text)}' : clean(r.text)}\n'
           '</web-results>',
   ].join('\n');
 }
+
+const _failedMark = '搜索失败:';
+
+final _webResult = RegExp(
+  r'<web-results query="([^"]*)">\n([\s\S]*?)\n</web-results>',
+);
+
+/// 这条工具消息里搜过什么。结果本来就存在消息文字里,所以读回历史对话也认得。
+List<({String query, WebResult result})> webSearchesIn(String toolText) => [
+  for (final m in _webResult.allMatches(toolText))
+    (
+      query: m[1]!,
+      result: m[2]!.startsWith(_failedMark)
+          ? (text: m[2]!.substring(_failedMark.length), failed: true)
+          : (text: m[2]!, failed: false),
+    ),
+];

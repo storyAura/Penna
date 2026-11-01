@@ -69,7 +69,17 @@ List<Map<String, Object?>> openAiMessages(LlmRequest req) => [
 
 /// 调用 OpenAI 兼容的 `/chat/completions`,逐段吐出回复文本。
 Stream<String> streamOpenAiChat(LlmRequest req) =>
-    runLlmStream((client) => _chat(client, req));
+    runLlmStream((client) => effortFallback(req, (r) => _chat(client, r)));
+
+/// 写进 `reasoning_effort` 的值。DeepSeek 官方只有 low、high、max。
+String? openAiEffort(LlmRequest req) =>
+    Uri.tryParse(req.baseUrl.trim())?.host == 'api.deepseek.com'
+    ? switch (req.effort) {
+        'medium' => 'high',
+        'xhigh' => 'max',
+        final other => other,
+      }
+    : req.effort;
 
 Stream<String> _chat(HttpClient client, LlmRequest req) async* {
   try {
@@ -103,31 +113,61 @@ Stream<String> _send(
       if (req.topP < 1) 'top_p': req.topP,
       'stream': true,
       if (usage) 'stream_options': {'include_usage': true},
+      'reasoning_effort': ?openAiEffort(req),
       if (req.webSearch) ...?chatSearchBody(req.baseUrl),
     },
+    stall: llmStallFor(req),
   );
 
   var yielded = false;
+  var done = false;
+  String? finish;
   final plain = StringBuffer();
   await for (final line in lines) {
+    // 排队时发的 `: keep-alive`,不是内容。
+    if (line.startsWith(':')) continue;
     if (!line.startsWith('data:')) {
       plain.writeln(line);
       continue;
     }
-    if (line.substring(5).trim() == '[DONE]') break;
+    if (line.substring(5).trim() == '[DONE]') {
+      done = true;
+      break;
+    }
     reportUsage(req, sseJson(line));
+    finish = _finishReason(sseJson(line)) ?? finish;
     final delta = parseSseLine(line);
     if (delta != null && delta.isNotEmpty) {
       yielded = true;
       yield delta;
     }
   }
-  if (yielded) return;
+  if (yielded) {
+    // 有的中转站不给结束原因,但见到 [DONE] 就是说完了。
+    final cut = finish != null || done ? openAiCut(finish) : LlmCut.broken;
+    if (cut != null) req.onCut?.call(cut);
+    return;
+  }
   // 有的接口无视 stream:true,直接回一整个 JSON。
   final whole = _wholeReply(plain.toString(), req);
   if (whole == null) throw LlmException(tr('模型没有返回可识别的内容'));
   yield whole;
 }
+
+String? _finishReason(Object? json) {
+  final choices = json is Map ? json['choices'] : null;
+  final first = choices is List && choices.isNotEmpty ? choices.first : null;
+  final reason = first is Map ? first['finish_reason'] : null;
+  return reason is String ? reason : null;
+}
+
+/// 结束原因对应的没写完;写完了是 null。
+LlmCut? openAiCut(String? reason) => switch (reason) {
+  'length' => LlmCut.length,
+  'content_filter' => LlmCut.blocked,
+  'insufficient_system_resource' || 'aborted' => LlmCut.broken,
+  _ => null,
+};
 
 String? _wholeReply(String body, LlmRequest req) {
   final Object? json;
@@ -143,5 +183,7 @@ String? _wholeReply(String body, LlmRequest req) {
   final first = choices.first;
   final message = first is Map ? first['message'] : null;
   final content = message is Map ? message['content'] : null;
-  return content is String && content.isNotEmpty ? content : null;
+  if (content is! String || content.isEmpty) return null;
+  if (openAiCut(_finishReason(json)) case final cut?) req.onCut?.call(cut);
+  return content;
 }

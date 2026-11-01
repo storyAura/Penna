@@ -451,7 +451,8 @@ extension StudioPages on StudioViewModel {
   String? draftPageFor(List<AgentDraft> drafts, ChatMessage ask) {
     final done = drafts.where((d) => d.complete).toList();
     if (done.length != 1 || done.first.page != null) return null;
-    if (layoutOnly || ask.quote != null || identical(ask, _newPageFor)) {
+    // 比时间不比对象:重新回复时这条消息会多存一份回复,对象换了。
+    if (layoutOnly || ask.quote != null || ask.time == _newPageFor?.time) {
       return null;
     }
     if (body.trim().isEmpty || _blocks.any((b) => b.pinned)) return null;

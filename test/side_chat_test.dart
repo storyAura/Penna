@@ -383,4 +383,26 @@ void main() {
     // 主聊天的对话没多出东西。
     expect(vm.messages, hasLength(2));
   });
+
+  test('副聊天也能重新回复、翻回去、编辑消息', () async {
+    final seen = <LlmRequest>[];
+    final (_, side) = _chats(['第一份', '第二份', '改后的'], seen);
+
+    side.send('看看这段');
+    await pumpEventQueue();
+    expect(side.regenerate(), isNull);
+    await pumpEventQueue();
+    expect(side.messages.last.text, '第二份');
+    expect(replyPager(side.messages), (at: 1, total: 2));
+
+    side.showReplyAt(0);
+    expect(side.messages.last.text, '第一份');
+
+    expect(side.editMessage(1, '回复不能改'), isNotNull);
+    expect(side.editMessage(0, '换个问题'), isNull);
+    await pumpEventQueue();
+    expect(side.messages.map((m) => m.text), ['换个问题', '改后的']);
+    expect(seen.last.messages.last['content'], contains('换个问题'));
+    expect(replyPager(side.messages), isNull);
+  });
 }

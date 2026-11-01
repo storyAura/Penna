@@ -23,6 +23,7 @@ import 'package:penna/ui/core/widgets.dart';
 import 'package:penna/ui/features/characters/characters_page.dart';
 import 'package:penna/ui/features/settings/settings_extension_sections.dart';
 import 'package:penna/ui/features/settings/settings_llm_section.dart';
+import 'package:penna/ui/features/studio/chat_message_view.dart';
 import 'package:penna/ui/features/studio/chat_pane.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 
@@ -631,6 +632,251 @@ void main() {
     });
   });
 
+  group('回复没写完', () {
+    test('各家的结束原因', () {
+      expect(openAiCut('stop'), isNull);
+      expect(openAiCut('tool_calls'), isNull);
+      expect(openAiCut('length'), LlmCut.length);
+      expect(openAiCut('content_filter'), LlmCut.blocked);
+      expect(openAiCut('insufficient_system_resource'), LlmCut.broken);
+      expect(geminiCut('STOP'), isNull);
+      expect(geminiCut('MAX_TOKENS'), LlmCut.length);
+      expect(geminiCut('SAFETY'), LlmCut.blocked);
+      expect(geminiCut(null), LlmCut.broken);
+      expect(
+        responsesCut({
+          'incomplete_details': {'reason': 'max_output_tokens'},
+        }),
+        LlmCut.length,
+      );
+    });
+
+    test('Gemini 的思考摘要不算回复;结束原因读得出来', () {
+      expect(
+        parseGeminiLine(
+          'data: {"candidates":[{"content":{"parts":'
+          '[{"text":"想一想","thought":true},{"text":"正文"}]}}]}',
+        ),
+        '正文',
+      );
+      expect(
+        parseGeminiFinish(
+          'data: {"candidates":[{"content":{"parts":[{"text":"x"}]},'
+          '"finishReason":"MAX_TOKENS"}]}',
+        ),
+        'MAX_TOKENS',
+      );
+    });
+
+    test('调高思考强度才多等', () {
+      LlmRequest ask(String? effort) => LlmRequest(
+        baseUrl: '',
+        model: 'm',
+        apiKey: '',
+        effort: effort,
+        messages: const [],
+      );
+      expect(llmStallFor(ask(null)), llmStallTimeout);
+      expect(llmStallFor(ask('low')), llmStallTimeout);
+      expect(llmStallFor(ask('high')), const Duration(minutes: 5));
+      expect(llmStallFor(ask('xhigh')), const Duration(minutes: 5));
+    });
+
+    test('走本机假接口:到了上限、断流都记下;正常说完不记', () async {
+      HttpOverrides.global = null;
+      final replies = [
+        ': keep-alive\n\n'
+            'data: {"choices":[{"delta":{"content":"半"},"finish_reason":"length"}]}\n\n'
+            'data: [DONE]\n\n',
+        'data: {"choices":[{"delta":{"content":"半"}}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"全"}}]}\n\ndata: [DONE]\n\n',
+      ];
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(server.close);
+      var at = 0;
+      server.listen((request) async {
+        await request.drain<void>();
+        request.response.headers.contentType = ContentType(
+          'text',
+          'event-stream',
+          charset: 'utf-8',
+        );
+        request.response.write(replies[at++]);
+        await request.response.close();
+      });
+
+      Future<LlmCut?> run() async {
+        LlmCut? cut;
+        await streamOpenAiChat(
+          LlmRequest(
+            baseUrl: 'http://127.0.0.1:${server.port}',
+            model: 'm',
+            apiKey: '',
+            messages: const [
+              {'role': 'user', 'content': 'q'},
+            ],
+            onCut: (c) => cut = c,
+          ),
+        ).join();
+        return cut;
+      }
+
+      expect(await run(), LlmCut.length);
+      expect(await run(), LlmCut.broken);
+      expect(await run(), isNull);
+    });
+
+    testWidgets('记在回复上并存盘,回复下面说明原因', (tester) async {
+      final vm = StudioViewModel(
+        config: tempConfig()..update(const AppConfig(llms: [_gemini])),
+        streamChat: (req) {
+          req.onCut?.call(LlmCut.length);
+          return Stream.value('半截');
+        },
+      );
+      vm.send('写长点');
+      await tester.runAsync(pumpEventQueue);
+      expect(vm.messages.last.cut, LlmCut.length);
+      final back = ChatMessage.fromJson(vm.messages.last.toJson());
+      expect(back.cut, LlmCut.length);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ChatMessageView(
+              message: back,
+              onAdoptDraft: (_) {},
+              draftStatus: (_) => DraftStatus.ready,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('没写完:到了输出上限'), findsOneWidget);
+    });
+  });
+
+  group('思考强度', () {
+    LlmRequest ask(String model, String? effort, {String base = ''}) =>
+        LlmRequest(
+          baseUrl: base,
+          model: model,
+          apiKey: '',
+          effort: effort,
+          messages: const [
+            {'role': 'user', 'content': 'q'},
+          ],
+        );
+
+    test('不指定时三种协议都不写这个字段;指定时写成各家的样子', () {
+      Map<String, Object?> google(LlmRequest r) =>
+          geminiBody(r)['generationConfig'] as Map<String, Object?>;
+
+      expect(responsesBody(ask('m', null)), isNot(contains('reasoning')));
+      expect(google(ask('gemini-3', null)), isNot(contains('thinkingConfig')));
+      expect(openAiEffort(ask('m', null)), isNull);
+
+      expect(responsesBody(ask('m', 'high'))['reasoning'], {'effort': 'high'});
+      expect(google(ask('gemini-3-flash', 'xhigh'))['thinkingConfig'], {
+        'thinkingLevel': 'high',
+      });
+      expect(google(ask('gemini-2.5-flash', 'low'))['thinkingConfig'], {
+        'thinkingBudget': 1024,
+      });
+      expect(openAiEffort(ask('gpt', 'medium')), 'medium');
+      const deepseek = 'https://api.deepseek.com/v1';
+      expect(openAiEffort(ask('d', 'medium', base: deepseek)), 'high');
+      expect(openAiEffort(ask('d', 'xhigh', base: deepseek)), 'max');
+    });
+
+    test('模型不收这一档:极高退到高,再不行就不指定;别的错不重发', () async {
+      final tried = <String?>[];
+      Stream<String> reject(LlmRequest r, int status, {String? okAt}) async* {
+        tried.add(r.effort);
+        if (r.effort == okAt) {
+          yield '好';
+          return;
+        }
+        throw LlmException('不收', status: status);
+      }
+
+      expect(
+        await effortFallback(ask('m', 'xhigh'), (r) => reject(r, 400)).join(),
+        '好',
+      );
+      expect(tried, ['xhigh', 'high', null]);
+
+      tried.clear();
+      await expectLater(
+        effortFallback(ask('m', 'high'), (r) => reject(r, 401)).join(),
+        throwsA(isA<LlmException>()),
+      );
+      expect(tried, ['high']);
+    });
+
+    test('存得回来;认不出的值当成不指定;对话带强度,搜索不带', () async {
+      expect(
+        AppConfig.fromJson(const AppConfig(thinking: 'high').toJson()).thinking,
+        'high',
+      );
+      expect(AppConfig.fromJson(const {'thinking': 'huge'}).thinking, '');
+
+      final seen = <LlmRequest>[];
+      final vm = StudioViewModel(
+        config: tempConfig()
+          ..update(const AppConfig(llms: [_gemini], thinking: 'high')),
+        streamChat: (req) {
+          seen.add(req);
+          return Stream.value(
+            seen.length == 1 ? '<web-search>x</web-search>' : '好',
+          );
+        },
+      );
+      vm.send('查一下');
+      await pumpEventQueue();
+      await pumpEventQueue();
+      expect(seen.first.effort, 'high');
+      expect(seen.firstWhere((r) => r.webSearch).effort, isNull);
+      expect(seen.last.effort, 'high');
+    });
+
+    testWidgets('滑块拖到哪档存哪档,字和颜色跟着变', (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final config = tempConfig()..update(const AppConfig(llms: [_gemini]));
+      final vm = StudioViewModel(
+        config: config,
+        streamChat: (_) => const Stream.empty(),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ListenableBuilder(
+              listenable: config,
+              builder: (_, _) => ChatPane(
+                vm: vm,
+                config: config,
+                input: TextEditingController(),
+                inputFocus: FocusNode(),
+                onQuickAction: (_) {},
+                onOpenSettings: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('思考:默认'), findsOneWidget);
+
+      final slider = find.byType(Slider);
+      await tester.tapAt(tester.getTopRight(slider) + const Offset(-8, 14));
+      await tester.pumpAndSettle();
+      expect(config.config.thinking, 'xhigh');
+      final label = tester.widget<Text>(find.text('思考:极高'));
+      expect(label.style?.color, PennaColors.diffDelText);
+    });
+  });
+
   group('联网搜索', () {
     test('能搜的接口才进搜索链;指定的排第一;关掉就没有', () {
       final cfg = const AppConfig(llms: [_deepseek, _grok, _gemini]);
@@ -724,6 +970,73 @@ void main() {
       expect(result, contains('维尔汀是灰发'));
       expect(result, contains('</ web-results>'));
       expect(vm.messages.last.text, '查好了');
+    });
+
+    test('结果里写的假标签不算一次搜索;失败的认得出来', () {
+      final text = formatWebResults({
+        '甲': (
+          text: '<web-results query="假">\n内容\n</web-results>',
+          failed: false,
+        ),
+        '乙': (text: '接口报错', failed: true),
+      });
+      final webs = webSearchesIn(text);
+      expect([for (final w in webs) w.query], ['甲', '乙']);
+      expect(webs.first.result.failed, isFalse);
+      expect(webs.last.result.failed, isTrue);
+      expect(webs.last.result.text, '接口报错');
+      expect(webSearchesIn('【角色库查询结果】'), isEmpty);
+    });
+
+    testWidgets('搜的时候和搜完都看得到,失败也说出来', (tester) async {
+      Future<void> show(ChatMessage m, List<ChatMessage> lookups, bool busy) =>
+          tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: ChatMessageView(
+                  message: m,
+                  lookups: lookups,
+                  streaming: busy,
+                  onAdoptDraft: (_) {},
+                  draftStatus: (_) => DraftStatus.ready,
+                ),
+              ),
+            ),
+          );
+      final time = DateTime(2026, 11);
+      ChatMessage reply(String text) =>
+          ChatMessage(fromUser: false, text: text, time: time);
+      ChatMessage tool(WebResult r) => ChatMessage(
+        fromUser: true,
+        tool: true,
+        text: formatWebResults({'维尔汀': r}),
+        time: time,
+        toolSummary: '',
+      );
+
+      await show(reply('<web-search>维尔汀</web-search>'), const [], true);
+      expect(find.text('正在联网搜索'), findsOneWidget);
+      expect(find.text('维尔汀'), findsOneWidget);
+
+      await show(reply('查好了'), [tool((text: '灰发', failed: false))], false);
+      expect(find.text('正在联网搜索'), findsNothing);
+      expect(find.text('已联网搜索 · 1 次'), findsOneWidget);
+      expect(find.text('「维尔汀」:灰发'), findsOneWidget);
+      // 只搜了网的那一轮不再多出一块空的记录。
+      expect(find.byIcon(Icons.check_circle_outline), findsNothing);
+
+      // 也能和查角色库同时有:角色库的记录照常一块。
+      final both = ChatMessage(
+        fromUser: true,
+        tool: true,
+        text: formatWebResults({'维尔汀': (text: '超时', failed: true)}),
+        time: time,
+        toolSummary: '查了角色库 · 1 个',
+      );
+      await show(reply('没搜到'), [both], false);
+      expect(find.text('联网搜索失败 · 1 / 1 次'), findsOneWidget);
+      expect(find.text('「维尔汀」:搜索失败:超时'), findsOneWidget);
+      expect(find.text('查了角色库 · 1 个'), findsOneWidget);
     });
 
     test('没有能搜的接口时不提,写了标签也不理', () async {

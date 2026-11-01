@@ -340,6 +340,12 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
       onRetry: !chat.isStreaming && last && !row.message.fromUser
           ? _retry
           : null,
+      pager: last && !row.message.fromUser ? replyPager(chat.messages) : null,
+      onShowReply: chat.showReplyAt,
+      isLast: last,
+      onEdit: chat.isStreaming || !row.message.fromUser
+          ? null
+          : (text) => _edit(row.index, text),
       onOption: !chat.isStreaming && last ? _answer : null,
       draftSections: [
         for (final s in vm.sectionsHere)
@@ -351,6 +357,12 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
   void _retry() {
     final problem = widget.chat.regenerate();
     if (problem != null) showToast(context, problem, warn: true);
+  }
+
+  bool _edit(int index, String text) {
+    final problem = widget.chat.editMessage(index, text);
+    if (problem != null) showToast(context, problem, warn: true);
+    return problem == null;
   }
 
   void _answer(String option) {

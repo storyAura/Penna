@@ -3,12 +3,15 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/attachment.dart';
 import 'package:penna/core/harness/draft_block.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
+import 'package:penna/core/harness/tags/tag_dictionary.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/ui/features/studio/body_card.dart';
+import 'package:penna/ui/features/studio/chat_pane.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 
 import 'fixtures.dart';
@@ -501,6 +504,208 @@ void main() {
       expect(vm.messages.map((m) => m.text), ['画只狐狸', '回复2']);
       expect(seen.last.messages.last, {'role': 'user', 'content': '画只狐狸'});
       expect(seen.last.messages, hasLength(2));
+    });
+
+    test('重新回复后能翻回去,翻的时候成稿不动;翻过的那份接着聊', () async {
+      var round = 0;
+      final seen = <LlmRequest>[];
+      final vm = _studio(
+        streamChat: (req) {
+          seen.add(req);
+          return Stream.value('回复${++round}');
+        },
+      );
+      vm.send('画只狐狸');
+      await pumpEventQueue();
+      expect(replyPager(vm.messages), isNull);
+
+      vm.regenerate();
+      await pumpEventQueue();
+      vm.regenerate();
+      await pumpEventQueue();
+      expect(vm.messages.last.text, '回复3');
+      expect(replyPager(vm.messages), (at: 2, total: 3));
+
+      vm.showReplyAt(0);
+      expect(vm.messages.map((m) => m.text), ['画只狐狸', '回复1']);
+      expect(replyPager(vm.messages), (at: 0, total: 3));
+      vm.showReplyAt(1);
+      expect(vm.messages.last.text, '回复2');
+      vm.showReplyAt(5);
+      expect(vm.messages.last.text, '回复2');
+
+      // 从中间那份再重来:新的排在最后,原来的都在。
+      vm.regenerate();
+      await pumpEventQueue();
+      expect(replyPager(vm.messages), (at: 3, total: 4));
+      vm.showReplyAt(2);
+      expect(vm.messages.last.text, '回复3');
+
+      vm.send('再来');
+      await pumpEventQueue();
+      expect(seen.last.messages.map((m) => m['content']).skip(1), [
+        '画只狐狸',
+        '回复3',
+        '再来',
+      ]);
+      // 新的一轮从头算。
+      expect(replyPager(vm.messages), isNull);
+    });
+
+    test('翻到旧回复只换对话,成稿不动', () async {
+      var round = 0;
+      final vm = _studio(
+        streamChat: (_) => Stream.value('<draft>【主体】版本${++round}</draft>'),
+      );
+      vm.send('画只狐狸');
+      await pumpEventQueue();
+      expect(vm.body, contains('版本1'));
+      vm.regenerate();
+      await pumpEventQueue();
+      final body = vm.body;
+      final pending = vm.pending;
+
+      vm.showReplyAt(0);
+      expect(vm.messages.last.text, contains('版本1'));
+      expect(vm.body, body);
+      expect(vm.pending, same(pending));
+    });
+
+    test('出错的回复重来时不留;存盘读回来还能翻', () async {
+      var round = 0;
+      final vm = _studio(
+        streamChat: (_) => ++round == 2
+            ? Stream.error(const LlmException('断了'))
+            : Stream.value('回复$round'),
+      );
+      vm.send('画只狐狸');
+      await pumpEventQueue();
+      vm.regenerate();
+      await pumpEventQueue();
+      expect(vm.messages.last.failed, isTrue);
+      vm.regenerate();
+      await pumpEventQueue();
+      expect(replyPager(vm.messages), (at: 1, total: 2));
+
+      final back = [
+        for (final m in vm.messages) ChatMessage.fromJson(m.toJson()),
+      ];
+      expect(replyPager(back), (at: 1, total: 2));
+      expect(showReply(back, 0).last.text, '回复1');
+    });
+
+    test('查资料之后的回复重来时不再查一遍;新回复又查了也翻得回去', () async {
+      var round = 0;
+      final seen = <LlmRequest>[];
+      final vm = StudioViewModel(
+        config: tempConfig()..update(const AppConfig().putLlm(_llm)),
+        tagSearch: (_) async => (hits: const <TagHit>[], source: '词库'),
+        streamChat: (req) {
+          seen.add(req);
+          round++;
+          return Stream.value(switch (round) {
+            1 => '<search-tags>狐狸</search-tags>',
+            2 => '第一份',
+            3 => '<search-tags>尾巴</search-tags>',
+            _ => '第二份',
+          });
+        },
+      );
+      vm.send('画只狐狸');
+      await pumpEventQueue();
+      await pumpEventQueue();
+      expect(vm.messages.last.text, '第一份');
+
+      vm.regenerate();
+      await pumpEventQueue();
+      await pumpEventQueue();
+      expect(vm.messages.last.text, '第二份');
+      expect(replyPager(vm.messages), (at: 1, total: 2));
+
+      vm.showReplyAt(0);
+      expect(vm.messages.last.text, '第一份');
+      expect(vm.messages.where((m) => m.tool), hasLength(1));
+    });
+
+    test('编辑消息:后面的换掉,附件和引用留着;操作记录能回到改之前', () async {
+      var round = 0;
+      final seen = <LlmRequest>[];
+      final vm = _studio(
+        streamChat: (req) {
+          seen.add(req);
+          return Stream.value('回复${++round}');
+        },
+      );
+      vm.send('画只狐狸', skillIds: const ['writer']);
+      await pumpEventQueue();
+      vm.send('再画只猫');
+      await pumpEventQueue();
+
+      expect(vm.editMessage(1, '回复不能改'), isNotNull);
+      expect(vm.editMessage(0, '  '), isNotNull);
+      expect(vm.messages, hasLength(4));
+
+      expect(vm.editMessage(0, '画只狼'), isNull);
+      await pumpEventQueue();
+      expect(vm.messages.map((m) => m.text), ['画只狼', '回复3']);
+      expect(vm.messages.first.skillIds, ['writer']);
+      expect(seen.last.messages.last['content'], contains('画只狼'));
+
+      expect(vm.actions.first.text, contains('编辑了一条消息'));
+      vm.rollback(0);
+      expect(vm.messages.map((m) => m.text), ['画只狐狸', '回复1', '再画只猫', '回复2']);
+    });
+
+    testWidgets('气泡上点编辑,改完发送;翻页按钮翻回复', (tester) async {
+      tester.view.physicalSize = const Size(1000, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      var round = 0;
+      final vm = _studio(streamChat: (_) => Stream.value('回复${++round}'));
+      final input = TextEditingController();
+      final focus = FocusNode();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ListenableBuilder(
+              listenable: vm,
+              builder: (_, _) => ChatPane(
+                vm: vm,
+                config: vm.config,
+                input: input,
+                inputFocus: focus,
+                onQuickAction: (_) {},
+                onOpenSettings: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      Future<void> settle() async {
+        await tester.runAsync(pumpEventQueue);
+        await tester.pumpAndSettle();
+      }
+
+      vm.send('画只狐狸');
+      await settle();
+      await tester.tap(find.text('重新回复'));
+      await settle();
+      expect(find.text('回复2'), findsOneWidget);
+      expect(find.text('2/2'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('上一份回复'));
+      await settle();
+      expect(find.text('回复1'), findsOneWidget);
+      expect(find.text('1/2'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('编辑并重新发送'));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField).first, '画只狼');
+      await tester.tap(find.text('发送'));
+      await settle();
+      expect(vm.messages.first.text, '画只狼');
+      expect(find.text('回复3'), findsOneWidget);
+      expect(find.text('1/2'), findsNothing);
     });
 
     test('生成中不能重新运行', () {

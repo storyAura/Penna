@@ -97,11 +97,9 @@ extension StudioContext on StudioViewModel {
             if (peek) tr('读了副聊天'),
             if (skill.names.isNotEmpty)
               tr('加载了技能:{0}', [skill.names.join(tr('、'))]),
-            if (web.isNotEmpty) tr('联网搜索 · {0} 次', [web.length]),
             for (final r in ran) r.note,
           ].join(' · '),
           toolDetails: [
-            ..._webDetails(web),
             for (final MapEntry(key: query, value: found) in results.entries)
               tr(
                 '「{0}」({1}):'
@@ -474,6 +472,7 @@ extension StudioContext on StudioViewModel {
     String? piercing,
     bool webSearch = false,
     void Function(LlmUsage)? onUsage,
+    void Function(LlmCut)? onCut,
   }) {
     // 穿甲弹:开着时接在系统提示最前面。对话、润色、反推都经过这里,
     // 它们的第一条都是系统提示。副聊天有自己的开关([piercing])。
@@ -504,6 +503,9 @@ extension StudioContext on StudioViewModel {
               images: images,
               webSearch: webSearch,
               onUsage: onUsage,
+              onCut: onCut,
+              // 搜索只是查资料,用不着多想。
+              effort: webSearch || cfg.thinking.isEmpty ? null : cfg.thinking,
               token: llm.protocol == protocolGrok
                   ? () => grokAccessToken(config, llm.id)
                   : null,
@@ -530,6 +532,7 @@ extension StudioContext on StudioViewModel {
     List<ChatMessage> sent, {
     ChatMessage? ask,
     String lookup = '',
+    void Function(LlmCut)? onCut,
   }) {
     final cfg = config.config;
     String user(ChatMessage m) => identical(m, ask) && lookup.isNotEmpty

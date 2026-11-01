@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/characters/character_dict.dart';
@@ -6,6 +7,7 @@ import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
+import '../../../core/harness/providers/llm_http.dart' show LlmCut;
 import '../../../core/harness/tags/tag_search.dart';
 import '../../../core/harness/web_search.dart';
 import '../../../data/services/skill_store.dart';
@@ -20,6 +22,14 @@ import 'skill_card.dart';
 import 'studio_view_model.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
+
+part 'chat_message_bits.dart';
+
+/// 工具记录里的一行:压成一行,太长的截掉。
+String _preview(String text) {
+  final line = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  return line.length > 80 ? '${line.substring(0, 80)}…' : line;
+}
 
 String _clock(DateTime t) =>
     [t.hour, t.minute, t.second].map((n) => '$n'.padLeft(2, '0')).join(':');
@@ -45,6 +55,10 @@ class ChatMessageView extends StatelessWidget {
     required this.draftStatus,
     this.streaming = false,
     this.onRetry,
+    this.pager,
+    this.onShowReply,
+    this.onEdit,
+    this.isLast = true,
     this.skillNames = const [],
     this.agentAvatar = '',
     this.userAvatar = '',
@@ -98,8 +112,41 @@ class ChatMessageView extends StatelessWidget {
   /// 这条回复还在生成。
   final bool streaming;
 
-  /// 非空时显示「重新运行」;只给最后一条回复。
+  /// 非空时显示「重新回复」;只给最后一条回复。
   final VoidCallback? onRetry;
+
+  /// 重新回复留下了几份时给这个,回复下面出现翻页;只给最后一条回复。
+  final ({int at, int total})? pager;
+  final ValueChanged<int>? onShowReply;
+
+  /// 改好用户消息再发一次,见 [_UserBubble.onEdit]。
+  final bool Function(String text)? onEdit;
+
+  /// 这是对话的最后一条。
+  final bool isLast;
+
+  /// 写这条回复之前联网搜过的话,列出搜了什么;有失败的要说出来。
+  Widget? _webBlock() {
+    final webs = [for (final l in lookups) ...webSearchesIn(l.text)];
+    if (webs.isEmpty) return null;
+    final failed = webs.where((w) => w.result.failed).length;
+    return _ToolBlock(
+      icon: failed > 0 ? Icons.error_outline : Icons.language,
+      iconColor: failed > 0 ? PennaColors.diffDelText : null,
+      summary: failed > 0
+          ? tr('联网搜索失败 · {0} / {1} 次', [failed, webs.length])
+          : tr('已联网搜索 · {0} 次', [webs.length]),
+      details: [
+        for (final w in webs)
+          tr('「{0}」:{1}', [
+            w.query,
+            _preview(
+              w.result.failed ? tr('搜索失败:{0}', [w.result.text]) : w.result.text,
+            ),
+          ]),
+      ],
+    );
+  }
 
   /// Agent 回复的正文:说的话、新成稿卡片,生成完后再加一排操作。
   List<Widget> _reply(BuildContext context) {
@@ -147,7 +194,19 @@ class ChatMessageView extends StatelessWidget {
       prose,
       for (final draft in drafts) stripSectionLabels(draft.text),
     ].where((s) => s.isNotEmpty).join('\n\n');
+    // 标签写完就在搜了,搜完这一条回复才收起来;没人替它搜时,回复一结束就不显示。
+    final searching = streaming
+        ? splitToolTag(peeked, webSearchTag).queries
+        : const <String>[];
     return [
+      if (searching.isNotEmpty) ...[
+        _ToolBlock(
+          icon: Icons.language,
+          summary: tr('正在联网搜索'),
+          details: searching,
+        ),
+        const SizedBox(height: 10),
+      ],
       if (prose.isNotEmpty)
         SelectableText.rich(markdownSpan(prose, _bodyStyle))
       else if (streaming &&
@@ -230,7 +289,9 @@ class ChatMessageView extends StatelessWidget {
       if (!streaming) ...[
         const SizedBox(height: 6),
         PopIn(
-          child: Row(
+          // 副聊天的浮窗窄,放不下时折到下一行。
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               if (m.stopped) ...[
                 Icon(
@@ -245,6 +306,15 @@ class ChatMessageView extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
               ],
+              if (m.cut case final cut?) _CutNote(cut),
+              if (pager case (:final at, :final total)?)
+                if (onShowReply case final show?)
+                  _ReplyPager(
+                    at: at,
+                    total: total,
+                    onShow: show,
+                    onRetry: onRetry,
+                  ),
               if (copyable.isNotEmpty)
                 PennaButton(
                   label: tr('复制回复'),
@@ -255,7 +325,7 @@ class ChatMessageView extends StatelessWidget {
                 ),
               if (onRetry != null)
                 PennaButton(
-                  label: tr('重新运行'),
+                  label: tr('重新回复'),
                   icon: Icons.refresh,
                   background: Colors.transparent,
                   foreground: PennaColors.slate500,
@@ -271,6 +341,10 @@ class ChatMessageView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final m = message;
+    final found = [
+      for (final l in lookups)
+        if (l.toolSummary != '') l,
+    ];
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -304,13 +378,19 @@ class ChatMessageView extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
+              // 联网搜索单独一块,不和别的资料合并(用户要求搜了要提醒出来)。
+              if (_webBlock() case final web?) ...[
+                web,
+                const SizedBox(height: 10),
+              ],
               // 程序替模型查回来的资料:查了几轮都收在这一块里。
-              if (lookups.isNotEmpty) ...[
+              // 只联网搜索的那一轮没有摘要,不算在里面。
+              if (found.isNotEmpty) ...[
                 _ToolBlock(
-                  summary: lookups.length == 1
-                      ? lookups.single.toolSummary ?? tr('查了资料')
-                      : tr('查了资料 · {0} 次', [lookups.length]),
-                  details: [for (final l in lookups) ...l.toolDetails],
+                  summary: found.length == 1
+                      ? found.single.toolSummary ?? tr('查了资料')
+                      : tr('查了资料 · {0} 次', [found.length]),
+                  details: [for (final l in found) ...l.toolDetails],
                 ),
                 const SizedBox(height: 10),
               ],
@@ -325,19 +405,8 @@ class ChatMessageView extends StatelessWidget {
                 ),
                 if (m.text.isNotEmpty) const SizedBox(height: 6),
               ],
-              // 只发了附件、没写字的消息不画空气泡。
-              if (m.fromUser && m.text.isEmpty)
-                const SizedBox.shrink()
-              else if (m.fromUser)
-                PennaCard(
-                  radius: 14,
-                  padding: const EdgeInsets.all(14),
-                  child: SelectableText(
-                    contextMenuBuilder: pennaTextMenu,
-                    m.text,
-                    style: _bodyStyle,
-                  ),
-                )
+              if (m.fromUser)
+                _UserBubble(text: m.text, isLast: isLast, onEdit: onEdit)
               else
                 ..._reply(context),
               if (skillNames.isNotEmpty || m.quote != null) ...[
@@ -635,146 +704,6 @@ class _ModelTag extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: 11, color: PennaColors.slate500),
       ),
-    );
-  }
-}
-
-/// 工具调用记录:有细节时是折叠块(默认展开,可收起);只有一句话时就是一行,
-/// 不给一个点开是空的箭头。
-class _ToolBlock extends StatelessWidget {
-  const _ToolBlock({required this.summary, required this.details});
-
-  final String summary;
-  final List<String> details;
-
-  @override
-  Widget build(BuildContext context) {
-    final icon = Icon(
-      Icons.check_circle_outline,
-      size: 15,
-      color: PennaColors.accent,
-    );
-    final title = Text(
-      summary,
-      style: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        color: PennaColors.slate700,
-      ),
-    );
-    final shown = [
-      for (final d in details)
-        if (d.trim().isNotEmpty) d,
-    ];
-    if (shown.isEmpty) {
-      return PennaCard(
-        color: PennaColors.slate50,
-        radius: 12,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        child: Row(
-          children: [
-            icon,
-            const SizedBox(width: 10),
-            Expanded(child: title),
-          ],
-        ),
-      );
-    }
-    return PennaCard(
-      color: PennaColors.slate50,
-      radius: 12,
-      padding: EdgeInsets.zero,
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        // ExpansionTile 的水波纹要画在 Material 上,外层的底色盒子会挡住它。
-        child: Material(
-          type: MaterialType.transparency,
-          child: ExpansionTile(
-            dense: true,
-            initiallyExpanded: true,
-            tilePadding: const EdgeInsets.symmetric(horizontal: 10),
-            childrenPadding: const EdgeInsets.fromLTRB(34, 0, 10, 10),
-            expandedCrossAxisAlignment: CrossAxisAlignment.start,
-            expandedAlignment: Alignment.centerLeft,
-            leading: icon,
-            title: title,
-            children: [
-              for (final d in shown)
-                Text(
-                  d,
-                  style: monoStyle.copyWith(
-                    fontSize: 11,
-                    color: PennaColors.slate500,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 回复里没有能显示的东西:模型什么都没回,或者只写了程序没接住的标签。
-/// 后一种收成一行灰字,点开看原文,用户至少看得出模型写了什么。
-class _RawReply extends StatefulWidget {
-  const _RawReply(this.text);
-
-  final String text;
-
-  @override
-  State<_RawReply> createState() => _RawReplyState();
-}
-
-class _RawReplyState extends State<_RawReply> {
-  var _open = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final grey = _bodyStyle.copyWith(
-      fontSize: 12.5,
-      color: PennaColors.slate500,
-    );
-    if (widget.text.trim().isEmpty) return Text(tr('模型没有返回内容'), style: grey);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () => setState(() => _open = !_open),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(tr('没有可显示的话 · 查看原文'), style: grey),
-                Icon(
-                  _open ? Icons.expand_less : Icons.expand_more,
-                  size: 16,
-                  color: PennaColors.slate500,
-                ),
-              ],
-            ),
-          ),
-        ),
-        AnimatedSize(
-          duration: Motion.of(context, Motion.base),
-          curve: Motion.expand,
-          alignment: Alignment.topLeft,
-          child: _open
-              ? Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: SelectableText(
-                    widget.text.trim(),
-                    contextMenuBuilder: pennaTextMenu,
-                    style: monoStyle.copyWith(
-                      fontSize: 11.5,
-                      color: PennaColors.slate700,
-                    ),
-                  ),
-                )
-              : const SizedBox(width: double.infinity),
-        ),
-      ],
     );
   }
 }

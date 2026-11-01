@@ -144,15 +144,44 @@ extension StudioChat on StudioViewModel {
     }
   }
 
-  /// 重新运行:丢掉最后一条回复,把最后一条用户消息原样再发一次。
-  /// 不能运行时返回给用户看的原因,成功返回 null。
+  /// 重新回复:眼前这份回复收起来(还能翻回去),把最后一条用户消息原样再发一次。
+  /// 不能回复时返回给用户看的原因,成功返回 null。
   String? regenerate({DateTime? now}) {
     if (isStreaming) return tr('正在生成,请先停止当前回复');
-    final at = _messages.lastIndexWhere((m) => m.fromUser);
-    if (at < 0) return tr('还没有可以重新运行的消息');
+    final history = retryHistory(_messages);
+    if (history == null) return tr('还没有可以重新回复的消息');
     _toolRounds = 0;
     _foundTags.clear();
-    return _startReply(_messages.sublist(0, at + 1), now ?? DateTime.now());
+    return _startReply(history, now ?? DateTime.now());
+  }
+
+  /// 翻到第 [index] 份回复。只换对话里显示的,成稿不动:要用旧回复里的成稿,点卡片上的按钮。
+  void showReplyAt(int index) {
+    if (isStreaming) return;
+    _messages = List.unmodifiable(showReply(_messages, index));
+    _changed();
+  }
+
+  /// 第 [index] 条用户消息改成 [raw] 再发一次,它后面的对话换成新的回复;
+  /// 操作记录里能回到改之前。发不了时返回原因,什么都不变。
+  String? editMessage(int index, String raw, {DateTime? now}) {
+    if (isStreaming) return tr('正在生成,请先停止当前回复');
+    final text = raw.trim();
+    final time = now ?? DateTime.now();
+    final history = editedHistory(_messages, index, text, time);
+    if (history == null) return tr('这条消息不能编辑');
+    if (text.isEmpty && history.last.attachments.isEmpty) {
+      return tr('请输入内容后再发送');
+    }
+    final before = _snapshot();
+    _toolRounds = 0;
+    _foundTags.clear();
+    final problem = _startReply(history, time);
+    if (problem == null) {
+      _log(tr('编辑了一条消息({0})', [_here]), before: before);
+      _changed();
+    }
+    return problem;
   }
 
   /// 以 [history](最后一条是用户消息)为上文开始一条新的流式回复。
@@ -214,6 +243,7 @@ extension StudioChat on StudioViewModel {
         _liveUsageAt = _messages.last.time;
         _updateReply((m) => m.copyWith(usage: u));
       },
+      onCut: (cut) => _updateReply((m) => m.copyWith(cut: cut)),
     );
     _reply =
         streamWithFailover(

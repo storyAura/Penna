@@ -57,12 +57,29 @@ Map<String, Object?> geminiBody(LlmRequest req) {
     'generationConfig': {
       'temperature': req.temperature,
       if (req.topP < 1) 'topP': req.topP,
+      'thinkingConfig': ?_thinkingConfig(req),
     },
     if (req.webSearch)
       'tools': [
         {'google_search': <String, Object>{}},
       ],
   };
+}
+
+/// Gemini 2.x 按 token 数给思考预算,更新的模型按档位给;两个字段不能同时给。
+/// 没有「极高」这一档,按最高的算。
+Map<String, Object>? _thinkingConfig(LlmRequest req) {
+  final effort = req.effort;
+  if (effort == null) return null;
+  return req.model.startsWith('gemini-2')
+      ? {
+          'thinkingBudget': switch (effort) {
+            'low' => 1024,
+            'medium' => 8192,
+            _ => 24576,
+          },
+        }
+      : {'thinkingLevel': effort == 'xhigh' ? 'high' : effort};
 }
 
 /// 一行 SSE 里 Google 搜索用到的网页:网址 → 标题。
@@ -103,7 +120,9 @@ String? parseGeminiLine(String line) {
   final text = [
     if (parts is List)
       for (final p in parts)
-        if (p is Map && p['text'] is String) p['text'] as String,
+        // 思考摘要不是回复。
+        if (p is Map && p['text'] is String && p['thought'] != true)
+          p['text'] as String,
   ].join();
   // 被安全策略等原因中止时往往一个字都没有,把原因报出来而不是只说"没内容"。
   final reason = first is Map ? first['finishReason'] : null;
@@ -112,6 +131,25 @@ String? parseGeminiLine(String line) {
   }
   return text;
 }
+
+/// 一行 SSE 里的结束原因;这一行没写是 null。
+String? parseGeminiFinish(String line) {
+  final json = sseJson(line);
+  final candidates = json is Map ? json['candidates'] : null;
+  final first = candidates is List && candidates.isNotEmpty
+      ? candidates.first
+      : null;
+  final reason = first is Map ? first['finishReason'] : null;
+  return reason is String ? reason : null;
+}
+
+/// 结束原因对应的没写完;写完了是 null。一直没给原因就断了算没写完。
+LlmCut? geminiCut(String? reason) => switch (reason) {
+  null => LlmCut.broken,
+  'STOP' || 'FINISH_REASON_UNSPECIFIED' => null,
+  'MAX_TOKENS' => LlmCut.length,
+  _ => LlmCut.blocked,
+};
 
 /// 实际用的接口地址:没填用默认的;填的是 Vertex AI(`aiplatform.googleapis.com`)
 /// 时补到 Google 模型所在的那一层,后面拼 `/models/...` 的写法就两边通用。
@@ -162,7 +200,7 @@ Future<List<String>> listGeminiModels(String baseUrl, String apiKey) async {
 
 /// 调用 Google Gemini 原生接口 `models/{model}:streamGenerateContent`。
 Stream<String> streamGeminiChat(LlmRequest req) =>
-    runLlmStream((client) => _chat(client, req));
+    runLlmStream((client) => effortFallback(req, (r) => _chat(client, r)));
 
 Stream<String> _chat(HttpClient client, LlmRequest req) async* {
   final model = Uri.encodeComponent(req.model);
@@ -172,15 +210,21 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
   ).replace(queryParameters: {'alt': 'sse'});
   final apiKey = req.apiKey.trim();
   // Key 放请求头而不是网址里,免得出现在任何报错或日志中。
-  final lines = postForLines(client, uri, {
-    if (apiKey.isNotEmpty) 'x-goog-api-key': apiKey,
-  }, geminiBody(req));
+  final lines = postForLines(
+    client,
+    uri,
+    {if (apiKey.isNotEmpty) 'x-goog-api-key': apiKey},
+    geminiBody(req),
+    stall: llmStallFor(req),
+  );
 
   var yielded = false;
+  String? finish;
   final sources = <String, String>{};
   await for (final line in lines) {
     final delta = parseGeminiLine(line);
     reportUsage(req, sseJson(line));
+    finish = parseGeminiFinish(line) ?? finish;
     if (req.webSearch) sources.addAll(parseGeminiSources(line));
     if (delta != null && delta.isNotEmpty) {
       yielded = true;
@@ -188,5 +232,6 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     }
   }
   if (!yielded) throw LlmException(tr('模型没有返回内容'));
+  if (geminiCut(finish) case final cut?) req.onCut?.call(cut);
   if (sources.isNotEmpty) yield sourcesText(sources);
 }

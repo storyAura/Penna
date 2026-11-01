@@ -16,6 +16,8 @@ class _Composer extends StatelessWidget {
     required this.onAttach,
     required this.autoApprove,
     required this.onAutoApprove,
+    required this.thinking,
+    required this.onThinking,
     required this.dragging,
     this.queued = const [],
     this.trailing,
@@ -31,6 +33,10 @@ class _Composer extends StatelessWidget {
   /// 成稿的改动是自动采纳还是等用户点。
   final bool autoApprove;
   final ValueChanged<bool> onAutoApprove;
+
+  /// 思考强度,[thinkingLevels] 之一。
+  final String thinking;
+  final ValueChanged<String> onThinking;
 
   /// 排着队等发的那几条,显示在最上面。
   final List<Widget> queued;
@@ -156,7 +162,13 @@ class _Composer extends StatelessWidget {
                           : PennaColors.slate500,
                       onPressed: () => onAutoApprove(!autoApprove),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _ThinkingSlider(
+                        level: thinking,
+                        onChanged: onThinking,
+                      ),
+                    ),
                     if (meter case final m?) _ContextRing(meter: m),
                     Bouncy(
                       child: IconButton.filled(
@@ -187,6 +199,103 @@ class _Composer extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 思考强度的滑块:拖到哪一档,滑块和旁边的字就变成那一档的颜色。
+class _ThinkingSlider extends StatelessWidget {
+  const _ThinkingSlider({required this.level, required this.onChanged});
+
+  final String level;
+  final ValueChanged<String> onChanged;
+
+  static const _maxTrack = 96.0;
+
+  String get _label => switch (level) {
+    'low' => tr('思考:低'),
+    'medium' => tr('思考:中'),
+    'high' => tr('思考:高'),
+    'xhigh' => tr('思考:极高'),
+    _ => tr('思考:默认'),
+  };
+
+  Color get _color => switch (level) {
+    'low' => PennaColors.accent,
+    'medium' => PennaColors.primary,
+    'high' => PennaColors.amber,
+    'xhigh' => PennaColors.diffDelText,
+    _ => PennaColors.slate400,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final at = thinkingLevels.indexOf(level);
+    return Tooltip(
+      message: tr('思考强度:越高想得越久、用量越多'),
+      child: TweenAnimationBuilder<Color?>(
+        tween: ColorTween(end: _color),
+        duration: Motion.of(context, Motion.base),
+        curve: Motion.swift,
+        builder: (context, color, _) => Row(
+          children: [
+            Flexible(
+              flex: 3,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: _maxTrack),
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 3,
+                    padding: const EdgeInsets.symmetric(horizontal: 7),
+                    activeTrackColor: color,
+                    inactiveTrackColor: PennaColors.border,
+                    activeTickMarkColor: PennaColors.card,
+                    inactiveTickMarkColor: PennaColors.slate400,
+                    thumbColor: color,
+                    overlayColor: color?.withValues(alpha: 0.15),
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 6,
+                      elevation: 0,
+                      pressedElevation: 0,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 11,
+                    ),
+                    tickMarkShape: const RoundSliderTickMarkShape(
+                      tickMarkRadius: 1,
+                    ),
+                  ),
+                  child: SizedBox(
+                    height: 28,
+                    child: Slider(
+                      value: (at < 0 ? 0 : at).toDouble(),
+                      max: thinkingLevels.length - 1,
+                      divisions: thinkingLevels.length - 1,
+                      semanticFormatterCallback: (_) => _label,
+                      onChanged: (v) => onChanged(thinkingLevels[v.round()]),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 2),
+            Flexible(
+              flex: 2,
+              child: Text(
+                _label,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.fade,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -30,7 +30,7 @@ Each page is a separate prompt, and pages can be grouped into series. There can 
 
 ## Agent chat
 
-- Replies stream in and can be stopped or run again at any time.
+- Replies stream in and can be stopped or regenerated at any time; after regenerating, earlier replies can be viewed below the reply. Sent messages can be edited and resent. If a reply hits the output limit, is blocked by the API or the connection ends early, the reason appears below it.
 - Messages sent while a reply is generating are queued and sent in order; a queued message can also skip the line and be sent right away.
 - **Side chat**: click **Side chat** at the right end of the quick actions row to open a translucent floating panel over the conversation. It runs a separate conversation with its own model and its own Armor-Piercing switch, reads the prompts in the workspace and accepts images and text files, shares the quick actions, puts its new drafts into the workspace and switches to that page just like the main chat, and can hand layout tasks to Region Control, while the two conversations stay separate; each chat can read the other's conversation when asked. The Region Control chat has its own side chat, whose layouts go onto the canvas. A button left of **New chat** in the chat header toggles Armor-Piercing.
 - Questions from the Agent appear as stacked options with single or multiple choice; when the choice is about sections of the draft, the sections of the current page are listed directly.
@@ -120,7 +120,8 @@ A Skill is a writing guide (`SKILL.md`) that decides how the Agent writes prompt
 
 - Supports OpenAI-compatible APIs, the Google API (including Vertex AI) and Grok account sign-in.
 - Context usage: a ring next to the send button shows how much of the model's context limit the current chat uses; hover for a panel with a color-coded ring showing the share of the system preset, Skills, built-in rules, draft, chat, tool results and attachments, along with input, cache and output counts and the current API and model. Opening an earlier chat shows the estimated context to load. Limits are recognized from the model name and can also be set on the API card.
-- Web search: the Agent can look things up online. The search runs on an API with a search tool (Gemini, Grok, OpenAI, Zhipu, Bailian, OpenRouter), selected automatically or chosen in Settings, so a model without search can still use it.
+- Thinking effort: a slider below the input box offers Default, Low, Medium, High and Max, each with its own color, and applies to chat, polishing and the side chat. If a model does not support the chosen level, Penna steps down or uses the model's default.
+- Web search: the Agent can look things up online. The search runs on an API with a search tool (Gemini, Grok, OpenAI, Zhipu, Bailian, OpenRouter), selected automatically or chosen in Settings, so a model without search can still use it. During and after a search, the query and a short summary of the result appear above the reply.
 - **Providers** prefills the URL and model for DeepSeek, Zhipu GLM, Kimi, Alibaba Cloud Model Studio; add the key to start.
 - Name, URL, models and key take effect after clicking **Save**.
 - One API can hold several models; all models form a fallback chain in order and switch automatically.
