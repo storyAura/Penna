@@ -73,6 +73,7 @@ Future<void> downloadFile(
   List<String>? urls,
 }) async {
   if (isDownloaded(f)) return;
+  if (cancel?.cancelled ?? false) throw DownloadException(tr('已停止下载'));
   final part = File('${f.path}.part');
   await part.parent.create(recursive: true);
   final tries = urls ?? downloadUrls(f);
@@ -146,6 +147,7 @@ Future<void> _downloadFrom(
       throw DownloadException(tr('文件校验没通过,已删掉,请重新下载'));
     }
   }
+  if (cancel?.cancelled ?? false) throw DownloadException(tr('已停止下载'));
   final target = File(f.path);
   if (target.existsSync()) await target.delete();
   await part.rename(f.path);
@@ -170,10 +172,18 @@ Future<int> _fetch(
   if (have > 0) request.headers.set(HttpHeaders.rangeHeader, 'bytes=$have-');
   final response = await request.close().timeout(_stall);
   final status = response.statusCode;
-  // 416:要的那一段已经超出文件末尾,说明其实已经下完了。
+  // 416 也可能是分片比远端文件更长,只有远端明确给出的长度一致才算下完。
   if (status == HttpStatus.requestedRangeNotSatisfiable) {
+    final range = RegExp(
+      r'^bytes \*/(\d+)$',
+      caseSensitive: false,
+    ).firstMatch(response.headers.value(HttpHeaders.contentRangeHeader) ?? '');
     await response.drain<void>();
-    return have;
+    if (have > 0 && range != null && int.parse(range[1]!) == have) return have;
+    if (have > 0) {
+      return _fetch(client, url, f, part, 0, onProgress, cancel, headers);
+    }
+    throw DownloadException(tr('下载失败(HTTP {0})', [status]));
   }
   if (status != HttpStatus.ok && status != HttpStatus.partialContent) {
     await response.drain<void>();
@@ -196,7 +206,26 @@ Future<int> _fetch(
     await response.drain<void>();
     throw DownloadException(tr('服务器回的不是这个文件'));
   }
-  final total = f.size ?? (length < 0 ? null : have + length);
+  var total = f.size ?? (length < 0 ? null : have + length);
+  int? end;
+  if (status == HttpStatus.partialContent) {
+    final range = RegExp(
+      r'^bytes (\d+)-(\d+)/(\d+|\*)$',
+      caseSensitive: false,
+    ).firstMatch(response.headers.value(HttpHeaders.contentRangeHeader) ?? '');
+    if (range == null || int.parse(range[1]!) != have) {
+      await response.drain<void>();
+      throw DownloadException(tr('下载不完整,可以再点一次接着下'));
+    }
+    end = int.parse(range[2]!);
+    if (range[3] != '*') total = int.parse(range[3]!);
+    if (end < have ||
+        total != null && end >= total ||
+        length >= 0 && length != end - have + 1) {
+      await response.drain<void>();
+      throw DownloadException(tr('下载不完整,可以再点一次接着下'));
+    }
+  }
   final sink = part.openWrite(
     mode: have > 0 ? FileMode.writeOnlyAppend : FileMode.writeOnly,
   );
@@ -211,5 +240,8 @@ Future<int> _fetch(
     await sink.close();
   }
   if (cancel?.cancelled ?? false) throw DownloadException(tr('已停止下载'));
+  if (end != null && (have != end + 1 || total != null && have != total)) {
+    throw DownloadException(tr('下载不完整,可以再点一次接着下'));
+  }
   return have;
 }
