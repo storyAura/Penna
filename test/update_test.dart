@@ -118,6 +118,15 @@ void main() {
         ..writeAsStringSync('old so');
       File('${to.path}/keep.txt').writeAsStringSync('user file');
 
+      // 同大小、同时间戳也必须覆盖,不能只凭文件元数据跳过新版本的内容。
+      final stamp = DateTime.utc(2026, 1, 1);
+      for (final dir in [from, to]) {
+        File('${dir.path}/penna.exe').setLastModifiedSync(stamp);
+        File('${dir.path}/data/app.so').setLastModifiedSync(stamp);
+        // 让 NTFS 的 change time 不同,覆盖 robocopy 的 Modified 分类。
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+
       final script = await writeUpdateScript(
         updateScript(
           // 一个已经不在的进程:不用等。
