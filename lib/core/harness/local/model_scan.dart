@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:io';
 
 import 'caption_catalog.dart';
@@ -71,9 +72,9 @@ FoundModels scanModelFolders(
   final gguf = <String, GgufInfo>{};
   var seen = 0;
   var truncated = false;
-  final queue = <(Directory, int)>[for (final r in roots) (Directory(r), 0)];
+  final queue = Queue<(Directory, int)>.of(roots.map((r) => (Directory(r), 0)));
   while (queue.isNotEmpty) {
-    final (dir, depth) = queue.removeAt(0);
+    final (dir, depth) = queue.removeFirst();
     final List<FileSystemEntity> entries;
     try {
       entries = dir.listSync(followLinks: false);
