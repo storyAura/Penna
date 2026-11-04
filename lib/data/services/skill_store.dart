@@ -406,6 +406,7 @@ class SkillStore extends ChangeNotifier {
     final staging = Directory(
       '${folder.path}.tmp-${DateTime.now().microsecondsSinceEpoch}',
     );
+    Directory? previous;
     try {
       for (final MapEntry(key: relative, value: bytes) in files.entries) {
         final target = File(
@@ -415,11 +416,28 @@ class SkillStore extends ChangeNotifier {
         await target.parent.create(recursive: true);
         await target.writeAsBytes(bytes, flush: true);
       }
-      if (await folder.exists()) await folder.delete(recursive: true);
-      await staging.rename(folder.path);
+      if (await folder.exists()) {
+        previous = await folder.rename(
+          '${folder.path}.old-${DateTime.now().microsecondsSinceEpoch}',
+        );
+      }
+      try {
+        await staging.rename(folder.path);
+      } on FileSystemException {
+        await previous?.rename(folder.path);
+        rethrow;
+      }
     } on FileSystemException {
       if (await staging.exists()) await staging.delete(recursive: true);
       rethrow;
+    }
+    if (previous != null) {
+      try {
+        await previous.delete(recursive: true);
+      } on FileSystemException catch (e) {
+        // 新版已换好,清理失败时保留旧目录,load 会跳过带点的备份。
+        debugPrint('清理旧 Skill 备份失败:${e.message}');
+      }
     }
   }
 

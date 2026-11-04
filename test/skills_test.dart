@@ -31,6 +31,36 @@ File _zip(Map<String, String> files, {String name = 'pack.zip'}) {
 
 const _llm = LlmProfile(id: 'a', name: 'A', baseUrl: 'http://x', model: 'm');
 
+/// 真实写盘,只在最后把 staging 换到目标目录时模拟文件系统故障。
+final class _FailStagingRename extends IOOverrides {
+  @override
+  Directory createDirectory(String path) {
+    final dir = super.createDirectory(path);
+    return path.contains('.tmp-') ? _RenameFailingDirectory(dir) : dir;
+  }
+}
+
+class _RenameFailingDirectory implements Directory {
+  _RenameFailingDirectory(this.dir);
+  final Directory dir;
+
+  @override
+  String get path => dir.path;
+  @override
+  Future<bool> exists() => dir.exists();
+  @override
+  Future<Directory> create({bool recursive = false}) =>
+      dir.create(recursive: recursive);
+  @override
+  Future<FileSystemEntity> delete({bool recursive = false}) =>
+      dir.delete(recursive: recursive);
+  @override
+  Future<Directory> rename(String newPath) =>
+      Future.error(FileSystemException('模拟替换失败', path));
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
   group('压缩包导入', () {
     test('一个包里多个 Skill:各自成一个文件夹,附带的文件一起保存', () async {
@@ -169,6 +199,23 @@ void main() {
 
       expect(store.skills.single.body, '新');
       expect(File('${store.dir.path}/film/old.txt').existsSync(), isFalse);
+    });
+
+    test('最后替换 Skill 失败时,旧正文和附带文件都保留', () async {
+      final store = tempSkills();
+      await store.import(_zip({'film/SKILL.md': '旧正文', 'film/ref.txt': '旧资料'}));
+      final next = _zip({'film/SKILL.md': '新正文'});
+      await expectLater(
+        IOOverrides.runWithIOOverrides(
+          () => store.import(next),
+          _FailStagingRename(),
+        ),
+        throwsA(isA<SkillException>()),
+      );
+      await store.load();
+      expect(store.skills.single.body, '旧正文');
+      expect(File('${store.dir.path}/film/ref.txt').readAsStringSync(), '旧资料');
+      expect(store.dir.listSync().whereType<Directory>(), hasLength(1));
     });
   });
 
