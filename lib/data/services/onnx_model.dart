@@ -35,12 +35,14 @@ class OnnxModel {
   final String _output;
 
   static Future<OnnxModel> load(String path) async {
+    OrtSession? created;
     try {
       final session = await OnnxRuntime().createSession(path);
+      created = session;
       final outputs = [
         for (final o in await session.getOutputInfo()) o['name'] as String,
       ];
-      return OnnxModel._(
+      final model = OnnxModel._(
         session,
         [
           for (final i in await session.getInputInfo())
@@ -58,10 +60,15 @@ class OnnxModel {
                 .firstOrNull ??
             outputs.first,
       );
+      created = null;
+      return model;
     } on PlatformException catch (e) {
       throw OnnxException(tr('模型加载失败:{0}', [_brief(e.message)]));
     } on MissingPluginException {
       throw OnnxException(tr('这个版本没有带 ONNX 运行库'));
+    } finally {
+      // 完整构建成功才把所有权交给模型,读取 metadata 失败也要释放 session。
+      await created?.close();
     }
   }
 
