@@ -270,9 +270,28 @@ void main() {
         ranges.add(range);
         if (request.uri.path == '/missing') {
           request.response.statusCode = 404;
+        } else if (request.uri.path == '/range-error') {
+          request.response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+        } else if (request.uri.path == '/range-complete') {
+          request.response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+          request.response.headers.set(
+            HttpHeaders.contentRangeHeader,
+            'BYTES */${body.length}',
+          );
+        } else if (request.uri.path == '/range-wrong') {
+          request.response.statusCode = HttpStatus.partialContent;
+          request.response.headers.set(
+            HttpHeaders.contentRangeHeader,
+            'bytes 401-999/1000',
+          );
+          request.response.add(body.sublist(401));
         } else if (range != null) {
           final from = int.parse(range.split('=')[1].split('-')[0]);
           request.response.statusCode = HttpStatus.partialContent;
+          request.response.headers.set(
+            HttpHeaders.contentRangeHeader,
+            'BYTES $from-${body.length - 1}/${body.length}',
+          );
           request.response.add(body.sublist(from));
         } else {
           request.response.add(body);
@@ -303,6 +322,64 @@ void main() {
       expect(File('${tmp.path}/out.bin.part').existsSync(), isFalse);
       expect(seen.last, 1000);
       expect(isDownloaded(file()), isTrue);
+    });
+
+    test('未声明大小的下载不能仅凭 416 把残缺文件当成完成', () async {
+      final part = File('${tmp.path}/out.bin.part')
+        ..writeAsBytesSync(body.sublist(0, 400));
+      final remote = file(path: '/range-error');
+      await expectLater(
+        downloadFile((
+          url: remote.url,
+          path: remote.path,
+          size: null,
+          sha256: null,
+        )),
+        throwsA(isA<DownloadException>()),
+      );
+      expect(File(remote.path).existsSync(), isFalse);
+      expect(part.readAsBytesSync(), body.sublist(0, 400));
+    });
+
+    test('416 明确返回远端长度且本地长度一致时可确认已完成', () async {
+      File('${tmp.path}/out.bin.part').writeAsBytesSync(body);
+      final remote = file(path: '/range-complete');
+      await downloadFile((
+        url: remote.url,
+        path: remote.path,
+        size: null,
+        sha256: null,
+      ));
+      expect(File(remote.path).readAsBytesSync(), body);
+    });
+
+    test('续传响应偏移不符时保留原分片,不把错误字节拼进去', () async {
+      final original = body.sublist(0, 400);
+      final part = File('${tmp.path}/out.bin.part')..writeAsBytesSync(original);
+      final remote = file(path: '/range-wrong');
+      await expectLater(
+        downloadFile((
+          url: remote.url,
+          path: remote.path,
+          size: null,
+          sha256: null,
+        )),
+        throwsA(isA<DownloadException>()),
+      );
+      expect(File(remote.path).existsSync(), isFalse);
+      expect(part.readAsBytesSync(), original);
+    });
+
+    test('完整分片在调用前已取消时不会被改名为正式文件', () async {
+      final part = File('${tmp.path}/out.bin.part')..writeAsBytesSync(body);
+      final cancel = DownloadCancel()..cancel();
+      await expectLater(
+        downloadFile(file(), cancel: cancel),
+        throwsA(isA<DownloadException>()),
+      );
+      expect(part.existsSync(), isTrue);
+      expect(File(file().path).existsSync(), isFalse);
+      expect(ranges, isEmpty);
     });
 
     test('校验不对就删掉;找不到文件说人话', () async {
