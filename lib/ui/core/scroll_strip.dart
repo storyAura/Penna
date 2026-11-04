@@ -4,6 +4,24 @@ import 'package:flutter/material.dart';
 import 'motion.dart';
 import 'theme.dart';
 
+/// 把纵向滚轮用于横向的一排,并和外层滚动区域一起选出唯一的处理者:
+/// 这一排滚得动才接这次滚轮,滚到头时交还给外层。
+void scrollHorizontally(PointerSignalEvent event, ScrollController controller) {
+  if (event is! PointerScrollEvent || !controller.hasClients) return;
+  final delta = event.scrollDelta.dy != 0
+      ? event.scrollDelta.dy
+      : event.scrollDelta.dx;
+  final target = (controller.offset + delta).clamp(
+    controller.position.minScrollExtent,
+    controller.position.maxScrollExtent,
+  );
+  if (target == controller.offset) return;
+  GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+    controller.jumpTo(target);
+    event.respond(allowPlatformDefault: false);
+  });
+}
+
 /// 横着的一排小按钮、标签:放不下时多出来的藏在后面,两头出箭头一次翻一截
 /// (鼠标滚轮也能滚),翻到头的那边箭头变灰;放得下就没有箭头。
 /// 给了 [visible] 时最多露出前几个那么宽;不给就占满给它的宽度。
@@ -80,17 +98,6 @@ class _ScrollStripState extends State<ScrollStrip> {
     ],
   );
 
-  /// 鼠标滚轮本来是上下滚的,这里把它当成左右滚。
-  void _wheel(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent || !_scroll.hasClients) return;
-    final delta = event.scrollDelta.dy != 0
-        ? event.scrollDelta.dy
-        : event.scrollDelta.dx;
-    _scroll.jumpTo(
-      (_scroll.offset + delta).clamp(0, _scroll.position.maxScrollExtent),
-    );
-  }
-
   Widget _arrow(IconData icon, bool on, int dir) => IconButton(
     padding: EdgeInsets.zero,
     constraints: const BoxConstraints.tightFor(width: 20),
@@ -105,7 +112,7 @@ class _ScrollStripState extends State<ScrollStrip> {
   Widget build(BuildContext context) {
     // 第一次排好、条目增减、窗口变宽变窄时都重新看两头还有没有。
     final scroller = Listener(
-      onPointerSignal: _wheel,
+      onPointerSignal: (event) => scrollHorizontally(event, _scroll),
       child: NotificationListener<ScrollMetricsNotification>(
         onNotification: (_) {
           _edges();
@@ -126,14 +133,16 @@ class _ScrollStripState extends State<ScrollStrip> {
             children: [
               // 看不见,只用来量出前 visible 个有多宽多高;整排就是这么大。
               ExcludeSemantics(
-                child: IgnorePointer(
-                  child: Opacity(
-                    opacity: 0,
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: widget.padding,
-                      child: _row(widget.children.take(visible)),
+                child: ExcludeFocus(
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: 0,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: widget.padding,
+                        child: _row(widget.children.take(visible)),
+                      ),
                     ),
                   ),
                 ),

@@ -100,6 +100,7 @@ class _LookSwitcherState extends State<LookSwitcher>
 
   /// 拍下现在的画面盖住窗口,然后开始扩散动画。
   void _snapshot() {
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return;
     final boundary =
         _shot.currentContext?.findRenderObject() as RenderRepaintBoundary?;
     if (boundary == null || !boundary.hasSize) return;
@@ -145,10 +146,7 @@ class _LookSwitcherState extends State<LookSwitcher>
                 painter: _RevealPainter(
                   image: old,
                   origin: _origin,
-                  progress: CurvedAnimation(
-                    parent: _reveal,
-                    curve: Motion.expand,
-                  ),
+                  progress: _reveal.drive(CurveTween(curve: Motion.expand)),
                 ),
               ),
             ),
