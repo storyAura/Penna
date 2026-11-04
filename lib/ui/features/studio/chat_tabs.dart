@@ -1,6 +1,6 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/scroll_strip.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'studio_view_model.dart';
@@ -64,18 +64,7 @@ class _ChatTabsState extends State<ChatTabs> {
           Expanded(
             // 鼠标滚轮本来是上下滚的,这里把它当成左右滚。
             child: Listener(
-              onPointerSignal: (event) {
-                if (event is! PointerScrollEvent || !_scroll.hasClients) return;
-                final delta = event.scrollDelta.dy != 0
-                    ? event.scrollDelta.dy
-                    : event.scrollDelta.dx;
-                _scroll.jumpTo(
-                  (_scroll.offset + delta).clamp(
-                    0,
-                    _scroll.position.maxScrollExtent,
-                  ),
-                );
-              },
+              onPointerSignal: (event) => scrollHorizontally(event, _scroll),
               child: Scrollbar(
                 controller: _scroll,
                 thumbVisibility: true,

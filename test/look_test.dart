@@ -85,4 +85,26 @@ void main() {
     await tester.pump();
     expect(currentLanguage, 'ja');
   });
+
+  testWidgets('减少动画时主题立即切换,不运行扩散动画', (tester) async {
+    final config = tempConfig();
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
+        home: LookSwitcher(
+          config: config,
+          child: Builder(builder: (_) => ColoredBox(color: PennaColors.bg)),
+        ),
+      ),
+    );
+
+    config.update(config.config.copyWith(darkMode: true));
+    await tester.pump();
+
+    expect(PennaColors.isDark, isTrue);
+    expect(tester.binding.transientCallbackCount, 0);
+  });
 }

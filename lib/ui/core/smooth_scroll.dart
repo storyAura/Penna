@@ -38,6 +38,10 @@ class _SmoothPosition extends ScrollPositionWithSingleContext {
   void pointerScroll(double delta) {
     // 还没排过版时没有可滚范围,交给默认处理。
     if (delta == 0 || !hasContentDimensions) return super.pointerScroll(delta);
+    if (MediaQuery.maybeDisableAnimationsOf(context.storageContext) ?? false) {
+      _target = null;
+      return super.pointerScroll(delta);
+    }
     final to = ((_target ?? pixels) + delta).clamp(
       minScrollExtent,
       maxScrollExtent,
