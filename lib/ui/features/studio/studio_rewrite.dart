@@ -12,12 +12,15 @@ extension StudioRewrite on StudioViewModel {
         : body.substring(sel.$1, sel.$2.clamp(sel.$1, body.length)).trim();
     if (text.isEmpty) return sel == null ? tr('成稿为空') : tr('选中的内容为空');
     if (_translating) return tr('正在翻译');
+    final pageEpoch = _pageEpoch;
     _translating = true;
     _changed();
     try {
       final result = await translate(config.config, text);
       // 等译文的时候成稿被清空或改了:这份译文对不上了,不要。
-      if (finalPrompt != whole) return null;
+      if (_disposed || pageEpoch != _pageEpoch || finalPrompt != whole) {
+        return null;
+      }
       _translation = result.text;
       _translationBy = mtLabel(result.engineId);
       return null;
@@ -36,11 +39,12 @@ extension StudioRewrite on StudioViewModel {
     if (text.trim().isEmpty) return tr('这段是空的');
     if (_pending != null) return tr('先处理待确认的改动');
     if (_translating) return tr('正在翻译');
+    final pageEpoch = _pageEpoch;
     _translating = true;
     _changed();
     try {
       final result = await translate(config.config, text);
-      if (_disposed) return null;
+      if (_disposed || pageEpoch != _pageEpoch) return null;
       // 等译文的这会儿成稿可能变了:按这段的原文重新找位置。
       final at = body.indexOf(section);
       final cut = at < 0 || _pending != null
@@ -101,6 +105,7 @@ extension StudioRewrite on StudioViewModel {
     if (target.trim().isEmpty) return tr('选中的内容为空');
     if (_isolate(start, end) == null) return tr('固定区不能改写');
     final ask = instruction.trim();
+    final pageEpoch = _pageEpoch;
     _polishing = true;
     _changed();
     try {
@@ -117,7 +122,7 @@ extension StudioRewrite on StudioViewModel {
         this.streamChat,
       ).join()).trim();
       if (out.isEmpty) return tr('模型没有返回内容');
-      if (_disposed) return null;
+      if (_disposed || pageEpoch != _pageEpoch) return null;
       if (body != text) return tr('成稿在润色期间被改动了,请重试');
       if (_pending != null) return tr('先处理待确认的改动');
       // 等回复的这段时间里用户可能把目标固定了,所以这里再切一次、再查一次。

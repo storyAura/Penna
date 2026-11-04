@@ -86,6 +86,12 @@ extension StudioStorage on StudioViewModel {
       for (final p in (j['prompts'] as List?) ?? const [])
         (time: DateTime.parse(p['time'] as String), text: p['text'] as String),
     ]);
+    final translation = j['translation'] as String?;
+    final translationBy = j['translationBy'] as String?;
+    final chatId = (j['chatId'] as String?) ?? _newId();
+    final closedTabs = Set<String>.unmodifiable(
+      ((j['closedTabs'] as List?) ?? const []).cast<String>(),
+    );
     _pages = pages;
     _page = page;
     _seriesChats = seriesChats;
@@ -93,15 +99,14 @@ extension StudioStorage on StudioViewModel {
     _blocks = pages[page].blocks;
     _pending = null;
     _queued = const [];
-    _translation = j['translation'] as String?;
-    _translationBy = j['translationBy'] as String?;
-    _chatId = (j['chatId'] as String?) ?? _newId();
-    _closedTabs = Set.unmodifiable(
-      ((j['closedTabs'] as List?) ?? const []).cast<String>(),
-    );
+    _translation = translation;
+    _translationBy = translationBy;
+    _chatId = chatId;
+    _closedTabs = closedTabs;
     _messages = current;
     _archive = archive;
     _promptLog = prompts;
+    _pageEpoch++;
     _changed();
   }
 

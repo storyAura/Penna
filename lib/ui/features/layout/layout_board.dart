@@ -743,6 +743,12 @@ class LayoutBoard extends ChangeNotifier {
     }
   }
 
+  /// 原生窗口销毁后 Dart 计时器不会继续运行，关窗前立即保存。
+  void flush() {
+    _saveTimer?.cancel();
+    _save();
+  }
+
   @override
   void dispose() {
     if (_saveTimer?.isActive ?? false) {
