@@ -182,7 +182,7 @@ String updateScript({
   r"$ErrorActionPreference = 'SilentlyContinue'",
   'Wait-Process -Id $pid -Timeout 120',
   'Start-Sleep -Milliseconds 500',
-  'robocopy ${_quote(from)} ${_quote(to)} /E /IS /R:20 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null',
+  'robocopy ${_quote(from)} ${_quote(to)} /E /IS /IT /IM /R:20 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null',
   if (restart)
     'Start-Process -FilePath ${_quote('$to${Platform.pathSeparator}penna.exe')} '
         '-WorkingDirectory ${_quote(to)}',
