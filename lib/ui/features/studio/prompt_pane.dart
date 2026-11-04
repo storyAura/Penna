@@ -210,6 +210,7 @@ class _DraftSectionState extends State<_DraftSection> {
   ) {
     return PennaBar(
       color: PennaColors.card,
+      minContentWidth: 140 + 40 * (6 + (_gloss ? 1 : 0) + (series ? 1 : 0)),
       children: [
         CircleAvatar(radius: 4, backgroundColor: PennaColors.amber),
         const SizedBox(width: 6),

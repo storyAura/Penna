@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'theme.dart';
 import '../../l10n/l10n.dart';
 import 'motion.dart';
+import 'scroll_strip.dart';
+import 'smooth_scroll.dart';
 
 /// 底部的小提示。[warn] 用于"没法这么做"的提醒,图标不同。
 void showToast(BuildContext context, String message, {bool warn = false}) {
@@ -265,11 +267,13 @@ class PennaBar extends StatelessWidget {
     required this.children,
     this.color,
     this.borderOnTop = false,
+    this.minContentWidth = 0,
   });
 
   final List<Widget> children;
   final Color? color;
   final bool borderOnTop;
+  final double minContentWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -282,7 +286,28 @@ class PennaBar extends StatelessWidget {
         color: color ?? PennaColors.slate50,
         border: borderOnTop ? Border(top: side) : Border(bottom: side),
       ),
-      child: Row(children: children),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final row = Row(children: children);
+          if (box.maxWidth >= minContentWidth) return row;
+          // 放大界面或拖窄面板后仍能滚到每个操作，不裁掉按钮。
+          return SmoothScroller(
+            builder: (controller) => Listener(
+              onPointerSignal: (event) => scrollHorizontally(event, controller),
+              child: Scrollbar(
+                controller: controller,
+                thumbVisibility: true,
+                thickness: 3,
+                child: SingleChildScrollView(
+                  controller: controller,
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(width: minContentWidth, child: row),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

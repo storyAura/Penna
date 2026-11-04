@@ -116,6 +116,18 @@ class _Header extends StatelessWidget {
         );
     return PennaBar(
       color: PennaColors.card,
+      minContentWidth:
+          pennaButtonsWidth(context, [
+            chain.isEmpty
+                ? tr('未连接模型 · 去设置')
+                : chain.first.name.trim().isEmpty
+                ? tr('未命名')
+                : chain.first.name,
+            tr('新对话'),
+            tr('历史'),
+            cfg.activePreset.displayName,
+          ], gap: 0) +
+          (chain.isEmpty ? 32 : 48),
       children: [
         if (chain.isEmpty)
           PennaButton(
