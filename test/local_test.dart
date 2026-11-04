@@ -37,6 +37,38 @@ void main() {
       ]);
     });
 
+    test('CSV 中带逗号和转义引号的标签不丢失,模型输出下标保持一致', () {
+      final labels = parseSelectedTags(
+        'tag_id,name,category,count\n'
+        '1,",_,",0,10\n'
+        '2,"implacable_(shepherd_of_the_""lost"")",4,5\n'
+        '3,smile,0,2\n',
+      );
+      expect(labels, [
+        (name: ',_,', category: tagGeneral),
+        (name: 'implacable_(shepherd_of_the_"lost")', category: tagCharacter),
+        (name: 'smile', category: tagGeneral),
+      ]);
+      final result = decodeTags(
+        [0.1, 0.95, 0.8],
+        labels,
+        general: 0.5,
+        character: 0.5,
+      );
+      expect(
+        result.characters.single.tag,
+        'implacable_(shepherd_of_the_"lost")',
+      );
+      expect(result.general.single.tag, 'smile');
+      expect(
+        parseLabels(TaggerKind.pixai09, 'id,tag_id,name,category\n0,1,"a,b",0'),
+        [(name: 'a,b', category: tagGeneral)],
+      );
+      expect(parseLabels(TaggerKind.oppai, 'index,name\n0,"a,b"'), [
+        (name: 'a,b', category: tagGeneral),
+      ]);
+    });
+
     test('输入的形状:通道在后或在前', () {
       expect(inputLayout([1, 448, 448, 3]), (size: 448, nchw: false));
       expect(inputLayout([-1, 448, 448, 3]), (size: 448, nchw: false));
