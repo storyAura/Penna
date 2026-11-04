@@ -40,6 +40,14 @@ int categoryOf(String name) => switch (name.toLowerCase()) {
 
 List<String> _lines(String text) => text.split(RegExp(r'\r?\n'));
 
+final _csvField = RegExp(r'(?:^|,)(?:"((?:[^"]|"")*)"|([^,]*))');
+
+/// 标签名可以带逗号和引号,不能用逗号直接切列,否则模型输出下标会错位。
+List<String> _csvRow(String line) => [
+  for (final m in _csvField.allMatches(line))
+    m[1]?.replaceAll('""', '"') ?? m[2]!,
+];
+
 /// 按模型的种类读它的标签表,下标对着模型输出的位置。
 List<TagLabel> parseLabels(TaggerKind kind, String text) =>
     List.unmodifiable(switch (kind) {
@@ -53,7 +61,7 @@ List<TagLabel> parseLabels(TaggerKind kind, String text) =>
 
 /// WD 的 selected_tags.csv。v3 是 tag_id,name,category,count;老版本是 name,category。
 List<TagLabel> parseSelectedTags(String csv) => [
-  for (final line in _lines(csv)) ?_wdRow(line.split(',')),
+  for (final line in _lines(csv)) ?_wdRow(_csvRow(line)),
 ];
 
 TagLabel? _wdRow(List<String> parts) {
@@ -77,7 +85,7 @@ TagLabel? _wdRow(List<String> parts) {
 /// PixAI v0.9 的 csv:id,tag_id,name,category,…(表头 id 开头)。
 List<TagLabel> _pixaiCsv(String csv) => [
   for (final line in _lines(csv))
-    if (line.split(',') case final p
+    if (_csvRow(line) case final p
         when p.length >= 4 && int.tryParse(p[0]) != null)
       if (int.tryParse(p[3]) case final category?)
         (name: p[2].trim(), category: category)
@@ -163,7 +171,7 @@ List<TagLabel> _clVocabulary(String json) {
 /// `<PAD>`、`<UNK>` 和 rating: 开头的不要。
 List<TagLabel> _oppaiCsv(String csv) => _aligned({
   for (final line in _lines(csv))
-    if (line.split(',') case final p when p.length >= 2)
+    if (_csvRow(line) case final p when p.length >= 2)
       if (int.tryParse(p[0]) case final i? when i >= 0)
         i: (
           name: p[1].trim(),
