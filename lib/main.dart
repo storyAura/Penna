@@ -246,6 +246,7 @@ class PennaApp extends StatefulWidget {
 
 class _PennaAppState extends State<PennaApp> with WindowListener {
   StudioViewModel get _vm => widget.vm;
+  bool _closing = false;
 
   @override
   void initState() {
@@ -255,7 +256,15 @@ class _PennaAppState extends State<PennaApp> with WindowListener {
 
   @override
   Future<void> onWindowClose() async {
+    if (_closing) return;
+    _closing = true;
     try {
+      widget.vm.stop();
+      widget.layoutChat.stop();
+      widget.vm.flush();
+      widget.layoutChat.flush();
+      widget.vm.layout?.flush();
+      await widget.config.flushed();
       await widget.local.stopServer();
     } finally {
       await windowManager.destroy();

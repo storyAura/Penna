@@ -271,10 +271,19 @@ class StudioViewModel extends ChangeNotifier {
     }
   }
 
+  /// 关窗时不等防抖计时器,也保存生成到一半的对话。
+  void flush() {
+    _saveTimer?.cancel();
+    _saveNow();
+  }
+
   /// 成稿的各页;眼前这一页([_page])的内容在 [_blocks] 这几个字段里,
   /// 这里它那一格是旧的,换页时才写回去。见 [StudioPages]。
   List<DraftPage> _pages = const [_blankPage];
   int _page = 0;
+
+  // 换页或还原工作台后,旧页上尚未返回的润色/翻译不再写入。
+  int _pageEpoch = 0;
 
   /// 不在眼前的那些系列各自的对话。
   Map<int, ChatSession> _seriesChats = const {};

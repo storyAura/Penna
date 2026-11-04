@@ -120,6 +120,7 @@ extension StudioPages on StudioViewModel {
 
   /// 换页之后,只属于上一页的零碎状态作废。
   void _leftPage() {
+    _pageEpoch++;
     _translation = null;
     _translationBy = null;
     _quote = null;
