@@ -24,8 +24,10 @@ jobs:
     env:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
       GH_TOKEN: ${{ github.token }}
-      # pubspec.lock 记的是国内镜像,照它下,依赖不会被重新解析。
-      PUB_HOSTED_URL: https://pub.flutter-io.cn
+      # 云上的机器在国外,走官方 pub.dev(2026-11-06 国内镜像给的
+      # file_selector_platform_interface 2.7.0 校验不对,打包失败)。
+      # pubspec.lock 记的是国内镜像,下面打包前把地址换成这个,版本和校验值不变。
+      PUB_HOSTED_URL: https://pub.dev
       # 云上的机器没有 FUSE,appimagetool 解开再跑。
       APPIMAGE_EXTRACT_AND_RUN: 1
     steps:
@@ -40,5 +42,6 @@ jobs:
         with:
           flutter-version: 3.47.2
           channel: stable
+      - run: sed -i "s#https://pub.flutter-io.cn#$PUB_HOSTED_URL#g" pubspec.lock
       - run: bash tool/build_release.sh
       - run: gh release upload "$TAG" dist/*/Penna-v*-linux-x86_64.AppImage --clobber
