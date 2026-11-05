@@ -113,29 +113,7 @@ class AppSection extends StatelessWidget {
           ),
         ),
         gap,
-        PennaCard(
-          padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-          child: Row(
-            children: [
-              Expanded(child: Text(tr('深色模式'), style: titleStyle)),
-              Builder(
-                builder: (context) => Switch(
-                  value: cfg.darkMode,
-                  onChanged: (v) {
-                    // 动画从开关这里扩散开。
-                    final box = context.findRenderObject() as RenderBox?;
-                    if (box != null && box.hasSize) {
-                      lookRevealOrigin = box.localToGlobal(
-                        box.size.center(Offset.zero),
-                      );
-                    }
-                    service.update(service.config.copyWith(darkMode: v));
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
+        _DarkThemeCard(service: service),
         gap,
         Padding(
           padding: const EdgeInsets.only(left: 2, bottom: 8),
@@ -147,6 +125,179 @@ class AppSection extends StatelessWidget {
         gap,
         const _About(),
       ],
+    );
+  }
+}
+
+/// 读「7」「7:30」「07:30」,得到当天第几分钟;读不了给 null。
+int? parseClock(String text) {
+  final m = RegExp(r'^(\d{1,2})(?::(\d{2}))?$').firstMatch(text.trim());
+  if (m == null) return null;
+  final hour = int.parse(m[1]!);
+  final minute = int.parse(m[2] ?? '0');
+  return hour < 24 && minute < 60 ? hour * 60 + minute : null;
+}
+
+/// 当天第几分钟写成 07:30。
+String clockText(int minutes) =>
+    '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
+    '${(minutes % 60).toString().padLeft(2, '0')}';
+
+/// 深色模式:跟随系统、始终开启、始终关闭、自定义时间段。
+class _DarkThemeCard extends StatelessWidget {
+  const _DarkThemeCard({required this.service});
+
+  final ConfigService service;
+
+  Map<String, String> get _modes => {
+    'system': tr('跟随系统'),
+    'on': tr('始终开启'),
+    'off': tr('始终关闭'),
+    'schedule': tr('自定义时间段'),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final cfg = service.config;
+    return PennaCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(tr('深色模式'), style: titleStyle),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final mode in _modes.entries)
+                Builder(
+                  builder: (context) => PennaChip(
+                    label: mode.value,
+                    selected: cfg.darkTheme == mode.key,
+                    onTap: () {
+                      // 动画从点的这个按钮扩散开。
+                      final box = context.findRenderObject() as RenderBox?;
+                      if (box != null && box.hasSize) {
+                        lookRevealOrigin = box.localToGlobal(
+                          box.size.center(Offset.zero),
+                        );
+                      }
+                      service.update(
+                        service.config.copyWith(darkTheme: mode.key),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+          if (cfg.darkTheme == 'schedule') ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _ClockField(
+                  label: tr('开始'),
+                  value: cfg.darkFrom,
+                  onChanged: (v) =>
+                      service.update(service.config.copyWith(darkFrom: v)),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Text('–'),
+                ),
+                _ClockField(
+                  label: tr('结束'),
+                  value: cfg.darkTo,
+                  onChanged: (v) =>
+                      service.update(service.config.copyWith(darkTo: v)),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 填一个时间。按回车或点到别处才生效,填的读不了就放回原来的。
+class _ClockField extends StatefulWidget {
+  const _ClockField({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_ClockField> createState() => _ClockFieldState();
+}
+
+class _ClockFieldState extends State<_ClockField> {
+  late final _controller = TextEditingController(text: clockText(widget.value));
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _submit();
+    });
+  }
+
+  @override
+  void didUpdateWidget(_ClockField old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value) _controller.text = clockText(widget.value);
+  }
+
+  void _submit() {
+    final got = parseClock(_controller.text) ?? widget.value;
+    _controller.text = clockText(got);
+    if (got != widget.value) widget.onChanged(got);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(6),
+      borderSide: BorderSide(color: PennaColors.border),
+    );
+    return Tooltip(
+      message: widget.label,
+      child: SizedBox(
+        width: 72,
+        child: TextField(
+          contextMenuBuilder: pennaTextMenu,
+          controller: _controller,
+          focusNode: _focus,
+          textAlign: TextAlign.center,
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp('[0-9:]')),
+            LengthLimitingTextInputFormatter(5),
+          ],
+          onSubmitted: (_) => _submit(),
+          style: const TextStyle(fontSize: 12.5),
+          decoration: InputDecoration(
+            isDense: true,
+            filled: true,
+            fillColor: PennaColors.card,
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            border: border,
+            enabledBorder: border,
+          ),
+        ),
+      ),
     );
   }
 }

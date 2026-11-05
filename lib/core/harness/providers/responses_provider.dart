@@ -115,7 +115,8 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     await for (final line in lines) {
       final event = parseResponsesLine(line);
       reportUsage(req, sseJson(line));
-      cut = switch (sseJson(line)) {
+      final json = sseJson(line);
+      cut = switch (json) {
         {'type': 'response.completed'} => null,
         {'type': 'response.incomplete', 'response': final Object? response} =>
           responsesCut(response),
@@ -126,6 +127,10 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
       if (delta != null && delta.isNotEmpty) {
         yielded = true;
         yield delta;
+      }
+      // 说完了就走,不等服务器关连接:有的服务(中转站)不关,要干等到超时。
+      if (json case {'type': 'response.completed' || 'response.incomplete'}) {
+        break;
       }
     }
   } on LlmException catch (e) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:penna/core/harness/draft_block.dart';
 import 'package:penna/ui/features/studio/option_pick.dart';
 
 void main() {
@@ -68,5 +69,36 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('确定'));
     expect(sent, ['风格A、背景甲']);
+  });
+
+  test('问卷:<options form> 认得出,标题不算选项', () {
+    final asked = splitOptions(
+      '先定三件事。\n<options form>\n# 主体\n小绿\n小绿和千夏\n# 场景\n厨房\n阳台\n</options>',
+    );
+    expect((asked.form, asked.multi, asked.prose), (true, false, '先定三件事。'));
+    expect(asked.options, ['小绿', '小绿和千夏', '厨房', '阳台']);
+    expect(asked.headings, {0: '主体', 2: '场景'});
+  });
+
+  testWidgets('问卷:每项默认选第一个;点别的换过去,再点一下是「你定」;一次交', (tester) async {
+    final sent = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FormPick(
+            options: const ['小绿', '小绿和千夏', '厨房', '阳台', '暖光', '冷光'],
+            headings: const {0: '主体', 2: '场景', 4: '光线'},
+            onSubmit: sent.add,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('阳台'));
+    await tester.tap(find.text('暖光'));
+    await tester.pumpAndSettle();
+    expect(find.text('你定'), findsOneWidget);
+    await tester.tap(find.text('确定'));
+    expect(sent, ['主体:小绿\n场景:阳台\n光线:你定']);
   });
 }

@@ -629,6 +629,7 @@ class _PerspectiveButton extends StatelessWidget {
     final on = board.layout.perspective;
     final names = {1: tr('一点透视'), 2: tr('两点透视'), 3: tr('三点透视')};
     return PopupMenuButton<int>(
+      popUpAnimationStyle: Motion.menu(context),
       tooltip: tr('透视辅助'),
       position: PopupMenuPosition.under,
       onSelected: (n) => board.setPerspective(n == 0 ? null : n),

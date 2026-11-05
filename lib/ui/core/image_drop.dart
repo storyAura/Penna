@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:pasteboard/pasteboard.dart';
 
 import '../../core/harness/attachment.dart';
 import 'theme.dart';
@@ -59,6 +61,44 @@ class _ImageDropState extends State<ImageDrop> {
     }
   }
 
+  /// 鼠标在框上、又没有输入框在打字时,框拿到焦点,Ctrl+V 才归它。
+  final _focus = FocusNode(debugLabel: 'ImageDrop');
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _grabFocus() {
+    final typing = FocusManager.instance.primaryFocus?.context
+        ?.findAncestorStateOfType<EditableTextState>();
+    if (typing == null) _focus.requestFocus();
+  }
+
+  /// 剪贴板里是文件(资源管理器里复制的)就读第一个,是图(截图、网页上复制的)就转成附件。
+  Future<void> _paste(BuildContext context) async {
+    _focus.requestFocus();
+    try {
+      final files = await Pasteboard.files();
+      if (files.isNotEmpty) {
+        if (context.mounted) await _use(context, files.first);
+        return;
+      }
+      final raw = await Pasteboard.image;
+      final picked = raw == null || raw.length > maxPastedBytes
+          ? null
+          : await pastedImage(raw, compress: widget.compress);
+      if (!context.mounted) return;
+      if (picked == null) {
+        return showToast(context, tr('剪贴板里没有图片'), warn: true);
+      }
+      widget.onChanged(picked);
+    } on Object {
+      if (context.mounted) showToast(context, tr('读不了这张图'), warn: true);
+    }
+  }
+
   Future<void> _pick(BuildContext context) async {
     final picked = await openFile(
       acceptedTypeGroups: [
@@ -71,7 +111,7 @@ class _ImageDropState extends State<ImageDrop> {
   @override
   Widget build(BuildContext context) {
     final image = widget.image;
-    return DropTarget(
+    final drop = DropTarget(
       onDragEntered: (_) => _hover(true),
       onDragExited: (_) => _hover(false),
       onDragDone: (d) {
@@ -86,6 +126,7 @@ class _ImageDropState extends State<ImageDrop> {
               ? _EmptyImage(
                   hint: widget.hint ?? tr('点击或拖入参考图'),
                   onTap: () => _pick(context),
+                  onPaste: () => _paste(context),
                 )
               : _ImageBox(
                   image: image,
@@ -102,6 +143,16 @@ class _ImageDropState extends State<ImageDrop> {
             ),
           ),
         ],
+      ),
+    );
+    return MouseRegion(
+      onEnter: (_) => _grabFocus(),
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.keyV, control: true): () =>
+              _paste(context),
+        },
+        child: Focus(focusNode: _focus, child: drop),
       ),
     );
   }
@@ -141,10 +192,15 @@ class _DropHint extends StatelessWidget {
 }
 
 class _EmptyImage extends StatelessWidget {
-  const _EmptyImage({required this.hint, required this.onTap});
+  const _EmptyImage({
+    required this.hint,
+    required this.onTap,
+    required this.onPaste,
+  });
 
   final String hint;
   final VoidCallback onTap;
+  final VoidCallback onPaste;
 
   @override
   Widget build(BuildContext context) {
@@ -167,6 +223,18 @@ class _EmptyImage extends StatelessWidget {
                 Text(
                   hint,
                   style: TextStyle(fontSize: 12, color: PennaColors.slate500),
+                ),
+                const SizedBox(height: 12),
+                PennaButton(
+                  label: tr('从剪贴板粘贴'),
+                  icon: Icons.content_paste,
+                  borderColor: PennaColors.border,
+                  onPressed: onPaste,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  tr('或按 Ctrl+V'),
+                  style: TextStyle(fontSize: 11, color: PennaColors.slate400),
                 ),
               ],
             ),

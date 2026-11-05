@@ -242,7 +242,7 @@ void main() {
     await tester.tap(find.text('新建 Preset(复制当前)'));
     await tester.pump();
     expect(config.config.presets, hasLength(factoryPresets.length + 1));
-    expect(config.config.activePreset.name, '动漫风格 副本');
+    expect(config.config.activePreset.name, 'MOSS 视觉 副本');
 
     await tester.tap(find.text('Skills'));
     await tester.pump();
@@ -264,9 +264,20 @@ void main() {
     await tester.tap(find.text('English'));
     await tester.pump();
     expect(config.config.language, 'en');
-    await tester.tap(find.byType(Switch).first);
+    await tester.tap(find.text('始终开启'));
     await tester.pump();
-    expect(config.config.darkMode, isTrue);
+    expect(config.config.darkTheme, 'on');
+    await tester.tap(find.text('自定义时间段'));
+    await tester.pump();
+    await tester.enterText(find.widgetWithText(TextField, '19:00'), '20:30');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(config.config.darkFrom, 1230);
+    await tester.enterText(find.widgetWithText(TextField, '07:00'), '99');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(config.config.darkTo, 420);
+    expect(find.widgetWithText(TextField, '07:00'), findsOneWidget);
     await tester.ensureVisible(find.text('微软雅黑'));
     await tester.tap(find.text('微软雅黑'));
     await tester.pump();

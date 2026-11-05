@@ -482,9 +482,16 @@ const _skillClose = '</new-skill>';
 
 /// 选项的开始标签:`<options>` 是挑一个,`<options multi>` 是可以勾好几个,
 /// `<options sections>` 是从成稿的各段里勾:界面自己读出当前页的各段,标签里可以不写。
-final _optionsOpen = RegExp(r'<options(?:\s+(multi|sections))?\s*>');
-const _optionsHalves = ['<options multi>', '<options sections>'];
+final _optionsOpen = RegExp(r'<options(?:\s+(multi|sections|form))?\s*>');
+const _optionsHalves = [
+  '<options multi>',
+  '<options sections>',
+  '<options form>',
+];
 const _optionsClose = '</options>';
+
+/// 一张问卷最多几个选项(6 组 × 4 个,多出来的不显示)。
+const _maxFormOptions = 24;
 
 /// 模型有时会顺手加上列表符号或序号。
 final _optionMark = RegExp(r'^(?:[-*•]|\d+[.、)])\s*');
@@ -493,13 +500,15 @@ final _optionMark = RegExp(r'^(?:[-*•]|\d+[.、)])\s*');
 final _optionHeading = RegExp(r'^#+\s*(.+)$');
 
 /// 回复里给用户点的选项。[sections] 为真时是挑成稿里的哪几段(也算多选)。
-/// [headings] 是分类小标题:排在第几个选项前面 → 标题(只有多选才画)。
+/// [headings] 是分类小标题:排在第几个选项前面 → 标题(多选和问卷才画)。
+/// [form] 为真时是一张问卷(`<options form>`):每个小标题下面单选一个,一次交。
 typedef AskedOptions = ({
   String prose,
   List<String> options,
   Map<int, String> headings,
   bool multi,
   bool sections,
+  bool form,
 });
 
 /// 把回复里给用户点的选项拆出来:一行一个,显示成按钮,点了就当成用户的回答发出去。
@@ -514,11 +523,13 @@ AskedOptions splitOptions(String reply) {
       headings: const {},
       multi: false,
       sections: false,
+      form: false,
     );
   }
   final start = open.start;
   final from = open.end;
-  final multi = open[1] != null;
+  final form = open[1] == 'form';
+  final multi = open[1] != null && !form;
   final sections = open[1] == 'sections';
   final end = reply.indexOf(_optionsClose, from);
   final prose = [
@@ -532,6 +543,7 @@ AskedOptions splitOptions(String reply) {
       headings: const {},
       multi: multi,
       sections: sections,
+      form: form,
     );
   }
   final options = <String>[];
@@ -542,13 +554,19 @@ AskedOptions splitOptions(String reply) {
     final heading = _optionHeading.firstMatch(line);
     if (heading != null) {
       headings[options.length] = heading[1]!;
-    } else if (options.length < (multi ? 12 : 6)) {
+    } else if (options.length <
+        (form
+            ? _maxFormOptions
+            : multi
+            ? 12
+            : 6)) {
       options.add(line);
     }
   }
   return (
     multi: multi,
     sections: sections,
+    form: form,
     prose: prose,
     options: List.unmodifiable(options),
     headings: Map.unmodifiable(headings),

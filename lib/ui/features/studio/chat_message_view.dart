@@ -148,6 +148,17 @@ class ChatMessageView extends StatelessWidget {
     );
   }
 
+  /// 写这条回复前加载了哪些技能(用户要求:用到哪个技能要显示出来)。
+  Widget? _skillsBlock() {
+    final names = {for (final l in lookups) ...skillsLoadedIn(l.text)};
+    if (names.isEmpty) return null;
+    return _ToolBlock(
+      icon: Icons.auto_stories_outlined,
+      summary: tr('已使用技能 · {0}', [names.join(tr('、'))]),
+      details: const [],
+    );
+  }
+
   /// Agent 回复的正文:说的话、新成稿卡片,生成完后再加一排操作。
   List<Widget> _reply(BuildContext context) {
     final m = message;
@@ -198,7 +209,19 @@ class ChatMessageView extends StatelessWidget {
     final searching = streaming
         ? splitToolTag(peeked, webSearchTag).queries
         : const <String>[];
+    // 写了 <load-skill> 到正文取回来之间。
+    final loading = streaming
+        ? splitToolTag(peeked, loadSkillTag).queries
+        : const <String>[];
     return [
+      if (loading.isNotEmpty) ...[
+        _ToolBlock(
+          icon: Icons.auto_stories_outlined,
+          summary: tr('正在加载技能 · {0}', [loading.join(tr('、'))]),
+          details: const [],
+        ),
+        const SizedBox(height: 10),
+      ],
       if (searching.isNotEmpty) ...[
         _ToolBlock(
           icon: Icons.language,
@@ -273,7 +296,15 @@ class ChatMessageView extends StatelessWidget {
       ],
       if (picks.isNotEmpty && !streaming && drafts.isEmpty) ...[
         const SizedBox(height: 10),
-        if (asked.multi)
+        if (asked.form && !bySection)
+          PopIn(
+            child: FormPick(
+              options: asked.options,
+              headings: asked.headings,
+              onSubmit: onOption,
+            ),
+          )
+        else if (asked.multi || bySection)
           PopIn(
             child: MultiPick(
               items: picks,
@@ -379,6 +410,10 @@ class ChatMessageView extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               // 联网搜索单独一块,不和别的资料合并(用户要求搜了要提醒出来)。
+              if (_skillsBlock() case final used?) ...[
+                used,
+                const SizedBox(height: 10),
+              ],
               if (_webBlock() case final web?) ...[
                 web,
                 const SizedBox(height: 10),

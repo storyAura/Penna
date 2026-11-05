@@ -1,6 +1,11 @@
+import 'hajimi_skill.dart';
+
+export 'hajimi_skill.dart';
+
 /// 内置 Skill 的正文(给模型看的指令),按 id 索引。
 /// 名字和简介在 data/models/app_config.dart 的 builtinSkills 里。
 const builtinSkillBodies = <String, String>{
+  hajimiSkillId: hajimiBody,
   'writer': '''
 把用户的意图写成一条完整的英文自然语言正面提示词。
 
@@ -82,18 +87,19 @@ description: 一句话说清它做什么、什么时候该用
 - 最后照常把成稿放进 <draft>。每段的〔译〕写这段标签的中文意思。
 - 全部转时,【当前成稿】里的每一段都要交代,不然没写到的段会原样留着句子:要么用它原来的标注重写成标签,要么只写它的标注、后面留空把它删掉(内容并进别的段时)。只转几段时,只写那几段,标注不变。''',
   'grilling': '''
-写新提示词之前,先和用户一问一答把画面定下来,再动笔。用户只给了一个大概的想法(一句话、一个主题、一种感觉),或者说"先规划一下""帮我想想画面""问我"时用。用户已经把画面讲得很细、给了参考图、只是改现有的成稿,或者说了"直接写",就不要用。
+写新提示词之前,先和用户把画面定下来,再动笔。用户只给了一个大概的想法(一句话、一个主题、一种感觉),或者说"先规划一下""帮我想想画面""问我"时用。用户已经把画面讲得很细、给了参考图、只是改现有的成稿,或者说了"直接写",就不要用。
 
-画面是用户的,不是你的。你自己补全的设定再好,也常常不是他想要的;一个个问出来,他才知道自己要什么,写出来的词也不用反复返工。
+画面是用户的,不是你的。你补全的设定再好,也常常不是他想要的;问出来他才知道自己要什么,词也不用反复返工。但一问一答拖太多轮他会烦,所以**一次问齐,用一张问卷**。
 
 怎么问:
-- 一次只问一个问题,等他回答了再问下一个。
-- 每个问题给 2 到 4 个具体的选项,并说出你推荐哪个、为什么(一句话)。选项同时放进 <options>(一行一个,写短一点),最后加一个"你定"。他可以点一个、自己另说,或者让你定。
-- 选项要具体到能直接画出来。不要问"想要什么风格",要问"A 水彩绘本,B 赛璐璐动画,C 厚涂插画"。
-- 后面的问题跟着前面的答案走:定了"雨夜街头",再问的是霓虹还是路灯,不是晴天还是阴天。
-- 他已经说过的、从上文能看出来的,不要再问。
+- 从下面的清单里挑出**还没定、而且会明显改变画面**的几项,通常 3 到 5 项,最多 6 项。他已经说过的、从上文看得出来的、无关紧要的都不问。
+- 放进一张问卷:开始标签写 <options form>,每一项先单写一行 # 项目名(两到四个字),下面一行一个选项,2 到 4 个。界面会让他每项单选一个,点「确定」一次交回来。
+- **每项的第一个选项是你推荐的**,界面默认就选中它;所以把最合适这张图的放第一个。不用写"你定":他把选中的再点一下就是交给你定。
+- 选项要具体到能直接画出来,每个不超过 12 个字。不要写"想要什么风格",要写"水彩绘本""赛璐璐动画""厚涂插画"。
+- 同一张问卷里的各项要互相搭得上:前面一项的选项会让后面一项不成立时,把后面那项留到下一轮。
+- 问卷前面只用一两句话说这张图你打算怎么拍、哪几项要他定,不要把选项再在正文里列一遍。
 
-按这个顺序往下走,哪一项已经清楚就跳过:
+可以问的项目(按画面的分量排,用户的题目里哪几项重要就挑哪几项):
 1. 主体:是谁、几个人、在做什么
 2. 外貌与服装:最要紧的两三个特征
 3. 表情与姿势
@@ -102,56 +108,11 @@ description: 一句话说清它做什么、什么时候该用
 6. 光线与色彩:光从哪来、主色调
 7. 画风与媒介
 
-问到画面能定下来为止,通常 5 到 8 个问题。用户说"够了""直接写",就马上停,剩下的你来定。提问的这些回复里不要输出 <draft>。
+他交回来的是一行一项的「项目:选的」,写着"你定"的由你来定。一般问一轮就够;只有他的回答引出了一件会大改画面、又猜不出来的新事(比如选了"两个人",还不知道另一个是谁),才再问一轮,同样用问卷,只问那几项。用户说"够了""直接写",马上停。提问的回复里不要输出 <draft>。
 
-问完后,在一条回复里做两件事:
+拿到回答后,在一条回复里做两件事:
 - 先用中文列出"画面方案":一项一行,把他选的和你替他定的分开标明。
 - 再照这个方案写出完整的提示词,放进 <draft>。他没提的细节可以补,但不能和方案冲突。''',
-  // 思路改编自 huangserva/xyz-video-skill 的分镜步骤:原版是给视频生成写首尾帧和动作,
-  // 这里只留"把故事切成一组静态画面"的部分。
-  'storyboard': '''
-把一个故事、一段情节或一个主题拆成一组镜头,每个镜头写一条能单独出图的提示词。用户说"分镜""拆成几个镜头""做成连环画 / 漫画 / 故事板""画一组连续的图"时用。只要一张图时不要用;要的是一张图里排好几格(带格线、气泡)的漫画页时用「漫画分格」。
-
-一组图最容易出的毛病是:每张单看都行,放在一起却不像同一个故事——人换了长相,雨天下一张成了晴天,手里的伞不见了。所以先把故事和不变的东西定死,再一镜一镜写。
-
-分三步走,一条回复只做其中一步,做完就停下等用户。用户说了"直接写"就跳过前两步。
-
-第零步,先问清楚。用户只给了一个主题或一句话(例如"给小绿写一个逛花园的故事")时,不要自己把故事编完,先照「画面规划」那个技能的问法把画面问细(一次一个问题、给具体的选项、放进 <options>)。只是问的内容换成一组图要定的事:想讲一件什么事(开头、转折、结尾)、要几镜、在哪里和什么时间天气、角色这次穿什么带什么、整体的情绪和画风。通常问 3 到 5 个问题,他说"够了""你定"就停。这几条回复不给方案,也不输出 <draft>。用户一开始就把故事讲清楚了,这一步跳过。
-
-第一步,只用中文给出分镜方案,最后用 <options> 给出"确认,开始写"和"我要改一下"两个选项。这条回复不输出 <draft>:方案和成稿不能出在同一条回复里,用户还没点头就不要写。
-
-1. 故事线:三五句连贯的叙述。每件事由前一件事引出(因为……所以……),人物从哪到哪要交代,天气和光线只能渐变。用户只给了主题就替他补全,并说明哪些是你补的。
-2. 不变的设定,后面每一镜都照抄:
-   - 角色卡:每个角色一句固定的外貌与服装描述,另挑两三个一眼能认出的特征。
-   - 场景卡:每个地点一句固定描述(地点、时间、天气、光线、主色调)。
-   - 画风:一句。
-3. 镜头表,一镜一行:镜号、景别与视角、画面里有谁、定格在哪个瞬间、这一镜要让人感受到什么。
-   - 按"建立 → 推进 → 落点"排:开头一两镜交代环境和人物,中间是事情的转折,最后一镜停在情绪上。
-   - 一镜只装一个瞬间。一句话里有两个动作(她回头,然后递伞)就拆成两镜。
-   - 镜头数用户说了算;没说就按故事定,通常 4 到 8 镜。
-   - 相邻两镜的景别或视角要有变化,不要连着几镜都是同样的中景。
-   - 每一镜都得是故事线里有的内容,不要为了凑数加戏。
-
-第二步,用户确认后,给每一镜写提示词:
-
-- 每条都要能单独拿去出图。出图模型看不到别的镜头,所以角色卡、场景卡、画风每一镜都要原样写进去,用词一个字都不要换:换个说法,出来的就是另一个人。
-- 写画面,不写故事:不写"她心生怜悯",写"她眉头舒展,目光落在他湿透的肩上"。
-- 写定格的状态,不写过程:不写"她走向亭子",写"她站在亭子入口,一只脚踏上石阶,身体朝向亭内"。
-- 写具体,不写模糊:谁在画面的哪个位置、占多大、朝向哪里、手里拿着什么、两人相隔多远。
-- 把该有而没说的细节补出来:下雨就有湿发、水面反光、撑着的伞;打斗过就有碎石和扬尘;光从右边来,影子就在左边。
-- 这一镜画面里没有的人不要写进去,连名字都不要提。
-- 写法(句子还是标签、中文还是英文)跟着用户的 Preset 和【当前成稿】走。
-
-写完逐对检查相邻两镜,不对就改完再交:
-- 人物的位置、站坐、干湿、伤势接得上吗?
-- 手里的东西有没有凭空出现或消失?
-- 人数有没有无缘无故变了?
-- 地上散落的、打碎的东西下一镜还在吗?
-- 天气和光线有没有跳变?要变,前一镜就得先露出苗头(云缝里透出一丝光)。
-
-最后一镜放一页:第 k 镜写 <draft page="k" name="这一镜的名字">,第一个再加 series="这个故事的名字"(都是两到四个字)。每页里面照常按内容分段(角色、动作、场景、构图、光线、画风这样),不要把整条挤成一段。正文里用一两句话告诉用户:一页是一张图的提示词,页码就是镜号。
-
-用户要改某一镜时只重写那一页(<draft page="页码">);改的是角色卡、场景卡或画风,就把用到它的每一页都重写,保持用词一致。''',
   'image-remix': '''
 用户给了一张图,要照着它写提示词,或者照着它写、但把其中几处换成他指定的内容。用户说"模仿这张图""复刻""照这张图,把……改成……"时用。要把反推出来的 Tag 或描述整理成提示词时也用,做法在最后一段。
 
@@ -313,11 +274,11 @@ MOSS-Image 是拿很详细的英文图像描述训练的,一张图的描述通�
 
 正文用一两句中文说明这份布局怎么排。写了 <layout> 的回复里不写 <draft>。''',
   'comic-page': '''
-用户要一张图里排好几格的漫画页时用:说了"漫画页""四格""2koma""条漫""一页几格""分格""对话气泡""台词放进气泡",或者要把一段剧情排成一页漫画。要的是一组分开的图(一镜一张)时用「分镜」,不用这个。
+用户要一张图里排好几格的漫画页时用:说了"漫画页""四格""2koma""条漫""一页几格""分格""对话气泡""台词放进气泡",或者要把一段剧情排成一页漫画。要的是一组分开的图(一镜一张)时照「哈吉咪主美」的分镜流程做,不用这个。
 
 出图模型把整张画布当成一个场景,"四格漫画"这几个字只是一个很弱的提示。所以最常见的毛病是:人物跨过格线、特写格里多长出一个头、气泡的尾巴连到离得最近的人而不是说话的人、同一个人每格长得不一样。下面的做法都是为了防这几样。
 
-先定分格表,再写。用户已经说清楚的直接写;没说清时先用一两个问题问清(几格、讲什么事、谁说什么),问法照「画面规划」。分格表要定:
+先定分格表,再写。用户已经说清楚的直接写;没说清时先问清(几格、讲什么事、谁说什么),问法照「画面规划」:用一张问卷一次问齐。分格表要定:
 - 几格、阅读顺序:日式从右往左、从上往下;西式从左往右;条漫从上往下。
 - 每格只讲一件事:交代环境、一个动作、一个反应、一个局部特写、一句台词。一格里有两个动作就拆成两格。
 - 主格一两个,占整页四到六成;其余是小格。
@@ -399,142 +360,6 @@ MOSS-Image 是拿很详细的英文图像描述训练的,一张图的描述通�
 不排区域控制、只要提示词时,写进 <draft>,按段写:【版式】几格、阅读顺序、格线;【角色】角色卡;【第1格】到【第N格】每格一段(景别、内容、这一格的气泡和台词)。多页漫画一页一张(<draft page="2">),第一页带上 series。
 
 交之前对一遍:格有大有小、有主格吗,是不是排成了一样高的通栏条带或棋盘格?用户画好的格是不是原样留着、格号按阅读顺序排了?每格写了景别和格号吗?特写格里有没有写进角色名?每个人物块只有一个人、名字对得上角色卡吗,有没有一句话里连着写两个人的长相?同格两人留了空吗?并排的格对齐了吗?每句台词都写了说话人和尾巴方向、离别人的头够远吗?画面外说话的气泡没有尾巴吗?竖排的数字改成汉字了吗?区域控制里每个人和气泡都落在自己那一格里吗?''',
-  // 用户自己整理的方法(看了 267 张风格多样的角色立绘及其标注),这里把三份参考资料并进正文:
-  // Agent 读不了 Skill 附带的文件。
-  'character-portrait': '''
-用户要画角色立绘时用:说了"立绘""角色设定图""卡面""皮肤""OC",或者给了一个人设、一条现成的角色提示词,想把这张图做得更耐看。只是让某个角色在某个场景里做某件事的普通一张图,走「画面规划」;一组图走「分镜」;给了参考图要照着写,走「照图写」。
-
-只写外貌的提示词,通常只能得到"一个好看的人站在普通背景前"。耐看的立绘还回答了三个问题:元素(身边有什么东西能说明这个人是谁)、风格(用哪种艺术语言讲这个人)、背景(什么空间和画框能装下这个人)。所以陪用户把这三个问题答完,再写。
-
-第一步,读懂角色。先提取用户已经定下的:身份、时代、性格、外貌、指定的画法或模型。这些后面都不改,建议只用来补空白。
-- 信息很少(如"女钟表匠"):直接往下走,不追问。没说的部分放进建议里让他选,比问一串问题省事。
-- 现成提示词(他发来的,或他要润色的【当前成稿】):保留具体内容,只针对缺的部分给建议。masterpiece、best quality、beautiful、8k 这类词没说明画什么,默认删掉;他的模型确实需要再放回去。
-- 已有作品的角色、他自己存的角色:照「角色库」先查,拿到结果再给建议,外貌以查到的为准。查不到的外观不要编,说出来请他补充。
-
-第二步,给建议。从下面的资料里提炼,不要照抄。每个选项都结合这个角色来写:不写"塔罗牌画框",写"塔罗牌画框:牌名 THE WATCHMAKER,拱顶缠绕停摆的齿轮"。同组选项的观感要拉开差距,至少有一个稳妥的和一个大胆的。这条回复不写 <draft>,照这个格式:
-
-**角色理解**:一句话复述,并标出你补充的假设
-
-**元素建议**(可多选)
-1. 身份:……
-2. 故事:……
-3. 象征:……
-4. 伙伴:……
-
-**风格建议**(选一个)
-A. 风格名:这个角色用它会是什么样
-B. ……
-C. ……
-
-**背景建议**(选一个)
-甲. 背景与画框:这个角色在其中的画面
-乙. ……
-丙. ……
-
-**我的推荐**:元素 1、2、3 + 风格 A + 背景乙,一句话说明为什么这样搭配
-
-最后放一个多选,第一项是"按推荐写",后面按元素、风格、背景分三类,每个建议一行,写短一点,让他直接勾。# 开头的三行是小标题,要照写,界面才分得开:
-
-<options multi>
-按推荐写
-# 元素
-元素1·停摆怀表
-元素2·散落零件
-元素3·齿轮意象
-元素4·机械小鸟
-# 风格
-风格A·半厚涂
-风格B·新艺术塔罗
-风格C·霓虹黑色电影
-# 背景
-背景甲·切块工作间
-背景乙·塔罗拱顶
-背景丙·巨大怀表
-</options>
-
-第三步,等他选。发完建议就停下。他勾了什么就用什么;没勾到的那一组按你的推荐;风格或背景勾了几个就取第一个;回"全部"就是元素全要,风格和背景按推荐。他也可能自己打字改,照他说的。
-他第一句话里说了"直接出""你定""不用问",或者元素、风格、背景都给齐了,就跳过第二、三步,正文用一句话说明替他选了什么。
-
-第四步,写成稿。放进 <draft>,默认写英文自然语言句子,按下面的标注分段(用不到的段不写)。这也是先写人、再写环境、最后写光线和镜头的顺序:
-【风格】风格与媒介,一句话定调
-【主体】身份、年龄感、发色和发型、瞳色
-【服装】颜色 + 材质 + 版型
-【姿势】手在做什么、视线看向哪里
-【道具】道具与伙伴,写清位置(to her left、perched on the frame)
-【背景】空间是什么,人物和画框的关系
-【文字】只在需要时写,给出引号内的确切内容
-【光线】光源在哪、照亮什么、什么落入阴影
-【镜头】主色加一个强调色、视角、全身或半身、画面边缘如何处理
-
-- 风格是用户这一步要的(他说"你定"也算),写进【风格】,不算 Preset 说的额外风格标签。Preset 规定了开头(如 anime illustration of)就照它的开头,把风格接上。
-- 写看得见的东西。模型画不出"神秘",但画得出 half of her face lost in shadow, crows circling above。
-- 各段加起来约 120 到 200 个英文词。太短模型靠猜,太长靠后的内容容易被忽略。
-- 主次分明。写明人物清晰、环境放松(crisp clean linework on the face, loose brushwork in the surroundings),否则模型把所有地方画得一样满,人物就被淹没了。
-- 元素不贪多。选定 4 到 6 个写进去,象征元素重复出现比堆更多新东西有效。
-- 文字要少。模型容易写错字,整张图只放一两处短词,并提醒用户检查拼写。不需要文字时写 no text, no watermark。
-- 描述风格时不写在世画家、游戏名、工作室名或商标,用画面特征来写。作品角色的名字照「角色库」写,外观也要写成句子,很多模型不认识角色名。
-- 未成年或看起来年幼的角色,服装和姿势都保持符合年龄,不加任何性感化描写。
-- 润色他已有的成稿是整篇重写,开始标签写 <draft replace>。
-
-正文只写这几样,中文对照交给成稿的写法,不另写:替他选了什么(跳过选择时);建议画幅,如 3:4 竖版,一句话说明原因;2 到 3 个具体改法,如"想更压抑:把强调色换成暗红,去掉月光"。
-
-第五步,按反馈微调。他说"再暗一点""换个姿势"时,只写改到的那几段,标注不变,没写到的段会原样留着。他说不满意但说不清时,换一个风格或背景重写,这比微调形容词更有用。
-
-适配不同模型(他指定时才调整):
-- Midjourney:最后一段末尾加 --ar 3:4。
-- Stable Diffusion 或要标签:照「转标签」的做法先查再写。
-- 要透明底:多数模型做不出真透明,写 isolated on a plain white background,并提醒他后期抠图。
-- 要负面词:Penna 只写正面提示词,把想避开的写成正面的话。
-
-【元素资料】元素不是装饰清单,而是让人不看设定也能猜到角色是谁。按四层想,每层给一两个针对这个角色的具体想法,"一些魔法道具"不算建议。
-- 身份层,一眼认出是谁:抓一个剪影特征(宽檐帽、超长飘带、过大的外套、异色长发),服装写成"颜色 + 材质 + 版型":a deep purple off-the-shoulder gown with gold filigree and long flowing fabric strips,不写 a nice dress。
-- 故事层,手里和脚边有什么:比起"她是医生",手里的工具和散落的物件更有说服力。如金色注射器与发光烧瓶、相机与爆炸烟尘、掌机与恐怖片海报、老电视与打开的公文包。
-- 象征层,一个反复出现的意象:选一个,让它在服装、道具、环境中出现至少两处,画面才有主题。预言或不祥:乌鸦、枯枝、月亮。自由或救赎:白鸽、羽毛、光束。时间或宿命:钟表、齿轮、沙漏。回忆:相框、老照片、胶片。破碎或疯狂:碎玻璃、裂纹、纸片。海洋或梦境:水母、鲸、气泡。童话或荒诞:兔子、扑克牌、棋盘。东方古典:蝴蝶、松树、灯笼、云气。舞台:幕布、聚光灯、观众剪影。革命:红旗、标语、几何色块。
-- 伙伴层,一个活物或替身:小动物增加亲近感(黑猫、白兔、小狗),大型伙伴带来传说感(白狮、黑色天马、巨鲸),也可以是半透明的另一个自己。
-- 两个让画面变特别的手法。尺度反差:把象征物放大到和人一样大甚至大过人(坐在巨大地球仪上、骑巨兔、待在怀表里)。无人立绘:角色有标志性物品时只画物品(空的帽子、外套和木马),适合纪念、逝去、谜团类设定。
-
-【风格资料】挑 3 个观感不同、又和角色说得通的,都可以叠加"人物精细、环境放松"和一个强调色。英文是写给模型的描述。
-1. 叙事半厚涂,最稳妥的默认项,适合大多数角色:narrative semi-painterly character illustration, crisp clean linework on the face and costume, visible loose brushwork in the environment, luminous layered color
-2. 新艺术塔罗,宿命、神秘学、高贵或宗教气质:Art Nouveau tarot card illustration, ornate gilded border with flowing organic linework, flat decorative color planes, symmetrical sacred composition
-3. 东方水墨与工笔,古风、仙侠、文人、民俗:East Asian ink wash and fine-line gongbi painting, misty layered mountains, swirling stylized clouds, generous empty space, muted mineral pigments with a small red seal
-4. 构成主义宣传画,工人、军人、革命者、理想主义者:Constructivist propaganda poster style, bold diagonal color blocks in red, black and orange, flat geometric shapes, heavy sans-serif lettering, dramatic graphic layout
-5. 复古旅行海报,旅行者、运动员、探险家:mid-century travel poster illustration, flat screen-printed color shapes, grainy paper texture, clean sky gradients, bold vintage headline typography
-6. 波普半调拼贴,偶像、记者、夸张爱闹的角色:pop art collage, saturated clashing colors, halftone dot shading, comic starbursts, cut-out newspaper and sticker elements
-7. 现代主义绘画,艺术家、怪人、内心复杂的角色:modernist painting style, geometrically faceted face with multiple viewpoints, angular abstract shapes, thick paint drips and splatters, bold primary accents
-8. 古典油画,贵族、学者、逝者:classical oil painting, chiaroscuro lighting against a dark ground, rich impasto texture, heavy draped fabric, Old Master still-life atmosphere, darkened vignette edges
-9. 哥特彩窗,修女、吸血鬼、病弱或信仰主题:gothic illustration, tall pointed arches, colored light cast through stained glass, deep crimson and midnight blue, black silhouetted birds against pale negative space
-10. 像素街机,玩家、机器人、搞怪角色:retro arcade game aesthetic, smooth detailed character over pixel-art effects, blocky gradient title lettering, 8-bit interface icons and pixel hearts
-11. 霓虹黑色电影,侦探、杀手、夜行者:neo-noir illustration, low-key lighting, cold blue glow against deep shadow, a single magenta neon accent, 1980s horror film poster mood, grainy texture
-12. 暗夜干笔剪影,森林、夜晚、童话、安静孤独的角色:nocturnal dry-brush illustration, deep blue shadows and rough painterly foliage, torn silhouette edges, one bright moon as the only strong light, scattered glowing fireflies
-13. 幻彩流体,音乐、梦境、神灵:iridescent dreamlike illustration, flowing liquid ribbons in violet, pink and cyan, luminous gradients, scattered starlight and floating fragments surrounding the figure
-14. 烈焰装饰,战士、神灵、复仇者:ornamental flame illustration, stylized swirling fire treated as decorative pattern, molten gold, orange and crimson, intense radiant glow from behind the figure
-配色用"大面积基调 + 少量强调色",强调色落在人物身上,视线才会先看人。如深蓝夜色配橘红长发和月光黄(童话、孤独),浅紫灰配金和黑(神圣、不祥),米白留白配单一正红(冷峻、戏剧),深青绿配暖金灯光(复古、神秘),土黄沙金配青蓝(古典、异域),宝蓝配黑白(深海、电子)。
-
-【背景资料】背景通常也是画框:人物不是站在一张风景前,而是被放进一件东西里。建议时同时说清"空间是什么"和"画面的边缘怎么结束"。
-1. 塔罗拱顶牌,宿命、神秘学、高贵:a tall vertical card with an arched ornate gilded border, an arched title at the top and a small nameplate at the bottom, branches and ribbons spilling past the frame
-2. 黑漆屏风,东方、古典、乐舞、武侠:a tall black lacquered folding screen standing on a white field, the figure painted on the panel while mountains, clouds and smoke flow out past its edges into real space
-3. 海报或杂志封面,运动员、明星、探险家:a tilted printed poster with a large bold headline and small caption blocks, the figure bursting forward out of the printed plane, torn paper edges and halftone patches
-4. 明信片或票据,旅行者、写信人、怀旧角色:a tilted vintage postcard with a striped airmail border, a postage stamp and circular ink postmark in the corner, handwritten script across the sky, torn paper edges
-5. 舞台与观众剪影,演员、歌手、魔术师:a theatrical stage framed by heavy curtains, one spotlight on the figure, solid black silhouettes of an audience across the lower foreground
-6. 切块房间,宅家、工匠、学者,道具多的角色:a cut-away corner of a room floating on a white field, seen from a slightly high angle, tilted floor with broken edges, furniture and personal belongings arranged around the figure
-7. 不规则剪影,森林、夜晚、水边:the whole scene contained in an irregular organic silhouette with torn dry-brush edges, foliage breaking the outline, plain white space beyond it
-8. 圆窗或传送门,天体、海洋、梦境:a large circular frame like a porthole or moon gate, the figure at its center, creatures and flowing elements crossing from inside the circle to outside
-9. 建筑门窗,贵族、等待者、窥视感强的角色:a large arched window or stone doorway as the frame, the figure standing in the opening, light pouring through, a glimpse of a distant view beyond
-10. 破框的画中画,画家、虚实不分的角色:a heavy gilded picture frame leaning at an angle, the figure stepping out of the painting, paint and painted objects spilling past the frame into real space
-11. 碎片与斜面,疯狂、冲突、精神崩坏:the scene broken into jagged shards radiating from the center, reflections of the figure in the fragments, sharp diagonal planes and thin construction lines
-12. 元素漩涡,法师、神灵、战斗登场:no fixed architecture, a swirl of stylized fire, water or light forms a ring around the figure, particles and ribbons trailing off into white space
-13. 游戏或录像界面,玩家、主播、被记录的角色:framed like a retro game screen or camcorder viewfinder, corner brackets and a small REC mark, pixel UI elements and a title banner at the edge
-14. 巨大象征物,有标志性物件的角色:a giant symbolic object serves as the whole setting, the small figure sitting on or inside it, simple ground and generous empty space around it
-让画面立起来的手法:破框(人物或元素越过画框)、前景剪影(前景一层全黑的人影或树叶,把人物推到光里)、倾斜地面、一条引导线(飘带、楼梯、光束把视线引向人物)、边缘消散(干笔、碎纸、水花或烟雾,不整齐切断)。
-镜头默认全身平视(full-body shot from a straight-on eye-level perspective),最能展示服装和道具,人物占画面高度的一半到三分之二。房间、躺卧用俯视(seen from a high angle, looking down on the scene),英雄、神像用仰视(slightly low-angle perspective emphasizing height)。
-光线写成"光源 + 照亮什么 + 什么在暗处",不要只写 dramatic lighting:
-- 月光夜景:the moon is the main light, highlighting her face and upper body while shadows swallow the lower foliage
-- 背后圣光:an intense golden glow emanating from behind the figure, rim light on the hair and shoulders
-- 舞台聚光:a single hard spotlight from above, the audience falling into black silhouette
-- 屏幕冷光:lit mainly by the blue glow of a television screen, high contrast against a dark room
-- 彩窗投光:colored light cast across the figure through a stained-glass window
-- 明亮日光:bright sunny daylight from the upper left, soft shadows and clear air
-- 伦勃朗侧光:directional light from the upper right, soft shadows, darkened vignette edges''',
   'local-reverse': '''
 用户要用本机的模型反推图片时用:说了"Tag 反推""打标""用 WD14 / PixAI / 某某模型反推""本地反推""用 Florence / Gemma 看图写描述"这类话。他要的是本机模型反推出来的标签或描述,不是你自己看图写。
 

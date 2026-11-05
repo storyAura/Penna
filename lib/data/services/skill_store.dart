@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/harness/skills/builtin_skills.dart';
 import '../models/app_config.dart';
@@ -185,6 +186,9 @@ String? safeZipPath(String raw) {
   return parts.join('/');
 }
 
+/// 能当附带文件给模型读的:.md 和 .txt。第 1 组是去掉后缀的名字。
+final _partFile = RegExp(r'^(.+)\.(md|txt)$', caseSensitive: false);
+
 String _folderOf(String path) =>
     path.contains('/') ? path.substring(0, path.lastIndexOf('/') + 1) : '';
 
@@ -194,9 +198,12 @@ String _baseName(File file) =>
 /// 管理「文档\Penna\skills」下用户导入的 Skill:每个 Skill 一个文件夹,
 /// 里面是 SKILL.md,以及压缩包里跟它放在一起的其他文件。
 class SkillStore extends ChangeNotifier {
-  SkillStore(this.dir);
+  SkillStore(this.dir, {AssetBundle? assets}) : assets = assets ?? rootBundle;
 
   final Directory dir;
+
+  /// 内置 Skill 的模块从这里读。
+  final AssetBundle assets;
 
   List<UserSkill> _skills = const [];
 
@@ -421,6 +428,57 @@ class SkillStore extends ChangeNotifier {
       if (await staging.exists()) await staging.delete(recursive: true);
       rethrow;
     }
+  }
+
+  /// 这个 Skill 包里除了 SKILL.md 以外的文字文件(`/` 分隔、去掉 .md / .txt),
+  /// 模型写 `<load-skill>技能名/文件</load-skill>` 按需取。
+  /// 内置的只有「哈吉咪主美」带模块,放在资源里。
+  Future<List<String>> partsOf(String id) async {
+    if (id == hajimiSkillId) return hajimiParts;
+    if (!_skills.any((s) => s.id == id)) return const [];
+    final folder = _folderFor(id);
+    if (!await folder.exists()) return const [];
+    final root = folder.absolute.path.length + 1;
+    final found = <String>[];
+    await for (final f in folder.list(recursive: true)) {
+      if (f is! File) continue;
+      final relative = f.absolute.path.substring(root).replaceAll('\\', '/');
+      final m = _partFile.firstMatch(relative);
+      if (m != null && relative != 'SKILL.md') found.add(m[1]!);
+    }
+    return found..sort();
+  }
+
+  /// 读一个附带文件;[part] 不安全、不存在或不是 UTF-8 文字时是 null。
+  Future<String?> readPart(String id, String part) async {
+    final name = part.trim().replaceFirst(RegExp(r'\.md$'), '');
+    if (id == hajimiSkillId) {
+      // 只认名单上的,不拿模型写的字去拼资源路径。
+      if (!hajimiParts.contains(name)) return null;
+      try {
+        return await assets.loadString('$hajimiAssetDir/$name.md');
+      } on FlutterError {
+        return null;
+      }
+    }
+    final safe = safeZipPath(part.trim());
+    if (safe == null || safe.isEmpty) return null;
+    if (!_skills.any((s) => s.id == id)) return null;
+    for (final name in [safe, '$safe.md', '$safe.txt']) {
+      if (!_partFile.hasMatch(name) || name == 'SKILL.md') continue;
+      final file = File(
+        '${_folderFor(id).path}${Platform.pathSeparator}'
+        '${name.replaceAll('/', Platform.pathSeparator)}',
+      );
+      try {
+        if (await file.exists()) return await file.readAsString();
+      } on FileSystemException {
+        return null;
+      } on FormatException {
+        return null;
+      }
+    }
+    return null;
   }
 
   Future<void> remove(String id) async {

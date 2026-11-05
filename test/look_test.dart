@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/data/models/app_config.dart';
@@ -5,6 +6,7 @@ import 'package:penna/l10n/l10n.dart';
 import 'package:penna/ui/core/look_switcher.dart';
 import 'package:penna/ui/core/theme.dart';
 import 'package:penna/ui/core/widgets.dart';
+import 'package:penna/ui/features/settings/settings_app_section.dart';
 
 import 'fixtures.dart';
 
@@ -73,7 +75,7 @@ void main() {
     );
     expect(PennaColors.isDark, isFalse);
 
-    config.update(config.config.copyWith(darkMode: true));
+    config.update(config.config.copyWith(darkTheme: 'on'));
     await tester.pump();
     expect(PennaColors.isDark, isTrue);
     expect(find.byType(CustomPaint), findsWidgets);
@@ -85,4 +87,142 @@ void main() {
     await tester.pump();
     expect(currentLanguage, 'ja');
   });
+
+  testWidgets('跟随系统:系统换深浅色时跟着换,其他模式不跟', (tester) async {
+    final config = tempConfig();
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LookSwitcher(config: config, child: const SizedBox()),
+      ),
+    );
+    expect(config.config.darkTheme, 'system');
+    expect(PennaColors.isDark, isFalse);
+
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    await tester.pumpAndSettle();
+    expect(PennaColors.isDark, isTrue);
+
+    config.update(config.config.copyWith(darkTheme: 'off'));
+    await tester.pumpAndSettle();
+    expect(PennaColors.isDark, isFalse);
+
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    await tester.pumpAndSettle();
+    expect(PennaColors.isDark, isFalse);
+  });
+
+  testWidgets('自定义时间段:到点就换,不用动设置', (tester) async {
+    final config = tempConfig();
+    var clock = DateTime(2026, 11, 3, 18, 59);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LookSwitcher(
+          config: config,
+          now: () => clock,
+          child: const SizedBox(),
+        ),
+      ),
+    );
+    config.update(config.config.copyWith(darkTheme: 'schedule'));
+    await tester.pumpAndSettle();
+    expect(PennaColors.isDark, isFalse);
+
+    clock = DateTime(2026, 11, 3, 19);
+    await tester.pump(const Duration(minutes: 1));
+    await tester.pumpAndSettle();
+    expect(PennaColors.isDark, isTrue);
+  });
+
+  group('深色模式的设置', () {
+    bool at(AppConfig c, int hour, [int minute = 0]) =>
+        c.darkAt(systemDark: false, now: DateTime(2026, 11, 3, hour, minute));
+
+    test('时间段跨半夜:19:00 到次日 07:00,结束那一分钟算浅色', () {
+      const c = AppConfig(darkTheme: 'schedule', darkFrom: 1140, darkTo: 420);
+      expect(at(c, 18, 59), isFalse);
+      expect(at(c, 19), isTrue);
+      expect(at(c, 0), isTrue);
+      expect(at(c, 6, 59), isTrue);
+      expect(at(c, 7), isFalse);
+    });
+
+    test('时间段在同一天:09:00 到 17:00', () {
+      const c = AppConfig(darkTheme: 'schedule', darkFrom: 540, darkTo: 1020);
+      expect(at(c, 8, 59), isFalse);
+      expect(at(c, 9), isTrue);
+      expect(at(c, 16, 59), isTrue);
+      expect(at(c, 17), isFalse);
+    });
+
+    test('开始和结束相同时不变深色;其他模式不看时间', () {
+      expect(
+        at(const AppConfig(darkTheme: 'schedule', darkFrom: 60, darkTo: 60), 1),
+        isFalse,
+      );
+      expect(at(const AppConfig(darkTheme: 'on'), 12), isTrue);
+      expect(at(const AppConfig(darkTheme: 'off'), 23), isFalse);
+      expect(
+        const AppConfig().darkAt(systemDark: true, now: DateTime(2026)),
+        isTrue,
+      );
+    });
+
+    test('旧设置搬过来:开着的还开着,关着的还关着;新装跟随系统', () {
+      AppConfig read(Map<String, dynamic> m) => AppConfig.fromJson(m);
+      expect(read({'darkMode': true}).darkTheme, 'on');
+      expect(read({'darkMode': false}).darkTheme, 'off');
+      expect(read({}).darkTheme, 'system');
+
+      const c = AppConfig(darkTheme: 'schedule', darkFrom: 1, darkTo: 2);
+      final back = read(c.toJson());
+      expect(back.darkTheme, 'schedule');
+      expect(back.darkFrom, 1);
+      expect(back.darkTo, 2);
+      expect(read({'darkFrom': 99999}).darkFrom, 1439);
+      expect(read({'darkTheme': 'auto'}).darkTheme, 'system');
+
+      // 旧的正式版只认 darkMode:始终开启时它也要是深色。
+      expect(const AppConfig(darkTheme: 'on').toJson()['darkMode'], isTrue);
+      expect(c.toJson()['darkMode'], isFalse);
+    });
+
+    test('时间的写法:能读 7、7:30、07:30,读不了的给 null', () {
+      expect(parseClock('7'), 420);
+      expect(parseClock('7:30'), 450);
+      expect(parseClock(' 07:30 '), 450);
+      expect(parseClock('23:59'), 1439);
+      expect(parseClock('24:00'), isNull);
+      expect(parseClock('7:60'), isNull);
+      expect(parseClock('7:3'), isNull);
+      expect(parseClock(''), isNull);
+      expect(clockText(450), '07:30');
+    });
+  });
+
+  testWidgets('右键菜单:给了 onPaste 时空输入框也有「粘贴」,点了交给它', (tester) async {
+    var pasted = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TextField(
+            contextMenuBuilder: (context, state) =>
+                pennaTextMenu(context, state, onPaste: () => pasted++),
+          ),
+        ),
+      ),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(TextField)),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(find.text('粘贴'), findsOneWidget);
+    await tester.tap(find.text('粘贴'));
+    await tester.pumpAndSettle();
+    expect(pasted, 1);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 }

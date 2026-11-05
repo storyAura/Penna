@@ -146,7 +146,7 @@ void main() {
         const AppConfig()
             .putLlm(llm)
             .setSecret(llmSecretKey('a'), 'sk-secret')
-            .copyWith(activePresetId: 'free', mtEnabled: {'baidu'}),
+            .copyWith(activePresetId: 'realistic', mtEnabled: {'baidu'}),
       );
       await first.flushed();
 
@@ -157,7 +157,7 @@ void main() {
       expect(second.lastError, isNull);
       expect(second.config.agentChain.firstOrNull?.name, 'A');
       expect(second.config.llmKey('a'), 'sk-secret');
-      expect(second.config.activePreset.name, '自由改稿');
+      expect(second.config.activePreset.name, '真实风格');
       expect(second.config.mtEnabled, {'baidu'});
       expect(first.file.readAsStringSync(), isNot(contains('sk-secret')));
       // Key 在 Windows 上放 keys.dat;别的平台在系统钥匙串里,没有这个文件。

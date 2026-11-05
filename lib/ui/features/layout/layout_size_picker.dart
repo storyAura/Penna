@@ -40,9 +40,13 @@ class LayoutSizePicker extends StatelessWidget {
     ),
     alignmentOffset: const Offset(0, 4),
     menuChildren: [
-      ListenableBuilder(
-        listenable: board,
-        builder: (context, _) => _SizePanel(board: board, snap: snap),
+      // MenuAnchor 自己不带动画:打开时从上往下轻轻浮出,和下拉菜单一致。
+      PopIn.popover(
+        from: Alignment.topCenter,
+        child: ListenableBuilder(
+          listenable: board,
+          builder: (context, _) => _SizePanel(board: board, snap: snap),
+        ),
       ),
     ],
     builder: (context, menu, _) => IconButton(

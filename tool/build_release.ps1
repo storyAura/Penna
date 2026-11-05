@@ -51,7 +51,9 @@ try {
   # flutter_onnxruntime 每次 clean 后都要在 CMake 里从 GitHub 下载 onnxruntime 的压缩包,
   # 不检查下没下成功:网络不稳时下成空文件,报 "extraction directory doesn't exist"。
   # 所以压缩包在 dist\cache 留一份(只下一次),编译前先解到它要找的地方,它看到就不下了。
-  flutter pub get | Out-Null
+  # 依赖都在本机缓存里时不联网:镜像(PUB_HOSTED_URL)偶尔卡住不动,打包就一直停在这。缺了才去下载。
+  flutter pub get --offline | Out-Null
+  if ($LASTEXITCODE -ne 0) { flutter pub get | Out-Null }
   $ortCmake = 'windows\flutter\ephemeral\.plugin_symlinks\flutter_onnxruntime\windows\CMakeLists.txt'
   $ortMatch = if (Test-Path $ortCmake) { Select-String -Path $ortCmake -Pattern 'set\(ONNXRUNTIME_VERSION "([^"]+)"\)' }
   if ($ortMatch) {
@@ -74,12 +76,12 @@ try {
       Remove-Item "$ortZip.part", $ortZip -Force -ErrorAction SilentlyContinue
     }
   }
-  flutter build windows --release
+  flutter build windows --release --no-pub
   # flutter clean 之后,flutter_onnxruntime 的 CMake 第一次常报
   # "ONNX Runtime extraction directory doesn't exist",再编一次就好:自动重试一次。
   if ($LASTEXITCODE -ne 0) {
     '编译失败,自动再试一次'
-    flutter build windows --release
+    flutter build windows --release --no-pub
   }
   if ($LASTEXITCODE -ne 0) { throw '编译失败,见上方输出' }
 } finally {

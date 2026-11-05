@@ -679,9 +679,8 @@ void main() {
 
   group('回复里的小部件', () {
     test('选项拆成一个个按钮的字,写完了才算', () {
-      final (:prose, :options, :multi, sections: _, headings: _) = splitOptions(
-        '方案如上。\n<options>\n- 确认,开始写\n2. 我要改一下\n</options>',
-      );
+      final (:prose, :options, :multi, sections: _, headings: _, form: _) =
+          splitOptions('方案如上。\n<options>\n- 确认,开始写\n2. 我要改一下\n</options>');
 
       expect(multi, isFalse);
       // 多选的:标签上多一个 multi。

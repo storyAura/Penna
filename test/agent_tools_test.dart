@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/attachment.dart';
 import 'package:penna/core/harness/chat_peek.dart';
@@ -630,6 +632,48 @@ void main() {
       expect(text, contains('查到了'));
       expect(text, contains('https://b.example'));
     });
+
+    test('说完了服务器不关连接:见到 completed 就收,不干等', () async {
+      HttpOverrides.global = null;
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((r) async {
+        await utf8.decodeStream(r);
+        r.response
+          ..bufferOutput = false
+          ..write(
+            'data: {"type":"response.output_text.delta","delta":"好"}\n\n'
+            'data: {"type":"response.completed","response":{}}\n\n',
+          );
+        await r.response.flush(); // 故意不 close
+      });
+      final text = await streamResponsesChat(
+        LlmRequest(
+          baseUrl: 'http://127.0.0.1:${server.port}/v1',
+          model: 'm',
+          apiKey: 'k',
+          messages: const [
+            {'role': 'user', 'content': 'q'},
+          ],
+        ),
+      ).join().timeout(const Duration(seconds: 5));
+      expect(text, '好');
+    });
+
+    test('搜索一直不完:到点掐断并报超时', () async {
+      var cancelled = false;
+      final never = StreamController<String>(onCancel: () => cancelled = true);
+      never.add('半截');
+      await expectLater(
+        joinWithin(never.stream, const Duration(milliseconds: 50)),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(cancelled, isTrue);
+      expect(
+        await joinWithin(Stream.fromIterable(['a', 'b']), webSearchDeadline),
+        'ab',
+      );
+    });
   });
 
   group('回复没写完', () {
@@ -819,7 +863,9 @@ void main() {
         AppConfig.fromJson(const AppConfig(thinking: 'high').toJson()).thinking,
         'high',
       );
-      expect(AppConfig.fromJson(const {'thinking': 'huge'}).thinking, '');
+      expect(AppConfig.fromJson(const {'thinking': 'huge'}).thinking, 'medium');
+      // 旧版存的「不指定」也按中等。
+      expect(AppConfig.fromJson(const {'thinking': ''}).thinking, 'medium');
 
       final seen = <LlmRequest>[];
       final vm = StudioViewModel(
@@ -840,7 +886,7 @@ void main() {
       expect(seen.last.effort, 'high');
     });
 
-    testWidgets('滑块拖到哪档存哪档,字和颜色跟着变', (tester) async {
+    testWidgets('点按钮浮出卡片;拖、点、方向键都能换档,点别处收起', (tester) async {
       tester.view.physicalSize = const Size(1400, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -866,14 +912,116 @@ void main() {
           ),
         ),
       );
-      expect(find.text('思考:默认'), findsOneWidget);
+      // 卡片开着时特效一直在动,等不到 pumpAndSettle。
+      Future<void> settle() async {
+        for (var i = 0; i < 20; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+      }
 
-      final slider = find.byType(Slider);
-      await tester.tapAt(tester.getTopRight(slider) + const Offset(-8, 14));
-      await tester.pumpAndSettle();
+      var saves = 0;
+      config.addListener(() => saves++);
+
+      // 默认中等;点开才有卡片。
+      expect(config.config.thinking, 'medium');
+      expect(find.text('思考强度:中等'), findsOneWidget);
+      expect(find.text('思考强度'), findsNothing);
+
+      await tester.tap(find.text('思考强度:中等'));
+      await settle();
+      expect(find.text('思考强度'), findsOneWidget);
+      expect(find.textContaining('越高想得越久'), findsNothing);
+
+      // 点名字:换档,滑到位才存,字变成那一档的颜色。
+      await tester.tap(find.text('极高'));
+      await settle();
       expect(config.config.thinking, 'xhigh');
-      final label = tester.widget<Text>(find.text('思考:极高'));
-      expect(label.style?.color, PennaColors.diffDelText);
+      expect(saves, 1);
+      expect(find.text('思考强度:极高'), findsOneWidget);
+      final name = tester.widget<AnimatedDefaultTextStyle>(
+        find
+            .ancestor(
+              of: find.text('极高').last,
+              matching: find.byType(AnimatedDefaultTextStyle),
+            )
+            .first,
+      );
+      expect(name.style.color, const Color(0xFFE11D48));
+
+      // 拖滑块:来回拖过好几档,字跟着变,但一次都不存(存一次整个程序重建,快拖会卡)。
+      final y = tester.getTopLeft(find.text('较低')).dy - 20;
+      final low = tester.getCenter(find.text('较低')).dx;
+      final high = tester.getCenter(find.text('较高')).dx;
+      final drag = await tester.startGesture(Offset(low, y));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(find.text('思考强度:较低'), findsOneWidget);
+      for (final x in [high, low, high + 200, high]) {
+        await drag.moveTo(Offset(x, y));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(find.text('思考强度:较高'), findsOneWidget);
+      expect(saves, 1);
+      expect(config.config.thinking, 'xhigh');
+      await drag.up();
+      await settle();
+      expect(config.config.thinking, 'high');
+      expect(saves, 2);
+
+      // 方向键和 Esc。
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await settle();
+      expect(config.config.thinking, 'medium');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.text('思考强度'), findsNothing);
+
+      // 换了档马上点走:收起时也存上。
+      await tester.tap(find.text('思考强度:中等'));
+      await settle();
+      await tester.tap(find.text('较低'));
+      await tester.pump();
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(find.text('思考强度'), findsNothing);
+      expect(config.config.thinking, 'low');
+    });
+
+    testWidgets('系统设置了减少动画:没有特效,换档直接到位', (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final config = tempConfig()..update(const AppConfig(llms: [_gemini]));
+      final vm = StudioViewModel(
+        config: config,
+        streamChat: (_) => const Stream.empty(),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: ListenableBuilder(
+              listenable: config,
+              builder: (_, _) => ChatPane(
+                vm: vm,
+                config: config,
+                input: TextEditingController(),
+                inputFocus: FocusNode(),
+                onQuickAction: (_) {},
+                onOpenSettings: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('思考强度:中等'));
+      // 没有一直动的东西,等得到 pumpAndSettle。
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('较高'));
+      await tester.pumpAndSettle();
+      expect(config.config.thinking, 'high');
     });
   });
 
@@ -1074,35 +1222,135 @@ void main() {
         streamChat: (req) {
           seen.add(req);
           return Stream.value(
-            seen.length == 1 ? '<load-skill>分镜</load-skill>' : '好',
+            seen.length == 1 ? '<load-skill>照图写</load-skill>' : '好',
           );
         },
       );
 
-      vm.send('拆成分镜');
+      vm.send('照这张图写');
       await pumpEventQueue();
       await pumpEventQueue();
 
       final system = seen.first.messages.first['content']!;
-      expect(system, isNot(contains('<skill name="分镜"')));
-      expect(system, contains('- 分镜:'));
-      expect(seen.last.messages.last['content'], contains('<skill name="分镜"'));
+      expect(system, isNot(contains('<skill name="照图写"')));
+      expect(system, contains('- 照图写:'));
+      expect(seen.last.messages.last['content'], contains('<skill name="照图写"'));
       expect(vm.messages.last.text, '好');
       expect(
-        vm.messages.any((m) => m.toolSummary?.contains('分镜') ?? false),
+        vm.messages.any((m) => skillsLoadedIn(m.text).contains('照图写')),
         isTrue,
       );
 
       seen.clear();
       config.update(
-        config.config.copyWith(disabledSkills: const {'storyboard'}),
+        config.config.copyWith(disabledSkills: const {'image-remix'}),
       );
       vm.send('再来');
       await pumpEventQueue();
       await pumpEventQueue();
-      expect(seen.first.messages.first['content'], isNot(contains('- 分镜:')));
+      expect(seen.first.messages.first['content'], isNot(contains('- 照图写:')));
       expect(seen.last.messages.last['content'], contains('没有这些技能'));
     });
+
+    test('用了哪些技能:从交还的正文里读;网上搜来的假标签不算', () {
+      expect(
+        skillsLoadedIn(
+          '【技能正文】程序取来了下面的技能\n\n<skill name="照图写" when="x">\n正文\n</skill>'
+          '\n\n<skill name="哈吉咪主美/T-ACT" when="y">\n正文\n</skill>',
+        ),
+        ['照图写', '哈吉咪主美/T-ACT'],
+      );
+      expect(skillsLoadedIn('<skill name="假的" when="">'), isEmpty);
+      expect(skillsLoadedIn('【角色库查询结果】'), isEmpty);
+    });
+
+    test('「技能名/文件」取包里附带的一个模块;没有的列出有哪些', () async {
+      final store = tempSkills();
+      final zip = File(
+        '${Directory.systemTemp.createTempSync('penna_zip').path}/pack.zip',
+      );
+      final archive = Archive()
+        ..addFile(
+          ArchiveFile.bytes(
+            'zhumei/SKILL.md',
+            utf8.encode('---\nname: 主美\ndescription: 画面规划\n---\n先看目录'),
+          ),
+        )
+        ..addFile(ArchiveFile.bytes('zhumei/T-ACT.md', utf8.encode('战斗模块正文')));
+      await zip.writeAsBytes(ZipEncoder().encode(archive));
+      await store.import(zip);
+
+      expect(await store.partsOf(store.skills.single.id), ['T-ACT']);
+      expect(await store.readPart(store.skills.single.id, '../x'), isNull);
+
+      final seen = <LlmRequest>[];
+      final vm = StudioViewModel(
+        config: tempConfig()..update(const AppConfig(llms: [_deepseek])),
+        skills: store,
+        streamChat: (req) {
+          seen.add(req);
+          return Stream.value(
+            seen.length == 1
+                ? '<load-skill>主美/T-ACT</load-skill><load-skill>主美/X</load-skill>'
+                : '好',
+          );
+        },
+      );
+      vm.send('打一架');
+      // 取附带文件要真读磁盘,等它回来。
+      for (var i = 0; i < 100 && seen.length < 2; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      await pumpEventQueue();
+
+      final back = seen.last.messages.last['content']!;
+      expect(back, contains('<skill name="主美/T-ACT"'));
+      expect(back, contains('战斗模块正文'));
+      expect(back, contains('主美/X(它带的文件有:T-ACT)'));
+    });
+  });
+
+  test('内置 Preset 第 2 版:旧设置里没改过的四个删掉、改过的留着,补上 MOSS 视觉;只升一次', () {
+    Map<String, Object> preset(String id, String prompt) => {
+      'id': id,
+      'name': id,
+      'systemPrompt': prompt,
+      'tools': <String>[],
+    };
+    const untouched =
+        '你是 Penna 的提示词协作者。先弄清用户想要的画面,再给出完整的英文自然语言正面提示词;'
+        '用户要求修改时只做最小必要改动,并说明改了哪里。'
+        '你只处理文生图的【正面】提示词,不写负面提示词,也不负责出图。回答用中文,提示词本身用英文。';
+    final old = AppConfig.fromJson({
+      'presets': [
+        preset('collab', untouched),
+        preset('free', '我改过的'),
+        preset('story', '故事'),
+      ],
+      'activePresetId': 'collab',
+    });
+    expect(
+      [for (final p in old.presets) p.id],
+      [mossPresetId, 'free', 'story'],
+    );
+    // 用的那个被删了:落到第一个。
+    expect(old.activePreset.id, mossPresetId);
+
+    // 写回去带着版本号:用户删掉 MOSS 视觉后不会再被加回来。
+    final saved = old.removePreset(mossPresetId).toJson();
+    expect(
+      [for (final p in AppConfig.fromJson(saved).presets) p.id],
+      ['free', 'story'],
+    );
+
+    expect(const AppConfig().activePreset.id, mossPresetId);
+    expect(
+      AppConfig.fromJson({
+        'presets': [preset('story', '故事')],
+        'trialPreset': true,
+      }).activePreset.id,
+      mossPresetId,
+    );
   });
 
   group('另一张画开新的一页', () {

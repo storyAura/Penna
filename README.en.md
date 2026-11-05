@@ -15,37 +15,28 @@
 
 ---
 
-Penna is a tool for writing **positive prompts** for text-to-image models. It covers the whole process: drafting, editing, polishing and translating.
-
-The window has two columns: the draft on the left and the Agent chat on the right. Every change the Agent makes arrives as a pending change and **is written into the draft only after you accept it**.
+Penna is a tool for writing **positive prompts** for text-to-image models, covering drafting, editing, polishing and translating. The draft sits on the left and the Agent chat on the right; every change the Agent makes **is written into the draft only after you accept it**.
 
 <p align="center">
   <img src="docs/promo-en.png" alt="Penna features">
 </p>
 
+## Videos (Chinese)
+
+- [Introducing Penna](https://www.bilibili.com/video/BV1PLpj62EDu) · storyAura
+- [Designing comic storyboards with Penna](https://www.bilibili.com/video/BV1yUso6AE92) · 雷昂
+
 ## Features
 
-- **Draft and review**: results from the Agent and Polish appear as a line-by-line red/green diff, accepted or rejected section by section.
-- **Sections and pins**: labels such as 【Subject】 and 【Lighting】 split the draft into sections that can be copied, polished, translated and pinned on their own; the delivered prompt drops labels and translations automatically.
-- **Pages and series**: each page is one prompt, pages in a series share a conversation, and one Agent reply can write several pages.
-- **Agent chat**: streaming replies, message queueing, option questions, image and text attachments, `@` Skill citations, and conversations side by side as tabs.
-- **Side chat**: a translucent floating panel runs a second conversation with its own model and Armor-Piercing switch, and each chat can read the other's conversation.
-- **Local Interrogate**: 20 built-in taggers and 15 vision models, plus two online models interrogating side by side; a choice of download sources with automatic fallback, and direct use of models already on the PC.
-- **Region Control**: draw regions, describe each one and produce MOSS-Image layout JSON, with shape tools, perspective guides, a 3D camera and a lighting assistant.
-- **Comics**: multi-panel pages laid out from a panel plan, with characters consistent across panels and pages.
-- **Danbooru tags**: about 76,000 built-in tags and optional online semantic search; the Agent looks tags up before writing and checks the delivered draft afterwards.
-- **Characters**: about 74,000 built-in Danbooru characters with looks and outfits split apart and transformations and costumes listed together; your own characters keep aliases, a description and several outfits.
-- **Polish and translate**: works on a page, a section or selected text; machine translation through Google, Baidu and Alibaba with automatic retries and engine switching.
-- **Skills**: 11 built-in writing guides, 3 core ones always on and the rest loaded by the Agent when needed; import from `.md` or `.zip`, or ask the Agent to write a new one in chat.
-- **API Management**: OpenAI-compatible APIs, the Google API (including Vertex AI) and Grok account sign-in, with models forming an ordered fallback chain.
-- **Web search**: the Agent can look things up online, and the search can run on a different API, such as DeepSeek writing the reply while Gemini searches.
-- **Archive and history**: Archive, Notes and prompt history; Activity is a tree that can return to before or after any step and keeps every branch.
-- **Settings and updates**: English, 简体中文, 繁體中文 and 日本語 interfaces, dark mode and one-click updates inside the app.
-- **MCP**: add servers over HTTP or stdio, test the connection and list their tools.
+- **Co-writing**: Agent changes arrive as a red/green diff, accepted or rejected section by section; prompts are split into labeled sections such as 【Subject】 and 【Lighting】, across pages and series.
+- **Agent chat**: conversations side by side, a side chat panel, image and file attachments, `@` Skill citations, web search and adjustable reasoning effort.
+- **Region Control**: draw regions, describe each one and produce MOSS-Image layout JSON; multi-panel comic pages included.
+- **Local Interrogate**: 20 built-in taggers and 15 vision models, plus online models.
+- **Tags and characters**: about 76,000 Danbooru tags and 74,000 characters built in, looked up by the Agent before writing.
+- **Model APIs**: OpenAI-compatible APIs, the Google API and Grok account sign-in, chained as ordered fallbacks.
+- **More**: Skills, Archive, Notes, an Activity tree, MCP, four interface languages, dark mode and in-app updates.
 
-The [feature guide](docs/features.en.md) covers every feature in full.
-
-A three-page comic laid out in Penna and rendered with MOSS-Image:
+The [feature guide](docs/features.en.md) covers everything in full. A three-page comic laid out in Penna and rendered with MOSS-Image:
 
 <p align="center">
   <img src="docs/comic-1.webp" width="32%" alt="Comic page 1">
@@ -53,70 +44,36 @@ A three-page comic laid out in Penna and rendered with MOSS-Image:
   <img src="docs/comic-3.webp" width="32%" alt="Comic page 3">
 </p>
 
-## Contents
-
-- [Getting started](#getting-started)
-- [Data and privacy](#data-and-privacy)
-- [Development](#development)
-- [Changelog](#changelog)
-- [Contributing](#contributing)
-- [Acknowledgements](#acknowledgements)
-- [License](#license)
-
 ## Getting started
 
-Download the package for your platform from [Releases](https://github.com/storyAura/Penna/releases):
+Download the package from [Releases](https://github.com/storyAura/Penna/releases), which also lists the changes in each version:
 
 - **Windows 10 / 11**: `Penna-v<version>-windows-x64.zip`. Unzip it and run `penna.exe`.
-- **Linux**: `Penna-v<version>-linux-x86_64.AppImage`. Make it executable (`chmod +x`) and run it.
+- **Linux**: `Penna-v<version>-linux-x86_64.AppImage`. Run it after `chmod +x`.
 
-On first launch the interface is in Simplified Chinese. Click the gear icon at the bottom left, open **软件设置** (App settings) and set **界面语言** (Language) to **English**.
+On first launch the interface is in Simplified Chinese. Click the gear icon at the bottom left, open **软件设置** (App settings) and set **界面语言** (Language) to **English**. Then fill in the Base URL and API key in **Settings → API Management**. The [API setup guide](docs/api-setup.md) and the [Penna guide](docs/agent-guide.md) (in Chinese) can both be handed to an AI assistant to help with setup and first steps.
 
-Then fill in the Base URL and API key of your model API in **Settings → API Management**. The [API setup guide](docs/api-setup.md) explains each service and can be handed straight to an AI assistant to help with the setup.
-
-The [Penna guide](docs/agent-guide.md) (in Chinese) covers what the app does, where everything is, how to use it and every setting, and can also be handed to an AI assistant to walk you through it.
-
-To run from source you need [Flutter](https://flutter.dev) (Dart 3.13 or later):
-
-```bash
-flutter pub get
-flutter run -d windows     # Windows
-flutter run -d linux       # Linux
-```
-
-## Data and privacy
-
-All data is stored on this PC in `Documents\Penna` (`~/Documents/Penna` on Linux). API keys are encrypted with DPAPI on Windows and kept in the system keyring on Linux, readable only by the current user on this PC. See [Data files](docs/features.en.md#data-files) for what each file holds.
+Data is stored on this PC in `Documents\Penna` (`~/Documents/Penna` on Linux) and API keys are encrypted; see [Data files](docs/features.en.md#data-files).
 
 ## Development
 
+Requires [Flutter](https://flutter.dev) (Dart 3.13 or later):
+
 ```bash
+flutter pub get
+flutter run -d windows           # or -d linux
 dart analyze lib test            # static analysis
 flutter test                     # all tests
-dart format lib test             # formatting
-pwsh tool/build_release.ps1      # package (Windows)
-bash tool/build_release.sh       # package (Linux AppImage)
+pwsh tool/build_release.ps1      # package for Windows; bash tool/build_release.sh for Linux
 ```
 
-These commands work with project paths that contain non-ASCII characters.
-
-Regenerate the built-in data (only when the source tables or the classification rules change):
-
-```bash
-python tool/make_tag_dict.py <folder with the CSVs>                                      # tag dictionary
-python tool/make_character_dict.py dataset/danbooru_character_appearance_corrected.csv   # character library
-python tool/l10n.py keys                                                                 # missing translations per language
-```
-
-The code has three layers, with dependencies pointing downward: `lib/ui` (interface) → `lib/core/harness` (model calls, draft format, Skills, tags, characters, local interrogation) → `lib/data` (settings, storage, translation, encryption). `lib/l10n` depends on nothing else and can be used by every layer.
-
-## Changelog
-
-See [Releases](https://github.com/storyAura/Penna/releases) for what changed in each version.
+The code has three layers, with dependencies pointing downward: `lib/ui` (interface) → `lib/core/harness` (model calls, draft format, Skills, tags, characters, local interrogation) → `lib/data` (settings, storage, translation, encryption).
 
 ## Contributing
 
-Please send questions and suggestions as [Issues](https://github.com/storyAura/Penna/issues). Before opening a Pull Request, run `dart analyze lib test` and `flutter test`.
+Please send questions and suggestions as [Issues](https://github.com/storyAura/Penna/issues).
+
+Penna is itself a vibe-coding project, and AI-written contributions are welcome. Please test locally before submitting (at least `dart analyze lib test` and `flutter test`), and preferably branch from `dev` and open the Pull Request against `dev`.
 
 ## Acknowledgements
 

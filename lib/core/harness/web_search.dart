@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../data/models/app_config.dart';
 
 // 联网搜索:写回复的模型只写 `<web-search>`,程序找一个能搜的接口用它自家的搜索工具查好,
@@ -67,6 +69,34 @@ const webSearchSystem =
     '查不到就照实说,不要编。';
 
 const _maxResultChars = 4000;
+
+/// 一次搜索(连同换接口)最多等多久。
+/// 只靠「两行之间 60 秒」不够:有的服务排队时一直发保活的空行,永远不算卡住。
+const webSearchDeadline = Duration(seconds: 90);
+
+/// 把 [stream] 的字接起来;过了 [limit] 还没完就掐断(取消订阅会断开连接)并报超时。
+Future<String> joinWithin(Stream<String> stream, Duration limit) {
+  final out = StringBuffer();
+  final done = Completer<String>();
+  late final StreamSubscription<String> sub;
+  final timer = Timer(limit, () {
+    unawaited(sub.cancel());
+    if (!done.isCompleted) done.completeError(TimeoutException(null, limit));
+  });
+  sub = stream.listen(
+    out.write,
+    onError: (Object e) {
+      timer.cancel();
+      if (!done.isCompleted) done.completeError(e);
+    },
+    onDone: () {
+      timer.cancel();
+      if (!done.isCompleted) done.complete(out.toString());
+    },
+    cancelOnError: true,
+  );
+  return done.future;
+}
 
 /// 一次搜索的结果;[failed] 为真时 [text] 是失败的原因。
 typedef WebResult = ({String text, bool failed});

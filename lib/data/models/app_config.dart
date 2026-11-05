@@ -5,6 +5,8 @@ import '../../l10n/l10n.dart';
 
 export 'mcp_server.dart';
 
+part 'moss_preset.dart';
+
 /// 区域控制交出去的 summary.caption 最前面默认加的质量词(属性栏里能改)。
 const defaultLayoutQuality =
     'best quality, highres, newest, year 2026, 8k resolution, masterpiece, ultra-detailed';
@@ -24,18 +26,18 @@ const coreSkillIds = {'writer', 'grilling', 'character-lib'};
 
 const builtinSkills = [
   Option('writer', '写提示词', '写新的正面提示词,也管局部修改、同题变体和意译'),
-  Option('grilling', '画面规划', '用户只给了大概想法时,写词前先一问一答把画面定下来'),
+  Option('grilling', '画面规划', '用户只给了大概想法时,写词前先用一张问卷把画面定下来'),
   Option('character-lib', '角色库', '用户提到某个具体角色时先查它的触发词和特征;要存角色时也用'),
   Option('skill-creator', '写 Skill', '聊着写出一个新 Skill,自动加入 Skills'),
   Option('danbooru-tags', '转标签', '把提示词改写成 Danbooru 标签,用到的标签都先查词库'),
   Option('image-remix', '照图写', '用户给了图要照着写或改几处,或要整理反推出的 Tag 和描述'),
-  Option('storyboard', '分镜', '把故事或情节拆成一组镜头,每个镜头一条能单独出图的提示词'),
   Option('moss-layout', '区域控制', '要按位置安排画面(画框、bbox、转成 MOSS-Image 布局 JSON)时写布局'),
   Option('comic-page', '漫画分格', '一张图里排几格漫画:分格、气泡与台词归属、跨格一致,也能排成区域控制布局'),
   Option(
-    'character-portrait',
-    '角色立绘',
-    '要画角色立绘、设定图、卡面、皮肤或 OC 时,先给元素、风格、背景三组建议供挑选,再写成提示词',
+    'hajimi',
+    '哈吉咪主美',
+    '主美知识库:有故事和张力的场景、一组连续的分镜、战斗、双人对峙、天灾、心理崩坏、大特写,'
+        '设计角色、设定表、精二立绘、怪物 BOSS、地图,或要用构图、素描、配色方法把画面做扎实时加载',
   ),
   Option('local-reverse', '本地反推', '用户要用 Tag 反推、或点名用本机的某个模型反推图片时,调用本地模型'),
 ];
@@ -298,11 +300,12 @@ const _writerTools = {
 };
 
 /// 出厂默认用的 Preset,见 [AppConfig.activePresetId]。
-const defaultPresetId = 'anime';
+const defaultPresetId = mossPresetId;
 
 const factoryPresets = [
+  mossPreset,
   AgentPreset(
-    id: defaultPresetId,
+    id: 'anime',
     name: '动漫风格',
     systemPrompt:
         '你是动漫插画提示词的写手。根据用户给的创作需求(一句话、关键词、角色设定或场景想法),'
@@ -353,53 +356,14 @@ const factoryPresets = [
     tools: _writerTools,
     temperature: 0.9,
   ),
-  AgentPreset(
-    id: 'collab',
-    name: '协同写词',
-    systemPrompt:
-        '你是 Penna 的提示词协作者。先弄清用户想要的画面,再给出完整的英文自然语言正面提示词;'
-        '用户要求修改时只做最小必要改动,并说明改了哪里。$_positiveOnly',
-    tools: _writerTools,
-  ),
-  AgentPreset(
-    id: 'reverse',
-    name: '反推润色',
-    systemPrompt:
-        '你负责把图片反推得到的 Tag 或自然语言描述,整理成干净、可直接出图的英文正面提示词:'
-        '去重、合并同义、按主体→外观→场景→光影→镜头排序。$_positiveOnly',
-    tools: {
-      'ask_user',
-      'context_memory',
-      'load_skill',
-      'reverse_image',
-      'search_tags',
-      'related_tags',
-      'view_reference',
-    },
-    temperature: 0.4,
-  ),
-  AgentPreset(
-    id: 'translate',
-    name: '意译合稿',
-    systemPrompt:
-        '你负责提示词的意译:保留原文的结构和信息量,用地道的英文表达画面,而不是逐字翻译;'
-        '同时给出中文对照,方便用户核对。$_positiveOnly',
-    tools: {'ask_user', 'load_skill', 'translate_mt', 'translate_llm'},
-    temperature: 0.3,
-  ),
-  AgentPreset(
-    id: 'free',
-    name: '自由改稿',
-    systemPrompt:
-        '你是提示词改稿助手。按用户的要求大胆改写、扩写或给出多个变体,每个变体单独成段并用一句话说明差异。$_positiveOnly',
-    tools: {'ask_user', 'context_memory', 'load_skill', 'prompt_library'},
-    temperature: 0.9,
-  ),
 ];
 
 /// 全部用户设置。[secrets] 单独加密保存,不进 [toJson]。
-/// 滑块上从左到右的几档;空串是不指定。
-const thinkingLevels = ['', 'low', 'medium', 'high', 'xhigh'];
+/// 思考强度,滑块上从左到右。
+const thinkingLevels = ['low', 'medium', 'high', 'xhigh'];
+
+/// 深色模式的几种选法,见 [AppConfig.darkTheme]。
+const darkThemes = ['system', 'on', 'off', 'schedule'];
 
 @immutable
 class AppConfig {
@@ -424,7 +388,9 @@ class AppConfig {
     this.agentAvatar = '',
     this.userAvatar = '',
     this.language = 'zh-Hans',
-    this.darkMode = false,
+    this.darkTheme = 'system',
+    this.darkFrom = 19 * 60,
+    this.darkTo = 7 * 60,
     this.uiScale = 1,
     this.disabledSkills = const {},
     this.tagSearchOnline = true,
@@ -434,7 +400,7 @@ class AppConfig {
     this.layoutSnap = defaultLayoutSnap,
     this.compressImages = true,
     this.autoApprove = false,
-    this.thinking = '',
+    this.thinking = 'medium',
     this.characterPreviews = false,
     this.updateChannel = 'main',
     this.quickActions = defaultQuickActions,
@@ -473,14 +439,31 @@ class AppConfig {
               .toInt(),
       fields: {...(m['fields'] as Map? ?? const {}).cast<String, String>()},
       paraphrase: m['paraphrase'] as bool? ?? true,
-      presets: presets.isEmpty ? factoryPresets : presets,
-      activePresetId: m['activePresetId'] as String? ?? defaultPresetId,
+      presets: presets.isEmpty
+          ? factoryPresets
+          : ((m['presetsVersion'] as num?) ?? 1) < _presetsVersion
+          ? _upgradePresets(presets)
+          : presets,
+      // 测过「MOSS 视觉」测试项的(只有测试版有过这个开关)直接用上它。
+      activePresetId: m['trialPreset'] == true
+          ? mossPresetId
+          : m['activePresetId'] as String? ?? defaultPresetId,
       fontLatin: m['fontLatin'] as String? ?? '',
       fontCjk: m['fontCjk'] as String? ?? '',
       agentAvatar: m['agentAvatar'] as String? ?? '',
       userAvatar: m['userAvatar'] as String? ?? '',
       language: m['language'] as String? ?? 'zh-Hans',
-      darkMode: m['darkMode'] as bool? ?? false,
+      // 旧版只有 darkMode 开关:照原样搬过来。新键另起名字,因为正式版和测试版
+      // 共用一份设置,旧版读到字符串的 darkMode 会读不了整个文件。
+      darkTheme: darkThemes.contains(m['darkTheme'])
+          ? m['darkTheme'] as String
+          : switch (m['darkMode']) {
+              true => 'on',
+              false => 'off',
+              _ => 'system',
+            },
+      darkFrom: ((m['darkFrom'] as num?) ?? 19 * 60).clamp(0, 1439).toInt(),
+      darkTo: ((m['darkTo'] as num?) ?? 7 * 60).clamp(0, 1439).toInt(),
       uiScale: ((m['uiScale'] as num?) ?? 1)
           .clamp(minUiScale, maxUiScale)
           .toDouble(),
@@ -495,7 +478,7 @@ class AppConfig {
       autoApprove: m['autoApprove'] as bool? ?? false,
       thinking: thinkingLevels.contains(m['thinking'])
           ? m['thinking'] as String
-          : '',
+          : 'medium',
       characterPreviews: m['characterPreviews'] as bool? ?? false,
       updateChannel: m['updateChannel'] == 'dev' ? 'dev' : 'main',
       // 旧配置里没有这一项才给默认的;用户删空了就是空的。
@@ -587,8 +570,26 @@ class AppConfig {
   /// 界面语言:zh-Hans、zh-Hant、en、ja(见 `l10n/l10n.dart`)。
   final String language;
 
-  /// 深色模式。
-  final bool darkMode;
+  /// 深色模式:system 跟随系统、on 始终开启、off 始终关闭、schedule 自定义时间段。
+  final String darkTheme;
+
+  /// 自定义时间段的开始和结束,都是当天第几分钟;结束早于开始表示跨半夜。
+  final int darkFrom;
+  final int darkTo;
+
+  /// 按这份设置,此刻该不该用深色。
+  bool darkAt({required bool systemDark, required DateTime now}) {
+    final minute = now.hour * 60 + now.minute;
+    return switch (darkTheme) {
+      'on' => true,
+      'system' => systemDark,
+      'schedule' =>
+        darkFrom <= darkTo
+            ? minute >= darkFrom && minute < darkTo
+            : minute >= darkFrom || minute < darkTo,
+      _ => false,
+    };
+  }
 
   /// 界面整体放大几倍(高分屏上嫌小时调),1 是原样。
   final double uiScale;
@@ -628,7 +629,7 @@ class AppConfig {
   /// 成稿的待确认改动一出来就自动采纳,不用用户点。
   final bool autoApprove;
 
-  /// 思考强度,[thinkingLevels] 之一;空串是不指定,用模型自己的默认。
+  /// 思考强度,[thinkingLevels] 之一。
   final String thinking;
 
   /// 内置角色库要不要下载预览图。
@@ -659,12 +660,16 @@ class AppConfig {
     'paraphrase': paraphrase,
     'presets': [for (final p in presets) p.toJson()],
     'activePresetId': activePresetId,
+    'presetsVersion': _presetsVersion,
     'fontLatin': fontLatin,
     'fontCjk': fontCjk,
     'agentAvatar': agentAvatar,
     'userAvatar': userAvatar,
     'language': language,
-    'darkMode': darkMode,
+    'darkTheme': darkTheme,
+    'darkMode': darkTheme == 'on', // 给还只认这个键的旧版看。
+    'darkFrom': darkFrom,
+    'darkTo': darkTo,
     'uiScale': uiScale,
     'disabledSkills': disabledSkills.toList(),
     'tagSearchOnline': tagSearchOnline,
@@ -746,7 +751,9 @@ class AppConfig {
     String? agentAvatar,
     String? userAvatar,
     String? language,
-    bool? darkMode,
+    String? darkTheme,
+    int? darkFrom,
+    int? darkTo,
     double? uiScale,
     Set<String>? disabledSkills,
     bool? tagSearchOnline,
@@ -785,7 +792,9 @@ class AppConfig {
     agentAvatar: agentAvatar ?? this.agentAvatar,
     userAvatar: userAvatar ?? this.userAvatar,
     language: language ?? this.language,
-    darkMode: darkMode ?? this.darkMode,
+    darkTheme: darkTheme ?? this.darkTheme,
+    darkFrom: darkFrom ?? this.darkFrom,
+    darkTo: darkTo ?? this.darkTo,
     uiScale: uiScale ?? this.uiScale,
     disabledSkills: disabledSkills ?? this.disabledSkills,
     tagSearchOnline: tagSearchOnline ?? this.tagSearchOnline,
@@ -847,6 +856,31 @@ class AppConfig {
 }
 
 bool isFactoryPreset(String id) => factoryPresets.any((p) => p.id == id);
+
+/// 内置 Preset 的第几版。第 2 版(2026-11-05):去掉和 Skill 重了的四个
+/// (协同写词、反推润色、意译合稿、自由改稿,活由「写提示词」「照图写」管),加上「MOSS 视觉」。
+const _presetsVersion = 2;
+
+/// 退役的内置 Preset 当时的系统提示:旧设置里一字没改的才删,改过的是用户的东西,留着。
+const _retiredPresetPrompts = <String, String>{
+  'collab':
+      '你是 Penna 的提示词协作者。先弄清用户想要的画面,再给出完整的英文自然语言正面提示词;'
+      '用户要求修改时只做最小必要改动,并说明改了哪里。$_positiveOnly',
+  'reverse':
+      '你负责把图片反推得到的 Tag 或自然语言描述,整理成干净、可直接出图的英文正面提示词:'
+      '去重、合并同义、按主体→外观→场景→光影→镜头排序。$_positiveOnly',
+  'translate':
+      '你负责提示词的意译:保留原文的结构和信息量,用地道的英文表达画面,而不是逐字翻译;'
+      '同时给出中文对照,方便用户核对。$_positiveOnly',
+  'free': '你是提示词改稿助手。按用户的要求大胆改写、扩写或给出多个变体,每个变体单独成段并用一句话说明差异。$_positiveOnly',
+};
+
+/// 旧设置升到当前这一版。只跑一次:写回去时带着 `presetsVersion`。
+List<AgentPreset> _upgradePresets(List<AgentPreset> saved) => [
+  if (!saved.any((p) => p.id == mossPresetId)) mossPreset,
+  for (final p in saved)
+    if (_retiredPresetPrompts[p.id] != p.systemPrompt) p,
+];
 
 extension McpEditing on AppConfig {
   /// 新增或替换一个 MCP 服务。

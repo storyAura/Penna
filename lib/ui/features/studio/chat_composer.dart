@@ -9,6 +9,7 @@ class _Composer extends StatelessWidget {
     required this.quickActions,
     required this.onQuickAction,
     required this.onKey,
+    required this.onPaste,
     required this.onSend,
     required this.onStop,
     required this.picker,
@@ -57,6 +58,9 @@ class _Composer extends StatelessWidget {
   final List<QuickAction> quickActions;
   final ValueChanged<String> onQuickAction;
   final FocusOnKeyEventCallback onKey;
+
+  /// 右键菜单里点「粘贴」:剪贴板里的图片、文件加成附件。
+  final VoidCallback onPaste;
   final VoidCallback onSend;
 
   /// 非空表示正在生成,发送键变成停止键。
@@ -118,7 +122,8 @@ class _Composer extends StatelessWidget {
                 Focus(
                   onKeyEvent: onKey,
                   child: TextField(
-                    contextMenuBuilder: pennaTextMenu,
+                    contextMenuBuilder: (context, state) =>
+                        pennaTextMenu(context, state, onPaste: onPaste),
                     controller: input,
                     focusNode: inputFocus,
                     // 跟着内容长高,最多十行,再多就在框里滚。
@@ -150,23 +155,43 @@ class _Composer extends StatelessWidget {
                         ),
                       ),
                     ),
-                    PennaButton(
-                      label: autoApprove ? tr('自动审批') : tr('手动审批'),
-                      icon: autoApprove
-                          ? Icons.done_all
-                          : Icons.front_hand_outlined,
-                      tooltip: tr('成稿的改动:自动采纳 / 手动确认'),
-                      background: autoApprove ? PennaColors.primaryBg : null,
-                      foreground: autoApprove
-                          ? PennaColors.primary
-                          : PennaColors.slate500,
-                      onPressed: () => onAutoApprove(!autoApprove),
-                    ),
-                    const SizedBox(width: 8),
+                    // 英文这类长语言放不下时只留图标,名字在悬停提示里。
                     Expanded(
-                      child: _ThinkingSlider(
-                        level: thinking,
-                        onChanged: onThinking,
+                      child: LayoutBuilder(
+                        builder: (context, box) {
+                          final approve = autoApprove ? tr('自动审批') : tr('手动审批');
+                          final compact =
+                              box.maxWidth <
+                              44 +
+                                  pennaButtonsWidth(context, [
+                                    approve,
+                                    _thinkingLabel(thinking),
+                                  ]);
+                          return Row(
+                            children: [
+                              PennaButton(
+                                label: compact ? '' : approve,
+                                icon: autoApprove
+                                    ? Icons.done_all
+                                    : Icons.front_hand_outlined,
+                                tooltip: tr('成稿的改动:自动采纳 / 手动确认'),
+                                background: autoApprove
+                                    ? PennaColors.primaryBg
+                                    : null,
+                                foreground: autoApprove
+                                    ? PennaColors.primary
+                                    : PennaColors.slate500,
+                                onPressed: () => onAutoApprove(!autoApprove),
+                              ),
+                              const SizedBox(width: 8),
+                              _ThinkingButton(
+                                level: thinking,
+                                compact: compact,
+                                onChanged: onThinking,
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
                     if (meter case final m?) _ContextRing(meter: m),
@@ -199,103 +224,6 @@ class _Composer extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// 思考强度的滑块:拖到哪一档,滑块和旁边的字就变成那一档的颜色。
-class _ThinkingSlider extends StatelessWidget {
-  const _ThinkingSlider({required this.level, required this.onChanged});
-
-  final String level;
-  final ValueChanged<String> onChanged;
-
-  static const _maxTrack = 96.0;
-
-  String get _label => switch (level) {
-    'low' => tr('思考:低'),
-    'medium' => tr('思考:中'),
-    'high' => tr('思考:高'),
-    'xhigh' => tr('思考:极高'),
-    _ => tr('思考:默认'),
-  };
-
-  Color get _color => switch (level) {
-    'low' => PennaColors.accent,
-    'medium' => PennaColors.primary,
-    'high' => PennaColors.amber,
-    'xhigh' => PennaColors.diffDelText,
-    _ => PennaColors.slate400,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final at = thinkingLevels.indexOf(level);
-    return Tooltip(
-      message: tr('思考强度:越高想得越久、用量越多'),
-      child: TweenAnimationBuilder<Color?>(
-        tween: ColorTween(end: _color),
-        duration: Motion.of(context, Motion.base),
-        curve: Motion.swift,
-        builder: (context, color, _) => Row(
-          children: [
-            Flexible(
-              flex: 3,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: _maxTrack),
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 3,
-                    padding: const EdgeInsets.symmetric(horizontal: 7),
-                    activeTrackColor: color,
-                    inactiveTrackColor: PennaColors.border,
-                    activeTickMarkColor: PennaColors.card,
-                    inactiveTickMarkColor: PennaColors.slate400,
-                    thumbColor: color,
-                    overlayColor: color?.withValues(alpha: 0.15),
-                    thumbShape: const RoundSliderThumbShape(
-                      enabledThumbRadius: 6,
-                      elevation: 0,
-                      pressedElevation: 0,
-                    ),
-                    overlayShape: const RoundSliderOverlayShape(
-                      overlayRadius: 11,
-                    ),
-                    tickMarkShape: const RoundSliderTickMarkShape(
-                      tickMarkRadius: 1,
-                    ),
-                  ),
-                  child: SizedBox(
-                    height: 28,
-                    child: Slider(
-                      value: (at < 0 ? 0 : at).toDouble(),
-                      max: thinkingLevels.length - 1,
-                      divisions: thinkingLevels.length - 1,
-                      semanticFormatterCallback: (_) => _label,
-                      onChanged: (v) => onChanged(thinkingLevels[v.round()]),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 2),
-            Flexible(
-              flex: 2,
-              child: Text(
-                _label,
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.fade,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: color,
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

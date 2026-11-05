@@ -256,3 +256,146 @@ class _PickState extends State<MultiPick> {
     );
   }
 }
+
+/// 一张问卷(`<options form>`):每个小标题是一项要定的事,下面几个选项单选。
+/// 每项默认选中第一个(模型推荐的),点别的换过去,再点一下选中的就是「你定」;
+/// 点「确定」一次把各项交出去,一行一项「项目:选的」。
+/// [headings] 同 [MultiPick];第一个标题前面的选项归一个没名字的组。
+class FormPick extends StatefulWidget {
+  const FormPick({
+    super.key,
+    required this.options,
+    this.headings = const {},
+    required this.onSubmit,
+  });
+
+  final List<String> options;
+  final Map<int, String> headings;
+  final ValueChanged<String>? onSubmit;
+
+  @override
+  State<FormPick> createState() => _FormPickState();
+}
+
+typedef _Group = ({String title, List<String> options});
+
+class _FormPickState extends State<FormPick> {
+  /// 第几组选的第几个;不在表里的是「你定」。
+  late Map<int, int> _picked = _recommended();
+
+  List<_Group> get _groups {
+    final groups = <_Group>[];
+    for (final (i, option) in widget.options.indexed) {
+      final title = widget.headings[i];
+      if (title != null || groups.isEmpty) {
+        groups.add((title: title ?? '', options: []));
+      }
+      groups.last.options.add(option);
+    }
+    return groups;
+  }
+
+  Map<int, int> _recommended() => {
+    for (final (g, group) in _groups.indexed)
+      if (group.options.isNotEmpty) g: 0,
+  };
+
+  @override
+  void didUpdateWidget(FormPick old) {
+    super.didUpdateWidget(old);
+    if (old.options.length != widget.options.length) _picked = _recommended();
+  }
+
+  void _tap(int group, int option) => setState(
+    () => _picked = _picked[group] == option
+        ? ({..._picked}..remove(group))
+        : {..._picked, group: option},
+  );
+
+  /// 交出去的字:发给模型看的,不翻译。
+  String _answer(List<_Group> groups) => [
+    for (final (g, group) in groups.indexed)
+      [
+        if (group.title.isNotEmpty) '${group.title}:',
+        switch (_picked[g]) {
+          final i? => group.options[i],
+          null => '你定',
+        },
+      ].join(),
+  ].join('\n');
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = _groups;
+    if (groups.isEmpty) return const SizedBox.shrink();
+    final live = widget.onSubmit != null;
+    final hint = TextStyle(fontSize: 11, color: PennaColors.slate500);
+    return IgnorePointer(
+      ignoring: !live,
+      child: Opacity(
+        opacity: live ? 1 : 0.55,
+        child: PennaCard(
+          color: PennaColors.slate50,
+          radius: 10,
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (g, group) in groups.indexed) ...[
+                if (g > 0) const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.only(left: 2, bottom: 5),
+                  child: Row(
+                    children: [
+                      if (group.title.isNotEmpty)
+                        Text(
+                          group.title,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: PennaColors.slate500,
+                          ),
+                        ),
+                      const Spacer(),
+                      AnimatedSwitcher(
+                        duration: Motion.snap,
+                        child: _picked.containsKey(g)
+                            ? const SizedBox.shrink()
+                            : Text(tr('你定'), style: hint),
+                      ),
+                    ],
+                  ),
+                ),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final (i, option) in group.options.indexed)
+                      PennaChip(
+                        label: option,
+                        selected: _picked[g] == i,
+                        onTap: () => _tap(g, i),
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Spacer(),
+                  PennaButton(
+                    label: tr('确定'),
+                    icon: Icons.check,
+                    background: PennaColors.primary,
+                    foreground: Colors.white,
+                    onPressed: () => widget.onSubmit?.call(_answer(groups)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

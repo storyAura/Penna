@@ -179,6 +179,7 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
           const SizedBox(width: 8),
           Flexible(
             child: PopupMenuButton<String>(
+              popUpAnimationStyle: Motion.menu(context),
               tooltip: tr('副聊天使用的模型'),
               position: PopupMenuPosition.under,
               onSelected: (id) => id == _manageModels
@@ -251,6 +252,7 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
     final chat = widget.chat;
     final past = chat.pastChats;
     return PopupMenuButton<String>(
+      popUpAnimationStyle: Motion.menu(context),
       tooltip: tr('历史对话'),
       enabled: !chat.isStreaming && past.isNotEmpty,
       position: PopupMenuPosition.under,
@@ -418,7 +420,11 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
                     minLines: 1,
                     maxLines: 5,
                     style: const TextStyle(fontSize: 13),
-                    contextMenuBuilder: pennaTextMenu,
+                    contextMenuBuilder: (context, state) => pennaTextMenu(
+                      context,
+                      state,
+                      onPaste: _pasteAttachments,
+                    ),
                     decoration: InputDecoration(
                       isDense: true,
                       hintText: tr('问问工作区里的提示词'),

@@ -76,23 +76,43 @@ class _BouncyState extends State<Bouncy> {
 
 /// 出现时从下方轻轻弹入。[animate] 为 false 时直接显示(用于滚回视野的旧内容)。
 class PopIn extends StatelessWidget {
-  const PopIn({super.key, required this.child, this.animate = true});
+  const PopIn({super.key, required this.child, this.animate = true})
+    : _popover = false,
+      from = Alignment.bottomCenter;
+
+  /// 浮出来的小面板(悬停卡片、弹出面板):更快、挪得更少,再从 97% 放大到原样。
+  /// 每次重新建出来都播一遍。[from] 是它从哪边浮出来:在上方弹出的从下边来。
+  const PopIn.popover({
+    super.key,
+    required this.child,
+    this.from = Alignment.bottomCenter,
+  }) : animate = true,
+       _popover = true;
 
   final Widget child;
   final bool animate;
+  final Alignment from;
+  final bool _popover;
 
   @override
   Widget build(BuildContext context) {
+    final rise = _popover ? 6.0 : 12.0;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: animate ? 0 : 1, end: 1),
-      duration: Motion.of(context, Motion.sheet),
+      duration: Motion.of(context, _popover ? Motion.base : Motion.sheet),
       curve: Motion.enter,
       child: child,
       builder: (_, t, child) => Opacity(
         opacity: t.clamp(0, 1),
         child: Transform.translate(
-          offset: Offset(0, 12 * (1 - t)),
-          child: child,
+          offset: Offset(0, from.y * rise * (1 - t)),
+          child: _popover
+              ? Transform.scale(
+                  scale: 0.97 + 0.03 * t,
+                  alignment: from,
+                  child: child,
+                )
+              : child,
         ),
       ),
     );
@@ -474,6 +494,7 @@ Widget pennaTextMenu(
   BuildContext context,
   EditableTextState state, {
   List<(String, IconData, VoidCallback)> extra = const [],
+  VoidCallback? onPaste,
 }) {
   Widget row(String label, IconData icon, VoidCallback? run) => InkWell(
     onTap: run,
@@ -491,9 +512,23 @@ Widget pennaTextMenu(
   );
   final system = [
     for (final item in state.contextMenuButtonItems)
-      if (_menuItems[item.type] case (final label, final icon))
-        row(label, icon, item.onPressed),
+      if (onPaste == null || item.type != ContextMenuButtonType.paste)
+        if (_menuItems[item.type] case (final label, final icon))
+          (item.type, row(label, icon, item.onPressed)),
   ];
+  // 给了 [onPaste] 时「粘贴」总在:剪贴板里是图片、文件时系统那项不出现。
+  if (onPaste != null && !state.widget.readOnly) {
+    final at = system.indexWhere(
+      (e) => e.$1 == ContextMenuButtonType.selectAll,
+    );
+    system.insert(at < 0 ? system.length : at, (
+      ContextMenuButtonType.paste,
+      row(tr('粘贴'), Icons.content_paste, () {
+        state.pasteText(SelectionChangedCause.toolbar);
+        onPaste();
+      }),
+    ));
+  }
   final more = [
     if (!state.textEditingValue.selection.isCollapsed)
       for (final (label, icon, run) in extra)
@@ -525,7 +560,7 @@ Widget pennaTextMenu(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ...system,
+                for (final (_, item) in system) item,
                 if (system.isNotEmpty && more.isNotEmpty)
                   Divider(height: 9, color: PennaColors.border),
                 ...more,
@@ -580,6 +615,7 @@ Future<String?> popMenu(BuildContext context, Offset at, List<String> items) {
   final p = overlay.globalToLocal(at);
   return showMenu<String>(
     context: context,
+    popUpAnimationStyle: Motion.menu(context),
     position: RelativeRect.fromLTRB(p.dx, p.dy, p.dx, p.dy),
     items: [
       for (final item in items)

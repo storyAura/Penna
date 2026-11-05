@@ -261,6 +261,7 @@ class _LightingSectionState extends State<_LightingSection> {
               ),
             if (lights.length < maxLights)
               PopupMenuButton<String>(
+                popUpAnimationStyle: Motion.menu(context),
                 tooltip: tr('加一盏灯'),
                 icon: const Icon(Icons.add, size: 16),
                 padding: EdgeInsets.zero,
@@ -346,6 +347,7 @@ class _LightingSectionState extends State<_LightingSection> {
           children: [
             Expanded(
               child: PopupMenuButton<String>(
+                popUpAnimationStyle: Motion.menu(context),
                 tooltip: tr('换角色'),
                 onSelected: (r) => _put(set({'role': r}), tr('调整灯光')),
                 itemBuilder: (_) => [

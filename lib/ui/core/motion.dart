@@ -24,6 +24,36 @@ abstract final class Motion {
   /// 新块入场。
   static const enter = Cubic(0.22, 1, 0.36, 1);
 
+  /// 退场:起步就走、越走越快,和入场一减一加。
+  static const leave = Cubic(0.4, 0, 1, 1);
+
+  /// 下拉菜单展开多久。依据:NN/g 建议界面动画 100–500 ms、小部件取 200 ms 上下;
+  /// Material 3 的菜单落在 short4–medium1(200–250 ms)、入场减速出场加速。
+  /// Flutter 默认的 300 ms 匀速展开偏慢偏硬(用户反馈),取 220 ms。
+  static const menuDuration = Duration(milliseconds: 220);
+
+  /// 所有下拉菜单(`PopupMenuButton.popUpAnimationStyle`、`showMenu`)都用这个:
+  /// 入场减速;退场按 [leave] 走,大约前一半就淡完,所以收起比展开快。
+  static AnimationStyle menu(BuildContext context) =>
+      MediaQuery.maybeDisableAnimationsOf(context) ?? false
+      ? AnimationStyle.noAnimation
+      : const AnimationStyle(
+          duration: menuDuration,
+          curve: enter,
+          reverseCurve: leave,
+        );
+
+  /// 悬停浮出的卡片(上下文明细这类):200 ms 浮出,120 ms 收起。
+  static AnimationStyle popover(BuildContext context) =>
+      MediaQuery.maybeDisableAnimationsOf(context) ?? false
+      ? AnimationStyle.noAnimation
+      : const AnimationStyle(
+          duration: base,
+          reverseDuration: snap,
+          curve: enter,
+          reverseCurve: leave,
+        );
+
   /// 系统设置了「减少动画」时动画直接跳到结尾。
   static Duration of(BuildContext context, Duration d) =>
       MediaQuery.maybeDisableAnimationsOf(context) ?? false ? Duration.zero : d;

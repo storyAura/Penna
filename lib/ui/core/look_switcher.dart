@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -11,29 +12,46 @@ import 'theme.dart';
 import 'motion.dart';
 
 /// 按设置换配色和界面语言(启动时在 runApp 之前调一次)。
-void applyLook(AppConfig cfg) {
-  PennaColors.useDark(cfg.darkMode);
+void applyLook(AppConfig cfg, {DateTime? now}) {
+  PennaColors.useDark(_wantsDark(cfg, now ?? DateTime.now()));
   useLanguage(cfg.language);
 }
+
+bool _wantsDark(AppConfig cfg, DateTime now) => cfg.darkAt(
+  systemDark:
+      WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+      Brightness.dark,
+  now: now,
+);
 
 /// 深浅色切换动画从哪里扩散开:点开关时记下它的位置,没有就从窗口中间。
 Offset? lookRevealOrigin;
 
-/// 盯着设置里的深色模式和语言:变了就换上,并让整棵树重建一遍。
+/// 盯着设置里的深色模式和语言、系统的深浅色、时钟:变了就换上,并让整棵树重建一遍。
 /// 换深浅色时先拍下旧画面盖在上面,再从 [lookRevealOrigin] 起一圈圈露出新画面。
 class LookSwitcher extends StatefulWidget {
-  const LookSwitcher({super.key, required this.config, required this.child});
+  const LookSwitcher({
+    super.key,
+    required this.config,
+    required this.child,
+    this.now = DateTime.now,
+  });
 
   final ConfigService config;
   final Widget child;
+
+  /// 现在几点;测试里换掉。
+  final DateTime Function() now;
 
   @override
   State<LookSwitcher> createState() => _LookSwitcherState();
 }
 
 class _LookSwitcherState extends State<LookSwitcher>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _shot = GlobalKey();
+
+  late final Timer _clock;
   late final _reveal = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 620),
@@ -46,23 +64,35 @@ class _LookSwitcherState extends State<LookSwitcher>
   @override
   void initState() {
     super.initState();
-    widget.config.addListener(_onConfig);
+    widget.config.addListener(_refresh);
+    WidgetsBinding.instance.addObserver(this);
+    // ponytail: 每 20 秒看一次钟,到点最多晚 20 秒;比算好下一个时间点再定时简单,
+    // 电脑睡醒、改系统时间也不用另外管。
+    _clock = Timer.periodic(const Duration(seconds: 20), (_) => _refresh());
   }
 
   @override
+  void didChangePlatformBrightness() => _refresh();
+
+  @override
   void dispose() {
-    widget.config.removeListener(_onConfig);
+    widget.config.removeListener(_refresh);
+    WidgetsBinding.instance.removeObserver(this);
+    _clock.cancel();
     _reveal.dispose();
     _old?.dispose();
     super.dispose();
   }
 
-  void _onConfig() {
+  void _refresh() {
     final cfg = widget.config.config;
-    final dark = cfg.darkMode != PennaColors.isDark;
+    final now = widget.now();
+    final dark = _wantsDark(cfg, now) != PennaColors.isDark;
+    // 点了模式但深浅色没变:记下的位置作废,不然下次到点从那里扩散。
+    if (!dark) lookRevealOrigin = null;
     if (!dark && cfg.language == currentLanguage) return;
     if (dark) _snapshot();
-    applyLook(cfg);
+    applyLook(cfg, now: now);
     // 界面里到处是取值时才读的颜色和译文,const 的部件也要重建,
     // 所以走「整棵树重来一遍」(热重载用的那条路,正式版里同样可用)。
     WidgetsBinding.instance.reassembleApplication();

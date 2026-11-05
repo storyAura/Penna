@@ -120,21 +120,29 @@ extension StudioAutoLookup on StudioViewModel {
       for (final query in asked)
         () async {
           try {
-            final text = await streamWithFailover(
-              _requests(
-                cfg,
-                chain,
-                cfg.activePreset,
-                [
-                  {'role': 'system', 'content': webSearchSystem},
-                  {'role': 'user', 'content': query},
-                ],
-                piercing: '',
-                webSearch: true,
+            final text = await joinWithin(
+              streamWithFailover(
+                _requests(
+                  cfg,
+                  chain,
+                  cfg.activePreset,
+                  [
+                    {'role': 'system', 'content': webSearchSystem},
+                    {'role': 'user', 'content': query},
+                  ],
+                  piercing: '',
+                  webSearch: true,
+                ),
+                this.streamChat,
               ),
-              this.streamChat,
-            ).join();
+              webSearchDeadline,
+            );
             return (text: text, failed: false);
+          } on TimeoutException {
+            return (
+              text: tr('等了 {0} 秒没有搜完', [webSearchDeadline.inSeconds]),
+              failed: true,
+            );
           } on Object catch (e) {
             // 认不出的只报类型,原文可能带着 Key。
             return (

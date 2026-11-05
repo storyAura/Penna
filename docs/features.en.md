@@ -36,14 +36,15 @@ Each page is a separate prompt, and pages can be grouped into series. There can 
 - Questions from the Agent appear as stacked options with single or multiple choice; when the choice is about sections of the draft, the sections of the current page are listed directly.
 - When asked for tag interrogation or a specific local model, the Agent runs the model on this PC against the image in the chat; when the model is not installed yet, you choose whether to download it or use an installed one instead.
 - When asked to turn the draft into JSON or lay it out by position, the Agent hands the task to the Region Control Agent. The finished layout appears in Region Control, and the JSON is also placed into a new series in the draft.
-- Images (up to 10 MB) and text files can be attached with the button, by drag and drop, or with Ctrl+V, and are saved with the conversation; clicking an image in the chat opens it full size, where it can be copied or attached again.
+- Images (up to 10 MB) and text files can be attached with the button, by drag and drop, with Ctrl+V or Paste in the right-click menu, and are saved with the conversation; clicking an image in the chat opens it full size, where it can be copied or attached again.
 - Type `@` to cite a Skill. Quick actions above the input box append to what you have typed and can be customized.
 - Several conversations sit side by side as tabs; closed conversations stay in History.
 - Each Preset has its own system prompt, temperature and Top P.
+- Built in: "MOSS visual" (the default for new installs), "Anime" and "Photoreal". "MOSS visual" first devises the visual event happening in the picture, then the composition and camera, and writes a cohesive English description.
 
 ## Local Interrogate
 
-Drop in an image and a model turns it back into tags or a prompt. There are three kinds:
+Drop in, choose or paste an image from the clipboard, and a model turns it back into tags or a prompt. There are three kinds:
 
 - **Tag Interrogate**: 20 built-in ONNX taggers in four families (WD14, PixAI, CL and OppaiOracle) produce Danbooru tags. Character and general tags each have their own threshold, and results are re-filtered instantly when it changes. Tags in the result can be toggled one by one and are all selected by default.
 - **NL Interrogate**: 15 built-in vision models, covering Gemma 4 (E2B to 31B), Gemma 4 Heretic, ToriiGate, JoyCaption and Florence-2, each with a choice of quantization. GGUF models run on llama.cpp, and a running server can be added to API Management for the Agent and Polish to use. Florence-2 runs inside the app and outputs tags, captions at several levels of detail, or a composition analysis.
@@ -112,15 +113,15 @@ A three-page comic laid out in Penna and rendered with MOSS-Image:
 
 A Skill is a writing guide (`SKILL.md`) that decides how the Agent writes prompts.
 
-- 11 are built in. The core ones come first and cannot be turned off; the rest are enabled by default and each can be switched on or off. The writing, scene planning and character library guides are core and always loaded; the others are listed by name and summary, and the Agent loads them when needed or when named with `@`. "Comic panels" handles multi-panel comic pages in a single image (panel layout, speech bubbles and speakers, consistency across panels) and can lay a comic page out in Region Control, with varied panel sizes and slanted gutters; panels drawn by hand on the canvas are kept as drawn and filled in one by one. "Character portrait" suggests elements, styles and backgrounds to tick, then writes a sectioned prompt, drawing on 14 styles and 14 background frames.
-- Import `.md` or `.zip` files, or write one directly in Settings.
+- 10 are built in. The core ones come first and cannot be turned off; the rest are enabled by default and each can be switched on or off. The writing, scene planning and character library guides are core and always loaded; the others are listed by name and summary, and the Agent loads them when needed or when named with `@` (the always-loaded core ones are not in the `@` list); the Skills loaded for a reply are listed above it. When the picture is not yet specific, "Scene planning" first shows one questionnaire: the items to settle are listed together, each with the recommended option preselected, and are sent back in one go before the prompt is written. "Comic panels" handles multi-panel comic pages in a single image (panel layout, speech bubbles and speakers, consistency across panels) and can lay a comic page out in Region Control, with varied panel sizes and slanted gutters; panels drawn by hand on the canvas are kept as drawn and filled in one by one. "Hajimi Art Director" is an art-direction knowledge base: narrative and storyboards, composition, value structure and clean colour, design of characters, character sheets, E2 splash art, monsters and maps, and direction methods for combat, two-character stand-offs, disasters, psychological drama and dynamic close-ups. Only its table of contents is carried; the Agent loads modules one at a time when needed. Storyboards of separate images (one shot per page) are part of it.
+- Import `.md` or `.zip` files, or write one directly in Settings. The `.md` / `.txt` files packed next to `SKILL.md` in a `.zip` are that Skill's modules, which the Agent loads one at a time when needed, so a large knowledge base keeps only its table of contents loaded.
 - Ask the Agent in chat to write a new Skill; it is added automatically when done.
 
 ## API Management
 
 - Supports OpenAI-compatible APIs, the Google API (including Vertex AI) and Grok account sign-in.
 - Context usage: a ring next to the send button shows how much of the model's context limit the current chat uses; hover for a panel with a color-coded ring showing the share of the system preset, Skills, built-in rules, draft, chat, tool results and attachments, along with input, cache and output counts and the current API and model. Opening an earlier chat shows the estimated context to load. Limits are recognized from the model name and can also be set on the API card.
-- Thinking effort: a slider below the input box offers Default, Low, Medium, High and Max, each with its own color, and applies to chat, polishing and the side chat. If a model does not support the chosen level, Penna steps down or uses the model's default.
+- Thinking effort: a button below the input box opens a card with a slider for Low, Medium, High and Max, each with its own color. Medium is the default, and the setting applies to chat, polishing and the side chat. If a model does not support the chosen level, Penna steps down or uses the model's default.
 - Web search: the Agent can look things up online. The search runs on an API with a search tool (Gemini, Grok, OpenAI, Zhipu, Bailian, OpenRouter), selected automatically or chosen in Settings, so a model without search can still use it. During and after a search, the query and a short summary of the result appear above the reply.
 - **Providers** prefills the URL and model for DeepSeek, Zhipu GLM, Kimi, Alibaba Cloud Model Studio; add the key to start.
 - Name, URL, models and key take effect after clicking **Save**.
@@ -139,7 +140,7 @@ A Skill is a writing guide (`SKILL.md`) that decides how the Agent writes prompt
 **Settings → App settings** gathers interface language, dark mode, fonts and avatars, version and updates, and app information.
 
 - **Language**: 简体中文, 繁體中文, English and 日本語, applied immediately. In Chinese and Japanese interfaces, section translations and machine translation use that language; the English interface shows the English text directly.
-- **Dark mode**: one click, with the new colors expanding in a circle from the switch.
+- **Dark mode**: follow the system, always on, always off, or custom hours (overnight included), with the new colors expanding in a circle.
 - **Fonts and avatars**: Latin and CJK fonts can be a built-in font or any installed font; the Agent and user avatars can be replaced with your own pictures.
 
 ## Updates

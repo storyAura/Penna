@@ -5,8 +5,8 @@ import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:penna/core/harness/draft_block.dart';
 import 'package:penna/core/harness/layout.dart';
+import 'package:penna/core/harness/skills/builtin_skills.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/skill_store.dart';
@@ -213,7 +213,7 @@ void main() {
     });
 
     test('内置 Skill 都有正文', () {
-      expect(builtinSkillList, hasLength(11));
+      expect(builtinSkillList, hasLength(10));
       expect(
         builtinSkillList.where((s) => coreSkillIds.contains(s.id)),
         hasLength(coreSkillIds.length),
@@ -221,59 +221,21 @@ void main() {
       expect(builtinSkillList.every((s) => s.body.trim().isNotEmpty), isTrue);
     });
 
-    test('角色立绘:资料都并进了正文,多选的例子放得下,全部标注都认得出', () {
-      final body = builtinSkillList
-          .firstWhere((s) => s.id == 'character-portrait')
-          .body;
-      // Agent 读不了 Skill 附带的文件,也没有 prompt-pyramid 这个 Skill。
-      expect(body, isNot(contains('references/')));
-      expect(body, isNot(contains('prompt-pyramid')));
-      expect(body, contains('Art Nouveau tarot card'));
-      expect(body, contains('a tall black lacquered folding screen'));
-
-      final options = splitOptions(body);
-      expect(options.multi, isTrue);
-      expect(options.options, hasLength(11));
-      expect(options.options.first, '按推荐写');
-      expect(options.headings, {1: '元素', 5: '风格', 8: '背景'});
-      // 分段的标注成稿那边最多认 6 个字的写法。
-      final labels = RegExp(
-        r'^【(.+?)】',
-        multiLine: true,
-      ).allMatches(body.split('第五步').first).map((m) => m[1]!);
-      expect(labels, contains('镜头'));
-      expect(labels.every((l) => l.length <= 6), isTrue);
-    });
-
-    test('角色立绘:开着时列在系统提示里,并给「先规划再写」开例外;关掉就都没有', () async {
-      final seen = <LlmRequest>[];
-      final config = tempConfig()..update(const AppConfig().putLlm(_llm));
-      final vm = StudioViewModel(
-        config: config,
-        skills: tempSkills(),
-        streamChat: (req) {
-          seen.add(req);
-          return Stream.value('好的');
-        },
-      );
-      const exception = '上一条的一问一答换成';
-
-      vm.send('画一张女钟表匠的立绘');
-      await pumpEventQueue();
-      final on = seen.last.messages.first['content']!;
-      expect(on, contains('- 角色立绘:'));
-      expect(on, contains('【先规划再写】'));
-      expect(on, contains(exception));
-
-      config.update(
-        config.config.copyWith(disabledSkills: const {'character-portrait'}),
-      );
-      vm.send('再画一张');
-      await pumpEventQueue();
-      final off = seen.last.messages.first['content']!;
-      expect(off, isNot(contains('- 角色立绘:')));
-      expect(off, contains('【先规划再写】'));
-      expect(off, isNot(contains(exception)));
+    test('哈吉咪主美:名单上的模块都在资源里,目录里都提到了;取得到,乱写的路径取不到', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final store = tempSkills();
+      expect(await store.partsOf(hajimiSkillId), hajimiParts);
+      final body = builtinSkillBodies[hajimiSkillId]!;
+      for (final part in hajimiParts) {
+        final text = await store.readPart(hajimiSkillId, part);
+        expect(text, isNotNull, reason: part);
+        expect(text!.trim(), isNotEmpty, reason: part);
+        // 母题库由模块本身指过去;其余的目录里要写到。
+        if (!part.endsWith('-母题')) expect(body, contains(part), reason: part);
+      }
+      expect(await store.readPart(hajimiSkillId, 'T-ACT.md'), isNotNull);
+      expect(await store.readPart(hajimiSkillId, '../pubspec'), isNull);
+      expect(await store.readPart(hajimiSkillId, 'Z99'), isNull);
     });
 
     test('漫画分格:例子程序读得出来,有斜切的格,人物和气泡都落在自己那一格的形状里', () {
@@ -448,21 +410,26 @@ void main() {
         ),
       );
 
+      // 核心的一直在系统提示里,不列出来。
       await tester.enterText(input, '帮我 @画面');
       await tester.pump();
-      expect(find.text('画面规划'), findsOneWidget);
+      expect(find.text('画面规划'), findsNothing);
+
+      await tester.enterText(input, '帮我 @照图');
+      await tester.pump();
+      expect(find.text('照图写'), findsOneWidget);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pump();
-      expect(find.text('@画面规划'), findsOneWidget);
+      expect(find.text('@照图写'), findsOneWidget);
       expect(tester.widget<TextField>(input).controller!.text, '帮我 ');
       expect(vm.messages, isEmpty);
 
       await tester.enterText(input, '帮我改开头');
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pump();
-      expect(vm.messages.first.skillIds, ['grilling']);
-      expect(find.text('@画面规划'), findsOneWidget);
+      expect(vm.messages.first.skillIds, ['image-remix']);
+      expect(find.text('@照图写'), findsOneWidget);
     });
   });
 }

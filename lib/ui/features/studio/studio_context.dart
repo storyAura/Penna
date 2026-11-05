@@ -53,7 +53,7 @@ extension StudioContext on StudioViewModel {
         _findTags(queries.take(_maxQueries).toList()),
         _searchWeb(webs),
       ).wait;
-      final skill = _loadSkills(loads);
+      final skill = await _loadSkills(loads);
       // 一个个跑:它们共用本地反推页上的图和选中的模型。
       final image = _lastImage ?? local?.image;
       final ran = <LocalToolResult>[];
@@ -95,8 +95,7 @@ extension StudioContext on StudioViewModel {
             if (people.isNotEmpty)
               tr('查了角色库 · {0} 个', [people.values.expand((h) => h).length]),
             if (peek) tr('读了副聊天'),
-            if (skill.names.isNotEmpty)
-              tr('加载了技能:{0}', [skill.names.join(tr('、'))]),
+            // 用了哪些技能不写在这:界面从 text 里读出来,单独显示一块(同联网搜索)。
             for (final r in ran) r.note,
           ].join(' · '),
           toolDetails: [
@@ -394,9 +393,6 @@ extension StudioContext on StudioViewModel {
       webSearchGuide,
       // 「画面规划」是默认的第一步,不靠模型自己想起来用。
       _planFirstPrompt,
-      // 「角色立绘」一次给齐三组建议,不能被上一条压成一问一答。
-      if (!cfg.disabledSkills.contains('character-portrait'))
-        _portraitPlanPrompt,
       _characterPrompt,
       // 有区域控制的 Agent 时,排布局交给它,这边只讲怎么转过去。
       if (!cfg.disabledSkills.contains('moss-layout'))
@@ -505,7 +501,7 @@ extension StudioContext on StudioViewModel {
               onUsage: onUsage,
               onCut: onCut,
               // 搜索只是查资料,用不着多想。
-              effort: webSearch || cfg.thinking.isEmpty ? null : cfg.thinking,
+              effort: webSearch ? null : cfg.thinking,
               token: llm.protocol == protocolGrok
                   ? () => grokAccessToken(config, llm.id)
                   : null,
@@ -621,18 +617,13 @@ extension StudioContext on StudioViewModel {
 const _planFirstPrompt =
     '【先规划再写】这一条优先于上面各个技能里"直接写"的做法。'
     '用户要一条新的提示词(一张图、一组图都算),而画面还没有讲细时——只说了谁、在哪、做什么这样一两句,'
-    '例如"给小绿画一张在厨房做饭的半身图"——不要直接写,先照「画面规划」那个技能一问一答把画面定下来:'
-    '一次只问一个问题,给几个具体的选项并放进 <options>,这些回复里不输出 <draft>。'
+    '例如"给小绿画一张在厨房做饭的半身图"——不要直接写,先照「画面规划」那个技能用一张问卷把画面定下来:'
+    '挑几项没定的,写进 <options form>,一次问齐,这条回复里不输出 <draft>。'
     '先查了角色库、查了标签的,拿到结果之后也是先问,不要查完就写。'
     '你自己替他补全的方案不算数:不要列一个"画面方案"然后接着就写,要问他。'
     '只有这几种情况直接写:用户说了"直接写""你定""不用问";他已经把主体、场景、构图、光线都讲清楚了;'
     '他给了参考图要照着写;或者这次只是修改、润色、翻译、转写【当前成稿】。'
     '问过的不要再问;他中途说"够了"就马上写。';
-
-/// 【先规划再写】的例外。用户关掉「角色立绘」就不发这一条。
-const _portraitPlanPrompt =
-    '用户要的是角色立绘(设定图、卡面、皮肤、OC)时,上一条的一问一答换成「角色立绘」技能的做法:'
-    '先加载它,一条回复给齐元素、风格、背景三组建议,让他勾选;它列的直接写的情况照旧。';
 
 /// 主工作区的 Agent 怎么把排布局的活转给区域控制工作台的 Agent(`<ask-layout>`)。
 const _askLayoutPrompt =
@@ -765,6 +756,10 @@ const _draftFormatRest =
     '一行一个(最多 12 个),界面上可以勾选、全选,他点确定后回的是勾中的那几个,全选了回的是"全部";'
     '这时不用再另给"全部""只选几个"这样的选项,正文里也不用把这些再列一遍。'
     '多选的选项分几类时,每一类前面单写一行 # 类名,界面会画成小标题,它不算选项。'
+    '要他一次定好几件事、每件挑一个时(画面规划这类),用问卷:开始标签写成 <options form>,'
+    '每件事前面单写一行 # 项目名,下面一行一个选项(每件 2 到 4 个,最多 6 件);'
+    '每件的第一个是你推荐的,界面默认选中它,他点确定后回的是一行一件「项目:选的」,写着"你定"的由你定。'
+    '不用另给"你定"选项。'
     '不要再写"请回复确认"这种话;用户也可以不点,自己打字。'
     '问他、等他确认的回复里不写 <draft>;写了 <draft> 的回复里不放 <options>,两样不出在同一条里。'
     '用户选中某一段来讨论时例外:按那条消息里的要求,只写那一段。';

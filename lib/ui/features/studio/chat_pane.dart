@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
@@ -30,6 +32,7 @@ import '../../core/motion.dart';
 
 part 'chat_composer.dart';
 part 'context_ring.dart';
+part 'thinking_picker.dart';
 part 'chat_header.dart';
 part 'side_chat_panel.dart';
 
@@ -114,8 +117,14 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
   List<UserSkill> get _allSkills => widget.vm.skills?.all ?? builtinSkillList;
 
   /// 列表里可选的:符合关键词、有内容、还没引用过的。
+  /// 核心的(写提示词、画面规划、角色库)一直在系统提示里,不用点名,不列。
   List<UserSkill> get _mentionMatches => matchSkills(
-    _allSkills.where((s) => s.body.isNotEmpty && !_mentioned.contains(s.id)),
+    _allSkills.where(
+      (s) =>
+          s.body.isNotEmpty &&
+          !coreSkillIds.contains(s.id) &&
+          !_mentioned.contains(s.id),
+    ),
     _mention?.query ?? '',
   );
 
@@ -561,6 +570,7 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
           quickActions: widget.config.config.quickActions,
           onQuickAction: widget.onQuickAction,
           onKey: _onKey,
+          onPaste: _pasteAttachments,
           onSend: _send,
           onStop: widget.vm.isStreaming ? widget.vm.stop : null,
           picker: _mention == null

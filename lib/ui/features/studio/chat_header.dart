@@ -31,6 +31,7 @@ class _Header extends StatelessWidget {
     ),
     const SizedBox(width: 6),
     PopupMenuButton<String>(
+      popUpAnimationStyle: Motion.menu(context),
       tooltip: tr('历史对话'),
       enabled: !vm.isStreaming && vm.pastChats.isNotEmpty,
       position: PopupMenuPosition.under,
@@ -163,6 +164,7 @@ class _Header extends StatelessWidget {
           )
         else
           PopupMenuButton<String>(
+            popUpAnimationStyle: Motion.menu(context),
             tooltip: tr('Agent 使用的模型'),
             position: PopupMenuPosition.under,
             offset: const Offset(0, 6),
@@ -221,6 +223,7 @@ class _Header extends StatelessWidget {
         const Spacer(),
         ..._chatButtons(context),
         PopupMenuButton<String>(
+          popUpAnimationStyle: Motion.menu(context),
           tooltip: tr('切换 Preset'),
           position: PopupMenuPosition.under,
           offset: const Offset(0, 6),
