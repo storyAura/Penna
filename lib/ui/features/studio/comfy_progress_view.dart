@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/harness/attachment.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/theme.dart';
+import '../../core/widgets.dart';
 import 'comfy_runner.dart';
 
 /// 建过的附件,按路径记着:每次重建都新建一个的话,图会重新读一遍、闪一下
@@ -46,13 +47,12 @@ class ComfyProgressRow extends StatelessWidget {
                 style: style,
               ),
             ),
-            InkWell(
-              onTap: runner.stop,
-              borderRadius: BorderRadius.circular(4),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(tr('停止'), style: style),
-              ),
+            PennaButton(
+              label: tr('停止'),
+              icon: Icons.stop_circle_outlined,
+              foreground: PennaColors.diffDelText,
+              borderColor: PennaColors.border,
+              onPressed: runner.stop,
             ),
           ],
         ),

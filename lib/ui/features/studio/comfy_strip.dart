@@ -17,7 +17,9 @@ class _GenerateButton extends StatelessWidget {
       label: tr('出图'),
       icon: Icons.brush_outlined,
       tooltip: tr('用 ComfyUI 出图'),
-      borderColor: PennaColors.border,
+      // 和旁边的「一键复制」分开:实心主题色,深色模式下也看得清。
+      background: PennaColors.primary,
+      foreground: Colors.white,
       onPressed: vm.comfy.running
           ? null
           : () => vm.comfy.generate(vm.finalPrompt),

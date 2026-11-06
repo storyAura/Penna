@@ -1211,4 +1211,5 @@ const en = <String, String>{
   '没换成工作流:{0}': 'Workflow not changed: {0}',
   '还没导入,出图用内置文生图': 'None imported yet; the built-in text-to-image is used',
   '新建': 'New',
+  '在文件夹中显示': 'Show in folder',
 };

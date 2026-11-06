@@ -243,6 +243,7 @@ class SideChat extends ChangeNotifier {
         '在这里和你另开一场对话,让你帮着看、帮着改:回答问题、点评、出主意,要改提示词时直接写好放进 <draft>,'
         '程序会把它放进工作区(用户眼前那一页;已有内容时变成待确认的改动)。不写 <layout>。',
     main.draftFormat,
+    main.comfyGuide,
     main.askLayoutGuide,
     '用户要你参考主聊天里说过的话、或问主聊天的 Agent 说了什么时,只输出 <$readMainChat></$readMainChat>,'
         '程序把主聊天最近的记录交给你,你再接着回答。',
@@ -296,6 +297,21 @@ class SideChat extends ChangeNotifier {
     main.showWritten(written);
     // 自己的成稿开了新页、新系列:是这场对话做的事,不用从头开始。
     _seen = _workspace;
+    // 出图、换工作流和主聊天一样,图贴在副聊天这条回复下面(成稿放好之后再出)。
+    final reply = _messages.last;
+    main.deliverComfy(reply.text, reply.time, (change) {
+      final i = _messages.indexWhere(
+        (m) => !m.fromUser && m.time == reply.time,
+      );
+      if (i < 0) return;
+      _messages = List.unmodifiable([
+        ..._messages.take(i),
+        change(_messages[i]),
+        ..._messages.skip(i + 1),
+      ]);
+      main.sideChanged();
+      notifyListeners();
+    });
   }
 
   /// 区域控制那边:写完的 `<layout>` 和主聊天的一样放到画板上(照 page 新开一页、

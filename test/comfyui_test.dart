@@ -10,6 +10,7 @@ import 'package:penna/core/harness/comfyui_progress.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/comfy_images.dart';
 import 'package:penna/ui/features/studio/comfy_progress_view.dart';
+import 'package:penna/ui/features/studio/side_chat.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 
 import 'fixtures.dart';
@@ -467,6 +468,40 @@ void main() {
         ((queued['prompt'] as Map)['4'] as Map)['inputs']['ckpt_name'],
         'sdxl/m2.safetensors',
       );
+    });
+
+    test('副聊天也能出图:系统提示里有出图的说明,图贴在副聊天那条回复下面', () async {
+      final service = tempConfig();
+      service.update(
+        service.config
+            .putLlm(
+              const LlmProfile(
+                id: 'a',
+                name: 'A',
+                baseUrl: 'http://a',
+                model: 'm',
+              ),
+            )
+            .copyWith(comfy: _at(server.port)),
+      );
+      final seen = <LlmRequest>[];
+      final vm = StudioViewModel(
+        config: service,
+        streamChat: (req) {
+          seen.add(req);
+          return Stream.value('好的<generate-image>a cat</generate-image>');
+        },
+      );
+      final side = SideChat(vm);
+      vm.side = side;
+      expect(side.send('跑出来我看看'), isNull);
+      for (var i = 0; i < 100 && side.messages.last.images.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(seen.single.messages.first['content'], contains('【出图】'));
+      expect(side.messages.last.images, hasLength(1));
+      // 主聊天不受影响。
+      expect(vm.messages, isEmpty);
     });
 
     test('停止时报 canceled', () async {

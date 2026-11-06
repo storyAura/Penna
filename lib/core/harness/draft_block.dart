@@ -64,6 +64,20 @@ final _label = RegExp(r'^【([^】\n]{0,12})】[ \t]*', multiLine: true);
 /// 脱离了分段的文字那一行的开头:它自己占一处,但不画成分段框,也没有标注。
 const freeMark = '【】';
 
+/// 回复正文里照成稿格式写的行(行首【标注】后面跟着提示词,或〔译〕行)去掉。
+/// 模型有时把成稿在正文里再抄一遍,回复里已经有成稿卡片时这些行是重复的。
+/// 「【主体】这段改了」这种在说话的行也会去掉,所以只在有成稿卡片时用。
+String dropDraftLines(String prose) => prose
+    .split('\n')
+    .where((l) {
+      final t = l.trimLeft();
+      return !_zhLine.hasMatch(t) &&
+          !RegExp(r'^【[^】\n]{1,12}】\s*\S').hasMatch(t);
+    })
+    .join('\n')
+    .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+    .trim();
+
 /// 用户起的标注整理成 [_label] 认得的样子:去掉【】和换行,最多 12 个字。
 String sectionLabel(String name) {
   final clean = name.replaceAll(RegExp(r'[【】\r\n]'), '').trim();

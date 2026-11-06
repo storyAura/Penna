@@ -302,7 +302,7 @@ class _CopyCard extends StatelessWidget {
                   ),
                 ),
               ),
-              ?extra,
+              if (extra != null) ...[extra!, const SizedBox(width: 6)],
               PennaButton(
                 label: tr('一键复制'),
                 icon: Icons.content_copy,

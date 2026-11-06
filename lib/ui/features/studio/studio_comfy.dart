@@ -31,58 +31,70 @@ extension StudioComfy on StudioViewModel {
         '用 <options> 列出现有的工作流问他用哪个。';
   }
 
-  /// 回复正常结束时:写了换工作流的标签就先换。换不成时记在回复上,返回 false(这条回复就不出图了)。
-  bool _deliverWorkflow() {
-    if (layoutOnly || _messages.isEmpty) return true;
-    final asked = splitToolTag(
-      splitNewSkill(_messages.last.text).prose,
-      comfyWorkflowTag,
-    ).queries;
-    if (asked.isEmpty) return true;
-    final done = comfy.switchWorkflow(asked.last);
-    _note(
-      done.flow != null
-          ? tr('已换工作流:{0}', [done.flow])
-          : tr('没换成工作流:{0}', [done.problem]),
-    );
-    return done.flow != null;
+  /// 写给副聊天的系统提示也带上(副聊天同样能出图、换工作流)。
+  String get comfyGuide => layoutOnly ? '' : _comfyPrompt;
+
+  /// 主聊天的回复正常结束时:照它写的 ComfyUI 标签做事,结果记在这条回复上。
+  void _deliverComfy() {
+    if (_messages.isEmpty) return;
+    final reply = _messages.last;
+    deliverComfy(reply.text, reply.time, (change) {
+      final i = _messages.indexWhere(
+        (m) => !m.fromUser && m.time == reply.time,
+      );
+      // 那条回复已经不在眼前的对话里(换了对话)就不贴,图还在出图列表和文件夹里。
+      if (i < 0) return;
+      _messages = List.unmodifiable([
+        ..._messages.take(i),
+        change(_messages[i]),
+        ..._messages.skip(i + 1),
+      ]);
+      _changed();
+    });
   }
 
-  /// 回复正常结束时:写了出图标签就去出图。不等它,出图要几十秒。
-  void _deliverImage() {
-    if (layoutOnly || _messages.isEmpty) return;
-    final reply = _messages.last;
-    final asked = splitGenerate(splitNewSkill(reply.text).prose);
+  /// 回复里的 ComfyUI 标签(主聊天、副聊天共用):写了 `<comfy-workflow>` 先换工作流,
+  /// 换不成就不出图;写了 `<generate-image>` 就出图,不等它(要几十秒),出完贴回 [at] 那条回复。
+  /// [update] 改那条回复(按时刻找,出图期间对话里可能又多了几条)。
+  void deliverComfy(
+    String reply,
+    DateTime at,
+    void Function(ChatMessage Function(ChatMessage)) update,
+  ) {
+    if (layoutOnly) return;
+    void note(String text) => update(
+      (m) => m.copyWith(toolSummary: [?m.toolSummary, text].join(' · ')),
+    );
+    final prose = splitNewSkill(reply).prose;
+    final flows = splitToolTag(prose, comfyWorkflowTag).queries;
+    if (flows.isNotEmpty) {
+      final done = comfy.switchWorkflow(flows.last);
+      note(
+        done.flow != null
+            ? tr('已换工作流:{0}', [done.flow])
+            : tr('没换成工作流:{0}', [done.problem]),
+      );
+      if (done.flow == null) return;
+    }
+    final asked = splitGenerate(prose);
     if (!asked.asked) return;
     // 标签里没写就用眼前这页(这条回复的成稿已经放上去了)。
     // ponytail: 成稿成了待确认改动时用的还是改之前的;要求模型这时把提示词写进标签。
     final prompt = asked.prompt.isNotEmpty
         ? stripSectionLabels(asked.prompt)
         : finalPrompt;
-    unawaited(_imageFor(reply.time, prompt));
-  }
-
-  /// 出图,出完贴到 [at] 那条回复上;出错写在回复的记录里。
-  /// 那条回复已经不在眼前的对话里(换了对话)就不贴,图还在出图列表和文件夹里。
-  Future<void> _imageFor(DateTime at, String prompt) async {
-    final done = await comfy.generate(prompt, owner: at);
-    if (_disposed || done.images.isEmpty && done.error == null) return;
-    final i = _messages.indexWhere((m) => !m.fromUser && m.time == at);
-    if (i < 0) return;
-    final m = _messages[i];
-    final next = done.error == null
-        ? m.copyWith(images: [...m.images, for (final g in done.images) g.path])
-        : m.copyWith(
-            toolSummary: [
-              ?m.toolSummary,
-              tr('出图失败:{0}', [done.error]),
-            ].join(' · '),
-          );
-    _messages = List.unmodifiable([
-      ..._messages.take(i),
-      next,
-      ..._messages.skip(i + 1),
-    ]);
-    _changed();
+    unawaited(() async {
+      final done = await comfy.generate(prompt, owner: at);
+      if (_disposed) return;
+      if (done.error != null) {
+        note(tr('出图失败:{0}', [done.error]));
+      } else if (done.images.isNotEmpty) {
+        update(
+          (m) => m.copyWith(
+            images: [...m.images, for (final g in done.images) g.path],
+          ),
+        );
+      }
+    }());
   }
 }
