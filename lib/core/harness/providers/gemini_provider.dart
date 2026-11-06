@@ -83,8 +83,9 @@ Map<String, Object>? _thinkingConfig(LlmRequest req) {
 }
 
 /// 一行 SSE 里 Google 搜索用到的网页:网址 → 标题。
-Map<String, String> parseGeminiSources(String line) {
-  final json = sseJson(line);
+Map<String, String> parseGeminiSources(String line) => _sources(sseJson(line));
+
+Map<String, String> _sources(Object? json) {
   final candidates = json is Map ? json['candidates'] : null;
   final first = candidates is List && candidates.isNotEmpty
       ? candidates.first
@@ -100,8 +101,9 @@ Map<String, String> parseGeminiSources(String line) {
 }
 
 /// 取出一行 SSE 里的增量文本;被安全策略拦截时抛错。
-String? parseGeminiLine(String line) {
-  final json = sseJson(line);
+String? parseGeminiLine(String line) => _delta(sseJson(line));
+
+String? _delta(Object? json) {
   if (json is! Map) return null;
   final error = json['error'];
   if (error != null) {
@@ -133,8 +135,9 @@ String? parseGeminiLine(String line) {
 }
 
 /// 一行 SSE 里的结束原因;这一行没写是 null。
-String? parseGeminiFinish(String line) {
-  final json = sseJson(line);
+String? parseGeminiFinish(String line) => _finish(sseJson(line));
+
+String? _finish(Object? json) {
   final candidates = json is Map ? json['candidates'] : null;
   final first = candidates is List && candidates.isNotEmpty
       ? candidates.first
@@ -222,10 +225,11 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
   String? finish;
   final sources = <String, String>{};
   await for (final line in lines) {
-    final delta = parseGeminiLine(line);
-    reportUsage(req, sseJson(line));
-    finish = parseGeminiFinish(line) ?? finish;
-    if (req.webSearch) sources.addAll(parseGeminiSources(line));
+    final json = sseJson(line);
+    final delta = _delta(json);
+    reportUsage(req, json);
+    finish = _finish(json) ?? finish;
+    if (req.webSearch) sources.addAll(_sources(json));
     if (delta != null && delta.isNotEmpty) {
       yielded = true;
       yield delta;
