@@ -27,6 +27,7 @@ Each page is a separate prompt, and pages can be grouped into series. There can 
 - Pages in the same series share one conversation, and the Agent can refer to the other pages in the series; series are independent of each other.
 - One Agent reply can write several pages at once and starts a new series automatically when the topic changes.
 - Double-click a page tab or series name to rename it. Pages can be reordered or moved out of a series, and a whole series can be saved to the Archive at once.
+- Right-click a series name to **Archive** it: its pages are saved to the Archive and removed from the workspace. **Manage in bulk** selects several series to archive or delete together.
 
 ## Agent chat
 
@@ -143,7 +144,7 @@ Penna uses ComfyUI as its image generation backend, talking to ComfyUI's built-i
 ## Archive, history and rollback
 
 - **Archive**: drafts and Region Control layouts saved by hand, in two sections, with names and categories.
-- **Images**: the Archive's **Images** section reads ComfyUI's generation history directly (including runs started in ComfyUI), shown as thumbnails with the time and the prompt used; click to view the original, right-click to copy the image or the prompt, or put the prompt back into the draft.
+- **Images**: the Archive's **Images** section reads ComfyUI's generation history directly (including runs started in ComfyUI), shown as thumbnails with the time and the prompt used; click to view the original, right-click to copy the image or the prompt, put the prompt back into the draft, or delete it from ComfyUI's history (the original stays in ComfyUI's output folder).
 - **Notes**: notebooks in the sidebar for quick notes; each notebook holds multiple entries with a name and content, saved as you type.
 - **Prompt history**: recorded automatically on accept, copy and clear, up to 100 entries; each can be expanded or put back into the draft.
 - **Activity**: records structural operations such as pages, pins and accept/reject; the changes from one Agent reply count as one step. Any step can be revisited from before or after, back and forth; after going back, new operations start a branch and the earlier steps stay available on the other branch.

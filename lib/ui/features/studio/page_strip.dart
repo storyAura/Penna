@@ -7,6 +7,7 @@ import '../settings/settings_sections.dart';
 import 'studio_view_model.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
+import 'series_manager.dart';
 
 typedef _Tint = ({Color bg, Color border, Color text});
 
@@ -33,9 +34,18 @@ const _darkSeriesTints = <_Tint>[
 /// 成稿正文上方的页签:每个系列一个彩色框,框里先是系列的名字,再是它的各页
 /// (页码每个系列都从 1 数)。双击改名,右键更多操作,按住页签可以在系列里拖着调顺序。
 class PageStrip extends StatelessWidget {
-  const PageStrip({super.key, required this.vm, this.label, this.tips = true});
+  const PageStrip({
+    super.key,
+    required this.vm,
+    this.label,
+    this.tips = true,
+    this.onArchive,
+  });
 
   final StudioViewModel vm;
+
+  /// 归档几个系列(存进档案库再从工作区删掉);为 null 时菜单里没有「归档」(区域控制)。
+  final void Function(Set<int> series)? onArchive;
 
   /// 页签前面的小标题;不给是「成稿正文」。
   final String? label;
@@ -75,9 +85,18 @@ class PageStrip extends StatelessWidget {
   }
 
   Future<void> _seriesMenu(BuildContext context, Offset at, int series) async {
-    final picked = await popMenu(context, at, [tr('改名'), tr('删除整个系列')]);
+    final picked = await popMenu(context, at, [
+      tr('改名'),
+      if (onArchive != null) tr('归档'),
+      tr('删除整个系列'),
+      tr('批量管理…'),
+    ]);
     if (!context.mounted || picked == null) return;
     if (picked == tr('改名')) return _renameSeries(context, series);
+    if (picked == tr('归档')) return onArchive!({series});
+    if (picked == tr('批量管理…')) {
+      return showSeriesManager(context, vm, onArchive: onArchive);
+    }
     await _removeSeries(context, series);
   }
 

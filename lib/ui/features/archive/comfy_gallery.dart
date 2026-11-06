@@ -8,6 +8,7 @@ import '../../../l10n/l10n.dart';
 import '../../core/smooth_scroll.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
+import '../settings/settings_sections.dart';
 import '../studio/image_viewer.dart';
 import '../studio/studio_view_model.dart';
 
@@ -110,12 +111,15 @@ class _ComfyGalleryState extends State<ComfyGallery> {
   Future<void> _menu(ComfyShot shot, Offset at) async {
     final copyPicture = tr('复制图片'),
         copyPrompt = tr('复制提示词'),
-        restore = tr('放回成稿');
+        restore = tr('放回成稿'),
+        delete = tr('删除');
     final picked = await popMenu(context, at, [
       copyPicture,
       if (shot.prompt.isNotEmpty) ...[copyPrompt, restore],
+      delete,
     ]);
     if (!mounted) return;
+    if (picked == delete) return _delete(shot);
     if (picked == copyPicture) {
       final image = await _full(shot);
       if (image == null) return;
@@ -133,6 +137,29 @@ class _ComfyGalleryState extends State<ComfyGallery> {
       if (problem != null) return showToast(context, problem, warn: true);
       widget.onOpenStudio();
     }
+  }
+
+  /// 从 ComfyUI 的历史里去掉这一单(同一单出的几张一起去掉),再重读。
+  Future<void> _delete(ComfyShot shot) async {
+    final same = _shots?.where((s) => s.id == shot.id).length ?? 1;
+    if (!await confirmDelete(
+      context,
+      same > 1 ? tr('删除这一单的 {0} 张图?', [same]) : tr('删除这张图?'),
+      tr('从 ComfyUI 的出图历史里去掉;ComfyUI 输出文件夹里的原图不会删。'),
+    )) {
+      return;
+    }
+    try {
+      await runner.client.forget([shot.id]);
+    } on ComfyException catch (e) {
+      if (mounted) showToast(context, e.message, warn: true);
+      return;
+    }
+    // 先从眼前去掉,不等重读。
+    if (mounted) {
+      setState(() => _shots = [...?_shots?.where((s) => s.id != shot.id)]);
+    }
+    await _load();
   }
 
   @override

@@ -390,6 +390,10 @@ class ComfyClient {
   Future<List<ComfyShot>> history({int max = 300}) async =>
       parseHistory(await _json('GET', '/history?max_items=$max'));
 
+  /// 从 ComfyUI 的历史里去掉这几单(输出文件夹里的图片文件不删,ComfyUI 没有删文件的接口)。
+  Future<void> forget(List<String> ids) =>
+      _send('POST', '/history', {'delete': ids});
+
   /// 一张图的地址;[preview] 时让 ComfyUI 压成 WebP 再给(缩略图用,小得多)。
   String viewUrl(Map<String, Object?> file, {bool preview = false}) {
     final query = Uri(

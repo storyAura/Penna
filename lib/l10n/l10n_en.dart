@@ -1220,4 +1220,16 @@ const en = <String, String>{
   '直接出图': 'Generate right away',
   '手动确认': 'Confirm first',
   '再出一张': 'Generate again',
+  '删除这一单的 {0} 张图?': 'Delete the {0} images of this run?',
+  '删除这张图?': 'Delete this image?',
+  '从 ComfyUI 的出图历史里去掉;ComfyUI 输出文件夹里的原图不会删。': "Removed from ComfyUI's history; the original file in ComfyUI's output folder stays.",
+  '归档': 'Archive',
+  '批量管理…': 'Manage in bulk…',
+  '已归档 {0} 个系列,新存了 {1} 页': 'Archived {0} series, {1} new pages saved',
+  '删除 {0} 个系列?': 'Delete {0} series?',
+  '{0}\n每一页都会删掉,对话收进历史。':
+      '{0}\nEvery page will be deleted; the chats go to history.',
+  '批量管理系列': 'Manage series',
+  '全选 · 已选 {0} 个': 'Select all · {0} selected',
+  '{0} 页': '{0} pages',
 };

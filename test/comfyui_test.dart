@@ -232,6 +232,7 @@ void main() {
     late Map<String, Object?> queued;
     var polls = 0;
     final sockets = <WebSocket>[];
+    Object? forgotten;
 
     setUp(() async {
       polls = 0;
@@ -276,6 +277,9 @@ void main() {
               },
             }),
           );
+        } else if (path == '/history' && req.method == 'POST') {
+          forgotten = jsonDecode(await utf8.decoder.bind(req).join());
+          res.write('{}');
         } else if (path == '/system_stats') {
           res.write(
             jsonEncode({
@@ -600,6 +604,13 @@ void main() {
         ((queued['prompt'] as Map)['6'] as Map)['inputs']['text'],
         'a dog',
       );
+    });
+
+    test('从 ComfyUI 的历史里去掉几单', () async {
+      await ComfyClient('http://127.0.0.1:${server.port}').forget(['p1', 'p2']);
+      expect(forgotten, {
+        'delete': ['p1', 'p2'],
+      });
     });
 
     test('停止时报 canceled', () async {

@@ -170,8 +170,27 @@ class _DraftSectionState extends State<_DraftSection> {
   /// 把眼前这个系列的每一页都存进档案库:一页一条,分类就是系列的名字。
   /// 档案库里已经有一字不差的就跳过,只存新的和改过的。
   void _saveSeries(BuildContext context) {
-    final all = vm.seriesPrompts;
-    if (all.isEmpty) return showToast(context, tr('这个系列还是空的'), warn: true);
+    final done = _storeSeries(vm.series);
+    if (done.total == 0) {
+      return showToast(context, tr('这个系列还是空的'), warn: true);
+    }
+    if (done.saved == 0) {
+      return showToast(context, tr('这个系列的页都已经存过了'), warn: true);
+    }
+    final category = vm.seriesName(vm.series);
+    final skipped = done.total - done.saved;
+    showToast(
+      context,
+      skipped == 0
+          ? tr('「{0}」的 {1} 页已存进档案库', [category, done.saved])
+          : tr('「{0}」新存了 {1} 页,{2} 页之前存过', [category, done.saved, skipped]),
+    );
+  }
+
+  /// 把第 [s] 个系列有字的每一页存进档案库,分类是系列名;一字不差存过的跳过,
+  /// 用这一页的提示词出过图的配上预览图。返回有字的页数、新存了几页。
+  ({int total, int saved}) _storeSeries(int s) {
+    final all = vm.promptsOf(s);
     final saved = {
       for (final e in archive.entries)
         if (e.kind == archivePrompt) e.text,
@@ -180,10 +199,7 @@ class _DraftSectionState extends State<_DraftSection> {
       for (final p in all)
         if (!saved.contains(p.text)) p,
     ];
-    if (prompts.isEmpty) {
-      return showToast(context, tr('这个系列的页都已经存过了'), warn: true);
-    }
-    final category = vm.seriesName(vm.series);
+    final category = vm.seriesName(s);
     final now = DateTime.now();
     // 档案库里新的在前:倒着存,第 1 页才排在最上面。时间各错开一点,编号不会撞。
     for (final (i, p) in prompts.reversed.indexed) {
@@ -201,13 +217,21 @@ class _DraftSectionState extends State<_DraftSection> {
         ),
       );
     }
-    final skipped = all.length - prompts.length;
-    showToast(
-      context,
-      skipped == 0
-          ? tr('「{0}」的 {1} 页已存进档案库', [category, prompts.length])
-          : tr('「{0}」新存了 {1} 页,{2} 页之前存过', [category, prompts.length, skipped]),
-    );
+    return (total: all.length, saved: prompts.length);
+  }
+
+  /// 归档:几个系列都存进档案库,再从工作区删掉(对话收进历史)。
+  void _archiveSeries(BuildContext context, Set<int> ids) {
+    if (vm.isStreaming) {
+      return showToast(context, tr('正在生成,稍后再试'), warn: true);
+    }
+    var saved = 0;
+    for (final s in ids) {
+      saved += _storeSeries(s).saved;
+    }
+    final problem = vm.removeSeriesMany(ids);
+    if (problem != null) return showToast(context, problem, warn: true);
+    showToast(context, tr('已归档 {0} 个系列,新存了 {1} 页', [ids.length, saved]));
   }
 
   Future<void> _pin(BuildContext context) async {
@@ -410,6 +434,7 @@ class _DraftSectionState extends State<_DraftSection> {
                     vm: vm,
                     zhOpen: _zhOpen,
                     onCopied: vm.recordPrompt,
+                    onArchiveSeries: (ids) => _archiveSeries(context, ids),
                     onDiscuss: onDiscuss,
                     // 和顶栏的润色是同一套,只是范围先定在这一段上。
                     onPolish: vm.isPolishing

@@ -100,6 +100,7 @@ class BodyCard extends StatelessWidget {
     this.onTranslateSelection,
     this.zhOpen = false,
     this.onCopied,
+    this.onArchiveSeries,
   });
 
   /// 右键菜单的「翻译选中的」。
@@ -111,6 +112,9 @@ class BodyCard extends StatelessWidget {
       : text.replaceRange(s.start > 0 ? s.start - 1 : 0, s.end, '');
 
   final StudioViewModel vm;
+
+  /// 页签上归档几个系列(存进档案库再从工作区删掉)。
+  final void Function(Set<int> series)? onArchiveSeries;
 
   /// 顶栏的「展开」开着:每一段的中文对照都展开。
   final bool zhOpen;
@@ -541,7 +545,7 @@ class BodyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PageStrip(vm: vm),
+          PageStrip(vm: vm, onArchive: onArchiveSeries),
           ...columns,
         ],
       ),

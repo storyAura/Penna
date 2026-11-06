@@ -41,18 +41,20 @@ extension StudioDraft on StudioViewModel {
   /// 行首的分段标注(【主体】这类)只给人看,不带出去。
   String get finalPrompt => _joined(labels: false);
 
-  String _joined({required bool labels}) {
+  /// 把一页的块拼起来;[blocks] 不给是眼前这页。
+  String _joined({required bool labels, List<Block>? blocks}) {
+    final all = blocks ?? _blocks;
     var out = '';
-    for (final (i, b) in _blocks.indexed) {
+    for (final (i, b) in all.indexed) {
       // 采纳过改动后,一块可能从一行中间开始;固定区自成一栏,它后面算新的一行。
       final atLineStart =
-          out.isEmpty || out.endsWith('\n') || _blocks[i - 1].pinned;
+          out.isEmpty || out.endsWith('\n') || all[i - 1].pinned;
       final text = labels
           ? b.text
           : stripSectionLabels(b.text, atLineStart: atLineStart || b.pinned);
-      final besidePin = i > 0 && (b.pinned || _blocks[i - 1].pinned);
+      final besidePin = i > 0 && (b.pinned || all[i - 1].pinned);
       // 固定的是一整段时它自成一行,标注才还在行首;普通固定区只补空格。
-      final ownLine = i > 0 && (_isSection(b) || _isSection(_blocks[i - 1]));
+      final ownLine = i > 0 && (_isSection(b) || _isSection(all[i - 1]));
       out +=
           (ownLine
               ? _lineGap(out, text)
