@@ -243,6 +243,72 @@ void main() {
   });
 
   group('用户自己存的角色', () {
+    test('图片文件写入失败时不提交文字,让编辑者保留草稿重试', () {
+      final dir = Directory.systemTemp.createTempSync(
+        'penna_character_image_failure_',
+      );
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final store = CharacterStore(dir);
+      final original = store.put(name: 'keep', prompt: 'original')!;
+      final file = File('${dir.path}/characters.json');
+      final saved = file.readAsStringSync();
+      File('${dir.path}/characters')
+          .writeAsStringSync('blocks image directory');
+
+      expect(
+        store.put(
+          id: original.id,
+          name: 'changed',
+          prompt: 'changed',
+          image: (bytes: [1, 2, 3], ext: 'png'),
+        ),
+        isNull,
+      );
+      expect(store.cards.single, original);
+      expect(file.readAsStringSync(), saved);
+      expect(store.setImage(original.id, [1, 2, 3]), isFalse);
+    });
+
+    test('元数据写入失败时换图和删除都保留原角色及原图', () async {
+      final dir = Directory.systemTemp.createTempSync(
+        'penna_character_failure_',
+      );
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final store = CharacterStore(dir);
+      final stamp = DateTime.utc(2026);
+      final original = store.put(
+        name: 'keep',
+        prompt: 'original',
+        image: (bytes: [1, 2, 3], ext: 'png'),
+        now: stamp,
+      )!;
+      final file = File('${dir.path}/characters.json');
+      final saved = file.readAsStringSync();
+      Directory('${file.path}.tmp').createSync();
+
+      expect(
+        store.put(
+          id: original.id,
+          name: 'changed',
+          prompt: 'changed',
+          image: (bytes: [4, 5, 6], ext: 'png'),
+          now: stamp,
+        ),
+        isNull,
+      );
+      expect(store.cards.single, original);
+      expect(File(original.image).readAsBytesSync(), [1, 2, 3]);
+      expect(Directory('${dir.path}/characters').listSync(), hasLength(1));
+      expect(store.remove(original.id), isFalse);
+      expect(store.cards.single, original);
+      expect(File(original.image).readAsBytesSync(), [1, 2, 3]);
+      expect(file.readAsStringSync(), saved);
+      final reopened = CharacterStore(dir);
+      await reopened.load();
+      expect(reopened.cards.single.image, original.image);
+      expect(reopened.cards.single.prompt, original.prompt);
+    });
+
     test('存、同名换掉、带图、删;重开读得回来', () async {
       final dir = Directory.systemTemp.createTempSync('penna_chars');
       final store = CharacterStore(dir);
@@ -263,7 +329,7 @@ void main() {
       await again.load();
       expect(again.find('画一张小蓝').single.prompt, 'long blue hair');
 
-      again.remove(first.id);
+      expect(again.remove(first.id), isTrue);
       expect(again.cards, isEmpty);
       expect(File(first.image).existsSync(), isFalse);
     });
@@ -273,7 +339,7 @@ void main() {
       final store = CharacterStore(dir);
       store.put(
         name: 'phoenix reffaella',
-        alias: '菲欧妮,小菲',
+        alias: '菲欧妮，小菲、菲菲, Reffaella',
         intro: '王女',
         prompt: 'blonde hair',
         outfits: [
@@ -283,6 +349,13 @@ void main() {
         ],
       );
       expect(store.find('画小菲').single.name, 'phoenix reffaella');
+      expect(store.find('画菲菲').single.name, 'phoenix reffaella');
+      expect(CharacterStore.aliasesOf(store.cards.single), [
+        '菲欧妮',
+        '小菲',
+        '菲菲',
+        'Reffaella',
+      ]);
       // Agent 存同名角色只换提示词,别名、简介、服装不丢。
       store.put(name: 'phoenix reffaella', prompt: 'long blonde hair');
 
@@ -291,7 +364,7 @@ void main() {
       final card = again.cards.single;
       expect(
         (card.alias, card.intro, card.prompt),
-        ('菲欧妮,小菲', '王女', 'long blonde hair'),
+        ('菲欧妮，小菲、菲菲, Reffaella', '王女', 'long blonde hair'),
       );
       expect(card.outfits, [
         (name: '礼服', prompt: 'white dress'),

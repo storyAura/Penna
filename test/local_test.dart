@@ -189,6 +189,49 @@ void main() {
       expect(server.running, isFalse);
     });
 
+    test('健康检查正文停住时启动仍会超时并关闭进程', () async {
+      // 这个用例会真正监听端口,不能占住其他并行假进程用例的默认端口。
+      final probe = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final port = probe.port;
+      await probe.close();
+      late HttpServer endpoint;
+      final process = FakeProcess();
+      final server = LlamaServer(
+        start: (_, _) async {
+          endpoint = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
+          endpoint.listen((request) async {
+            await request.drain<void>();
+            request.response.statusCode = HttpStatus.serviceUnavailable;
+            request.response.write('loading');
+            await request.response.flush();
+          });
+          return process;
+        },
+      );
+      addTearDown(() async {
+        await endpoint.close(force: true);
+        await server.stop();
+      });
+      await expectLater(
+        server
+            .start(
+              fakeServerSpec(tmp, port: port),
+              timeout: const Duration(milliseconds: 50),
+              poll: Duration.zero,
+            )
+            .timeout(const Duration(seconds: 4)),
+        throwsA(
+          isA<LocalServerException>().having(
+            (e) => e.message,
+            'message',
+            contains('已停下'),
+          ),
+        ),
+      );
+      expect(process.killed, isTrue);
+      expect(server.running, isFalse);
+    });
+
     test('起来后马上退出:报出最后一行输出', () async {
       final process = FakeProcess();
       final server = LlamaServer(
@@ -242,6 +285,82 @@ void main() {
       }
       await server.stop();
       await check;
+    });
+
+    test('创建进程途中停止会等到迟到的进程被关闭', () async {
+      final entered = Completer<void>();
+      final launch = Completer<Process>();
+      final process = FakeProcess();
+      final server = LlamaServer(
+        start: (_, _) {
+          entered.complete();
+          return launch.future;
+        },
+        health: (_) async => true,
+      );
+      addTearDown(server.stop);
+      final starting = server.start(fakeServerSpec(tmp));
+      final checked = expectLater(
+        starting,
+        throwsA(
+          isA<LocalServerException>().having(
+            (e) => e.message,
+            'message',
+            '已停止',
+          ),
+        ),
+      );
+      await entered.future;
+      var stopped = false;
+      final stopping = server.stop().then((_) => stopped = true);
+      await Future<void>.delayed(Duration.zero);
+      final returnedEarly = stopped;
+      launch.complete(process);
+      await stopping;
+      await checked;
+      expect(returnedEarly, isFalse);
+      expect(process.killed, isTrue);
+      expect(server.running, isFalse);
+    });
+
+    test('旧启动晚返回时只关闭旧进程,不覆盖新服务', () async {
+      final entered = Completer<void>();
+      final firstLaunch = Completer<Process>();
+      final first = FakeProcess(), second = FakeProcess();
+      addTearDown(() {
+        first.kill();
+        second.kill();
+      });
+      var starts = 0;
+      final server = LlamaServer(
+        start: (_, _) {
+          if (++starts == 1) {
+            entered.complete();
+            return firstLaunch.future;
+          }
+          return Future.value(second);
+        },
+        health: (_) async => true,
+      );
+      addTearDown(server.stop);
+      final old = server.start(fakeServerSpec(tmp));
+      final checked = expectLater(
+        old,
+        throwsA(
+          isA<LocalServerException>().having(
+            (e) => e.message,
+            'message',
+            '已停止',
+          ),
+        ),
+      );
+      await entered.future;
+      await server.start(fakeServerSpec(tmp));
+      firstLaunch.complete(first);
+      await checked;
+      expect(first.killed, isTrue);
+      expect(second.killed, isFalse);
+      expect(server.running, isTrue);
     });
 
     test('找不到文件时不启动', () async {
@@ -338,6 +457,11 @@ void main() {
         ranges.add(range);
         if (request.uri.path == '/missing') {
           request.response.statusCode = 404;
+        } else if (request.uri.path == '/stalled-error') {
+          request.response.statusCode = HttpStatus.badGateway;
+          request.response.write('upstream error');
+          await request.response.flush();
+          return;
         } else if (request.uri.path == '/forbidden') {
           request.response.statusCode = 403;
         } else if (request.uri.path == '/cut') {
@@ -391,6 +515,18 @@ void main() {
       size: body.length,
       sha256: sha,
     );
+
+    test('错误页正文停住也能超时换源', () async {
+      await downloadFile(
+        file(),
+        urls: [
+          file(path: '/stalled-error').url,
+          file().url,
+        ],
+      ).timeout(const Duration(seconds: 34));
+      expect(File(file().path).readAsBytesSync(), body);
+      expect(ranges, [null, null]);
+    }, timeout: const Timeout(Duration(seconds: 40)));
 
     test('从断开的地方接着下;校验通过才改成正式的名字', () async {
       File('${tmp.path}/out.bin.part').writeAsBytesSync(body.sublist(0, 400));

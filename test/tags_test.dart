@@ -109,6 +109,19 @@ void main() {
         'witch_hat',
       ]);
     });
+
+    test('中文逗号和分号也能分开标签与搜索词', () {
+      expect(tagsIn('1girl，long hair；witch hat'), [
+        '1girl',
+        'long_hair',
+        'witch_hat',
+      ]);
+      expect(_dictionary.search('银发，女巫帽；红色眼睛').map((h) => h.tag), [
+        'grey_hair',
+        'witch_hat',
+        'red_eyes',
+      ]);
+    });
   });
 
   group('内置词库', () {

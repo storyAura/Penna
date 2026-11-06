@@ -79,7 +79,7 @@ class FakeProcess implements Process {
 }
 
 /// 临时文件夹里放好假的 llama-server.exe 和模型,返回启动参数。
-ServerSpec fakeServerSpec(Directory dir) {
+ServerSpec fakeServerSpec(Directory dir, {int port = 8091}) {
   for (final name in ['llama-server.exe', 'm.gguf']) {
     File('${dir.path}/$name').writeAsStringSync('x');
   }
@@ -87,7 +87,7 @@ ServerSpec fakeServerSpec(Directory dir) {
     exe: '${dir.path}/llama-server.exe',
     model: '${dir.path}/m.gguf',
     mmproj: '',
-    port: 8091,
+    port: port,
     context: 4096,
     gpuLayers: -1,
   );

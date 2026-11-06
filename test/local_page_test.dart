@@ -339,8 +339,10 @@ void main() {
             bytes: Uint8List.fromList([1, 2, 3]),
           ),
         );
-        await local.startServer();
-        await local.runCaption();
+        expect(await local.startServer(), isNull);
+        expect(await local.runCaption(), isNull);
+        expect(local.caption, 'a cat on a sofa');
+        expect(local.captioning, isFalse);
       });
       final vm = StudioViewModel(
         config: tempConfig(),

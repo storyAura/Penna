@@ -43,17 +43,17 @@ class ArchiveStore extends ChangeNotifier {
       if (e.kind == kind) e.category,
   }.toList();
 
-  /// 存一条;[text] 是空的就不存。分类没填归「未分类」。
-  void add({
+  /// 存一条;[text] 是空的或存盘失败时返回 false。分类没填归「未分类」。
+  bool add({
     required String text,
     String title = '',
     String category = '',
     String kind = archivePrompt,
     DateTime? now,
   }) {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty) return false;
     final time = now ?? DateTime.now();
-    _set([
+    return _set([
       (
         id: '${time.microsecondsSinceEpoch}',
         time: time,
@@ -67,11 +67,13 @@ class ArchiveStore extends ChangeNotifier {
     ]);
   }
 
-  void remove(String id) {
-    for (final e in _entries.where((e) => e.id == id)) {
+  bool remove(String id) {
+    final removed = _entries.where((e) => e.id == id);
+    if (!_set(_entries.where((e) => e.id != id))) return false;
+    for (final e in removed) {
       _deleteImage(e.image);
     }
-    _set(_entries.where((e) => e.id != id));
+    return true;
   }
 
   /// 把 [id] 挪到 [before] 前面(拖着换顺序)。
@@ -90,16 +92,19 @@ class ArchiveStore extends ChangeNotifier {
     final old = _entries.where((e) => e.id == id).firstOrNull;
     if (file == null || old == null) return false;
     final sep = Platform.pathSeparator;
+    final stem =
+        '${file.parent.path}${sep}archive$sep$id-'
+        '${DateTime.now().microsecondsSinceEpoch}';
+    var image = File('$stem.webp');
+    var suffix = 0;
+    while (image.existsSync()) {
+      image = File('$stem-${++suffix}.webp');
+    }
     try {
       // 文件名带着时刻:换图之后路径不同,界面不会还显示旧图。
-      final image = File(
-        '${file.parent.path}${sep}archive$sep$id-'
-        '${DateTime.now().microsecondsSinceEpoch}.webp',
-      );
       image.parent.createSync(recursive: true);
       image.writeAsBytesSync(webp, flush: true);
-      _deleteImage(old.image);
-      _set([
+      final saved = _set([
         for (final e in _entries)
           e.id == id
               ? (
@@ -113,8 +118,11 @@ class ArchiveStore extends ChangeNotifier {
                 )
               : e,
       ]);
-      return true;
+      // 元数据落盘前旧图仍被原存档引用;失败时只撤掉这次的新图。
+      _deleteImage(saved ? old.image : image.path);
+      return saved;
     } on FileSystemException catch (e) {
+      _deleteImage(image.path);
       debugPrint(tr('预览图没存上:{0}', [e.message]));
       return false;
     }
@@ -130,23 +138,25 @@ class ArchiveStore extends ChangeNotifier {
     }
   }
 
-  void _set(Iterable<ArchiveEntry> next) {
-    _entries = List.unmodifiable(next);
+  bool _set(Iterable<ArchiveEntry> next) {
+    final entries = List<ArchiveEntry>.unmodifiable(next);
+    if (!_save(entries)) return false;
+    _entries = entries;
     notifyListeners();
-    _save();
+    return true;
   }
 
   // ponytail: 每次改动都把整个文件重写一遍;存到几千条嫌慢时再改成追加或换数据库。
-  void _save() {
+  bool _save(List<ArchiveEntry> entries) {
     final file = this.file;
-    if (file == null) return;
+    if (file == null) return true;
     try {
       file.parent.createSync(recursive: true);
       // 先写临时文件再改名:写到一半断电也不会留下半个文件。
       final temp = File('${file.path}.tmp')
         ..writeAsStringSync(
           jsonEncode([
-            for (final e in _entries)
+            for (final e in entries)
               {
                 'id': e.id,
                 'time': e.time.toIso8601String(),
@@ -157,10 +167,13 @@ class ArchiveStore extends ChangeNotifier {
                 if (e.image.isNotEmpty) 'image': e.image,
               },
           ]),
+          flush: true,
         );
       temp.renameSync(file.path);
+      return true;
     } on FileSystemException catch (e) {
       debugPrint(tr('档案库没存上:{0}', [e.message]));
+      return false;
     }
   }
 

@@ -193,7 +193,10 @@ Stream<String> postForLines(
   // 模型卡住不说话时不能一直等:超时算失败,还没出字就会换下一个模型。
   final response = await request.close().timeout(stall);
   if (response.statusCode != HttpStatus.ok) {
-    throw _statusError(response.statusCode, await utf8.decodeStream(response));
+    throw _statusError(
+      response.statusCode,
+      await utf8.decodeStream(response).timeout(stall),
+    );
   }
   yield* response
       .transform(utf8.decoder)

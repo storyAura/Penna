@@ -88,7 +88,7 @@ Future<bool> _health(Uri url) async {
     final response = await (await client.getUrl(url))
         .close()
         .timeout(const Duration(seconds: 2));
-    await response.drain<void>();
+    await response.drain<void>().timeout(const Duration(seconds: 2));
     return response.statusCode == HttpStatus.ok;
   } on Object {
     return false;
@@ -123,11 +123,8 @@ class LlamaServer {
   ServerSpec? _spec;
   Future<void>? _exited;
 
-  /// 用户用 [stop] 停掉的那个;启动途中被停时据此说「已停止」而不是「退出了」。
-  Process? _stopped;
-
-  /// 最近几行错误输出,启动失败时拿来告诉用户为什么。
-  final _tail = <String>[];
+  int _generation = 0;
+  final _starting = <Future<void>>{};
 
   bool get running => _process != null;
   ServerSpec? get spec => _spec;
@@ -141,7 +138,19 @@ class LlamaServer {
     ServerSpec spec, {
     Duration timeout = const Duration(minutes: 3),
     Duration poll = const Duration(milliseconds: 500),
-  }) async {
+  }) {
+    final result = _startServer(spec, timeout, poll);
+    final settled = result.then<void>((_) {}, onError: (Object _) {});
+    _starting.add(settled);
+    unawaited(settled.whenComplete(() => _starting.remove(settled)));
+    return result;
+  }
+
+  Future<String> _startServer(
+    ServerSpec spec,
+    Duration timeout,
+    Duration poll,
+  ) async {
     for (final (path, what) in [
       (spec.exe, 'llama-server'),
       (spec.model, tr('模型文件')),
@@ -161,7 +170,13 @@ class LlamaServer {
         ]),
       );
     }
-    await stop();
+    final generation = ++_generation;
+    void checkStopped() {
+      if (generation != _generation) throw LocalServerException(tr('已停止'));
+    }
+
+    await _stopRunning();
+    checkStopped();
     // 端口被别的程序(比如上次没关掉的 llama-server)占着时,新起的会马上退出,
     // 而 /health 却可能是那个旧程序在回答,看着像起来了。先试着占一下这个端口。
     try {
@@ -174,27 +189,25 @@ class LlamaServer {
         tr('端口 {0} 被占用了,换一个端口,或先关掉占着它的程序', [spec.port]),
       );
     }
-    _tail.clear();
+    checkStopped();
     final Process process;
     try {
       process = await _start(spec.exe, serverArgs(spec));
     } on ProcessException {
       throw LocalServerException(tr('启动不了 llama-server'));
     }
-    _process = process;
-    _spec = spec;
     // 不读走输出的话,程序写满缓冲区会卡住。
     unawaited(process.stdout.drain<void>().catchError((Object _) {}));
     var exited = false;
     final done = Completer<void>();
-    _exited = done.future;
+    final tail = <String>[];
     process.stderr
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen(
           (line) {
-            _tail.add(line);
-            if (_tail.length > 8) _tail.removeAt(0);
+            tail.add(line);
+            if (tail.length > 8) tail.removeAt(0);
           },
           onError: (Object _) {},
           onDone: () {
@@ -207,17 +220,28 @@ class LlamaServer {
             }
           },
         );
+    // Process.start 尚未返回时 stop 也可能已发生。迟到的进程只关自己的,
+    // 不能登记成当前服务,更不能覆盖后来已经启动的进程。
+    if (generation != _generation) {
+      process.kill();
+      await done.future.timeout(const Duration(seconds: 10), onTimeout: () {});
+      checkStopped();
+    }
+    _process = process;
+    _spec = spec;
+    _exited = done.future;
     final health = Uri.parse('http://127.0.0.1:${spec.port}/health');
     final deadline = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(deadline)) {
-      if (_stopped == process) {
-        throw LocalServerException(tr('已停止'));
-      }
-      if (exited) throw LocalServerException(exitReason(_tail, spec.exe));
-      if (await _isHealthy(health) && _process == process) return baseUrl!;
+      checkStopped();
+      if (exited) throw LocalServerException(exitReason(tail, spec.exe));
+      final healthy = await _isHealthy(health);
+      checkStopped();
+      if (healthy && _process == process) return baseUrl!;
       await Future<void>.delayed(poll);
     }
-    await stop();
+    checkStopped();
+    if (_process == process) await _stopRunning();
     throw LocalServerException(tr('等了很久还没准备好,已停下'));
   }
 
@@ -227,14 +251,21 @@ class LlamaServer {
     _spec = null;
   }
 
-  /// 停掉正在跑的 llama-server;没在跑就什么也不做。
+  /// 取消启动并停掉服务;等迟到的 Process.start 也完成清理后才返回。
   Future<void> stop() async {
+    _generation++;
+    final pending = _starting.toList();
+    await _stopRunning();
+    await Future.wait(pending);
+  }
+
+  Future<void> _stopRunning() async {
     final process = _process;
     if (process == null) return;
-    _stopped = process;
+    final exited = _exited;
     _clear(process);
     process.kill();
-    await _exited?.timeout(const Duration(seconds: 10), onTimeout: () {});
+    await exited?.timeout(const Duration(seconds: 10), onTimeout: () {});
   }
 }
 

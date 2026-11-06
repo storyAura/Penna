@@ -45,6 +45,17 @@ void main() {
     expect(items[1].containsKey('text'), isFalse);
   });
 
+  test('布局类型按中英文逗号和顿号拆分后导出', () {
+    final l = Layout(meta: 'poster， illustration、comic, cover');
+    final out = jsonDecode(mossLayoutJson(l)) as Map;
+    expect(out['summary']['meta'], [
+      'poster',
+      'illustration',
+      'comic',
+      'cover',
+    ]);
+  });
+
   test('框超出画布截掉,写反的摆正,没面积的不要,代码块外壳去掉', () {
     final l = parseMossLayout(
       '```json\n{"items": ['

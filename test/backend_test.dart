@@ -76,6 +76,37 @@ void main() {
       );
     });
 
+    test('错误响应正文停住时也会超时,不会永久占着当前模型', () async {
+      HttpOverrides.global = null;
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) async {
+        await request.drain<void>();
+        request.response.statusCode = HttpStatus.badGateway;
+        request.response.write('{"error":');
+        await request.response.flush();
+      });
+
+      await expectLater(
+        runLlmStream(
+          (client) => postForLines(
+            client,
+            Uri.parse('http://127.0.0.1:${server.port}/v1/chat/completions'),
+            const {},
+            const {},
+            stall: const Duration(milliseconds: 50),
+          ),
+        ).toList().timeout(const Duration(seconds: 1)),
+        throwsA(
+          isA<LlmException>().having(
+            (e) => e.message,
+            'message',
+            contains('超时'),
+          ),
+        ),
+      );
+    });
+
     test('没有空格的 data:[DONE] 也能结束,不会一直等', () async {
       final server = await _serve(
         200,
@@ -134,6 +165,14 @@ void main() {
 
   group('设置存取', () {
     const llm = LlmProfile(id: 'a', name: 'A', baseUrl: 'u', model: 'm');
+
+    test('一个接口中的模型按中英文逗号和换行拆分', () {
+      expect(llm.copyWith(model: 'first， second,\n third').models, [
+        'first',
+        'second',
+        'third',
+      ]);
+    });
 
     setUp(() {
       TestWidgetsFlutterBinding.ensureInitialized();
