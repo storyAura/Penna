@@ -219,9 +219,11 @@ extension LocalTagger on LocalModel {
       if (_taggerFor != m.id) {
         _dropTagger();
         _labels = parseLabels(m.kind, await File(paths.labels).readAsString());
+        if (_disposed) return null;
         _tagger = await _loadOnnx(paths.model);
         _taggerFor = m.id;
       }
+      if (_disposed) return null;
       final model = _tagger!;
       final pixelsIn = model.inputs.first;
       final layout = inputLayout(
@@ -232,6 +234,7 @@ extension LocalTagger on LocalModel {
         image.bytes!,
         (w, h) => taggerImageSize(m.kind, w, h, layout.size),
       );
+      if (_disposed) return null;
       final input = prepareTaggerInput(
         m.kind,
         decoded.rgba,
@@ -271,9 +274,11 @@ extension LocalTagger on LocalModel {
       problem = tr('读不了模型文件:{0}', [e.osError?.message ?? e.message]);
     } on Object catch (e) {
       problem = tr('推理失败({0})', [e.runtimeType]);
+    } finally {
+      _tagging = false;
+      if (_disposed) _dropTagger();
+      _changed();
     }
-    _tagging = false;
-    _changed();
     return round == _round ? problem : null;
   }
 

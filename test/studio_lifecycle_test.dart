@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/translate_engines.dart';
+import 'package:penna/ui/features/layout/layout_board.dart';
+import 'package:penna/ui/features/studio/side_chat.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 
 import 'fixtures.dart';
@@ -39,6 +41,52 @@ void _openIdenticalPage(StudioViewModel vm) {
 }
 
 void main() {
+  for (final leavePage in [false, true]) {
+    test(leavePage ? '副聊天委派布局期间换页，迟到结果不写入新页' : '停止副聊天后，委派布局不再写入成稿', () async {
+      final reply = StreamController<String>();
+      final board = LayoutBoard();
+      final vm = _studio(
+        streamChat: (_) => Stream.value('<ask-layout>排一个布局</ask-layout>'),
+      );
+      vm.config.update(vm.config.config.copyWith(sideLlmId: () => 'a'));
+      final layoutAgent = StudioViewModel(
+        config: vm.config,
+        layout: board,
+        layoutOnly: true,
+        streamChat: (_) => reply.stream,
+      );
+      vm.layoutAgent = layoutAgent;
+      final side = vm.side = SideChat(vm);
+      addTearDown(() {
+        side.dispose();
+        layoutAgent.dispose();
+        vm.dispose();
+        board.dispose();
+      });
+      expect(side.send('排个布局'), isNull);
+      await pumpEventQueue();
+      expect(layoutAgent.isStreaming, isTrue);
+      if (leavePage) {
+        expect(vm.addPage(), isNull);
+        vm.setText(0, '另一页的内容');
+      } else {
+        side.stop();
+      }
+      await pumpEventQueue();
+      final before = vm.pages;
+      reply.add(
+        '<layout>{"width":832,"height":1216,"items":'
+        '[{"name":"左","bbox":[100,100,500,1100]}],'
+        '"bbox_coord_space":"abs","bbox_format":"xyxy"}</layout>',
+      );
+      await reply.close();
+      await pumpEventQueue();
+      expect(board.layout.boxes.single.name, '左');
+      expect(vm.pages, before);
+      expect(side.isStreaming, isFalse);
+    });
+  }
+
   test('整页翻译返回时已换页，即使正文相同也不串页', () async {
     final result = Completer<TranslateResult>();
     final vm = _studio(translate: (_, _) => result.future);

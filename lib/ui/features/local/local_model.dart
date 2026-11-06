@@ -71,7 +71,7 @@ class LocalModel extends ChangeNotifier {
        hfToken = hfToken ?? (() => ''),
        _loadOnnx = loadOnnx ?? OnnxModel.load {
     // 服务自己退出了(崩了、被别的程序关了),界面跟着变回未启动。
-    this.server.onExit = notifyListeners;
+    this.server.onExit = _changed;
   }
 
   final Directory? dir;
@@ -148,10 +148,13 @@ class LocalModel extends ChangeNotifier {
   /// 上次打标的那张图有透明的地方。
   bool _transparent = false;
   bool _starting = false;
+  bool _disposed = false;
   bool _captioning = false;
   String _caption = '';
   FlorenceEngine? _florence;
   String? _florenceFor;
+  // 捕获本次加载/推理的目录，用户改选模型后仍保护正在使用的文件。
+  String? _florenceInUse;
 
   /// LLM 反推各模型的结果。
   Map<LlmPick, LlmResult> _llmResults = const {};
@@ -248,7 +251,7 @@ class LocalModel extends ChangeNotifier {
       debugPrint(tr('扫描模型文件夹失败:{0}', [e.runtimeType]));
     }
     // 扫的时候文件夹又变了:以后面那次为准。
-    if (!identical(folders, modelFolders)) return;
+    if (_disposed || !identical(folders, modelFolders)) return;
     _found = result;
     _scanning = false;
     notifyListeners();
@@ -257,7 +260,9 @@ class LocalModel extends ChangeNotifier {
   // —— 改设置 ——
 
   /// 通知界面。扩展里不能直接调 notifyListeners(它是受保护的)。
-  void _changed() => notifyListeners();
+  void _changed() {
+    if (!_disposed) notifyListeners();
+  }
 
   void update(void Function() change) {
     change();
@@ -316,7 +321,7 @@ class LocalModel extends ChangeNotifier {
               received: before + got,
               total: total ?? (files.length == 1 ? all : null),
             );
-            notifyListeners();
+            _changed();
           },
         );
         before += File(f.path).lengthSync();
@@ -328,7 +333,7 @@ class LocalModel extends ChangeNotifier {
     }
     _downloads.remove(key);
     _cancels.remove(key);
-    notifyListeners();
+    _changed();
     return problem;
   }
 
@@ -337,6 +342,10 @@ class LocalModel extends ChangeNotifier {
   /// 删掉下载好的文件(连同没下完的)。删不了时返回给用户看的原因。
   Future<String?> remove(List<RemoteFile> files) async {
     final paths = {for (final f in files) f.path};
+    bool deletesFolder(String? folder) =>
+        folder != null &&
+        paths.any((p) => File(p).parent.uri == Directory(folder).uri);
+    if (deletesFolder(_florenceInUse)) return tr('正在生成');
     if (server.running &&
         (paths.contains(modelPath) || paths.contains(mmprojPath))) {
       return tr('这个模型正在用,先停止服务');
@@ -345,7 +354,7 @@ class LocalModel extends ChangeNotifier {
       return tr('正在推理');
     }
     if (paths.any((p) => p.endsWith(taggerModelFile))) _dropTagger();
-    if (paths.any((p) => _florenceFor != null && p.startsWith(_florenceFor!))) {
+    if (deletesFolder(_florenceFor)) {
       _dropFlorence();
     }
     String? problem;
@@ -358,6 +367,7 @@ class LocalModel extends ChangeNotifier {
     } on FileSystemException catch (e) {
       problem = tr('删不掉:{0}', [e.osError?.message ?? e.message]);
     }
+    if (_disposed) return problem;
     // 选着的模型删掉了就不再指着它。
     if (paths.contains(modelPath) || paths.contains(mmprojPath)) {
       update(() {
@@ -365,7 +375,7 @@ class LocalModel extends ChangeNotifier {
         if (paths.contains(mmprojPath)) mmprojPath = '';
       });
     } else {
-      notifyListeners();
+      _changed();
     }
     return problem;
   }
@@ -392,7 +402,7 @@ class LocalModel extends ChangeNotifier {
       // 下好的压缩包留着,再点一次直接重新解压。
       return tr('运行时解压失败({0})', [e.runtimeType]);
     }
-    notifyListeners();
+    _changed();
     return serverExe == null ? tr('运行时里没找到 llama-server.exe') : null;
   }
 
@@ -442,6 +452,7 @@ class LocalModel extends ChangeNotifier {
   Future<void> load() async {
     final file = _file;
     if (file != null && file.existsSync()) await _read(file);
+    if (_disposed) return;
     // 不等它扫完:文件夹大的话要好一会儿,不拦着程序启动。
     if (modelFolders.isNotEmpty || autoFolders.isNotEmpty) rescan();
   }
@@ -449,6 +460,7 @@ class LocalModel extends ChangeNotifier {
   Future<void> _read(File file) async {
     try {
       final j = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      if (_disposed) return;
       source = j['source'] as String? ?? source;
       customSource = j['customSource'] as String? ?? '';
       githubAccel = j['githubAccel'] as bool? ?? false;
@@ -502,11 +514,16 @@ class LocalModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _round++;
+    _llmRound++;
+    server.onExit = null;
     for (final c in _cancels.values) {
       c.cancel();
     }
-    _dropTagger();
-    _dropFlorence();
+    // 正在调用 native 推理时由该任务在结束后释放，不能提前关闭它的 session。
+    if (!_tagging) _dropTagger();
+    if (!_captioning) _dropFlorence();
     server.stop();
     super.dispose();
   }
@@ -518,26 +535,32 @@ Future<({Uint8List rgba, int width, int height})> decodeImage(
   ({int width, int height}) Function(int width, int height) size,
 ) async {
   final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-  final descriptor = await ui.ImageDescriptor.encoded(buffer);
-  final fit = size(descriptor.width, descriptor.height);
-  final codec = await descriptor.instantiateCodec(
-    targetWidth: fit.width,
-    targetHeight: fit.height,
-  );
-  final frame = await codec.getNextFrame();
-  final data = await frame.image.toByteData(
-    format: ui.ImageByteFormat.rawStraightRgba,
-  );
-  frame.image.dispose();
-  codec.dispose();
-  descriptor.dispose();
-  buffer.dispose();
-  if (data == null) throw OnnxException(tr('读不了这张图'));
-  return (
-    rgba: data.buffer.asUint8List(),
-    width: fit.width,
-    height: fit.height,
-  );
+  ui.ImageDescriptor? descriptor;
+  ui.Codec? codec;
+  ui.Image? image;
+  try {
+    descriptor = await ui.ImageDescriptor.encoded(buffer);
+    final fit = size(descriptor.width, descriptor.height);
+    codec = await descriptor.instantiateCodec(
+      targetWidth: fit.width,
+      targetHeight: fit.height,
+    );
+    image = (await codec.getNextFrame()).image;
+    final data = await image.toByteData(
+      format: ui.ImageByteFormat.rawStraightRgba,
+    );
+    if (data == null) throw OnnxException(tr('读不了这张图'));
+    return (
+      rgba: data.buffer.asUint8List(),
+      width: fit.width,
+      height: fit.height,
+    );
+  } finally {
+    image?.dispose();
+    codec?.dispose();
+    descriptor?.dispose();
+    buffer.dispose();
+  }
 }
 
 /// 把 [zip] 解到 [temp],全解完再换成 [target]。
