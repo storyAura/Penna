@@ -27,10 +27,12 @@ import '../../../data/services/translate_engines.dart';
 import '../layout/layout_board.dart';
 import '../local/local_model.dart';
 import 'chat_message.dart';
+import 'comfy_runner.dart';
 import 'side_chat.dart';
 import '../../../l10n/l10n.dart';
 
 export 'chat_message.dart';
+export 'comfy_runner.dart';
 
 part 'studio_auto_lookup.dart';
 part 'studio_chat.dart';
@@ -208,6 +210,9 @@ class StudioViewModel extends ChangeNotifier {
   /// 副聊天(另一个模型,只读工作区)。主聊天的 Agent 写 `<read-side-chat>` 时读它的记录;
   /// 同样建好之后才接上,布局页的对话没有。
   SideChat? side;
+
+  /// 用 ComfyUI 出图(最终提示词卡片上的「出图」),出过的图存档案库时做预览图。
+  late final comfy = ComfyRunner(config);
 
   /// 读回的副聊天(眼前那场 + 历史,新的在前);[side] 建好时从这里拿,
   /// 之后存盘问 [side] 要最新的。

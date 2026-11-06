@@ -129,6 +129,16 @@ Skill 是一份写法说明(`SKILL.md`),决定 Agent 按什么方式写提示词
 - 一个接口可以配置多个模型,所有模型按顺序组成后备链,自动切换。
 - Agent 和润色可以分别指定首选模型。
 
+## ComfyUI 出图
+
+Penna 以 ComfyUI 为出图后端,通过 ComfyUI 自带的接口通信,无需安装插件。
+
+- **连接**:「设置 → ComfyUI」填写地址,默认 `http://127.0.0.1:8188`;云端的 ComfyUI 填写其地址,需要时填写 Key(以 Bearer 方式发送)。
+- **工作流**:默认使用内置的文生图工作流,模型取 ComfyUI 中的第一个。也可以导入 ComfyUI「导出 (API)」得到的 JSON:提示词写入正面提示词框(沿采样器的 positive 连线查找,支持 FluxGuidance、BasicGuider);框中写有 `{{prompt}}` 时以它为准。每次出图重新随机种子。
+- **出图**:「最终提示词」卡片上的「出图」把当前提示词交给 ComfyUI,结果以缩略图显示在卡片下方,点击查看大图。
+- **图片位置**:图片保存在「文档\Penna\images」,文件名以 `Penna-` 开头。可在设置中更换位置,已有的图片随之迁移。
+- **预览图**:保存到档案库时,用这条提示词最新生成的图片(没有时用最新的一张)自动生成 WebP 预览图;「保存系列」只为生成过图片的页配图。
+
 ## 档案、历史与回滚
 
 - **档案库**:手动保存的成稿与区域控制布局,分为两个分区,带名称和分类。
@@ -162,6 +172,7 @@ Skill 是一份写法说明(`SKILL.md`),决定 Agent 按什么方式写提示词
 | 机密 | `keys.dat` / 系统钥匙串 | 全部 API Key:Windows 上经 DPAPI 加密写入 `keys.dat`,Linux 上存入系统钥匙串(libsecret);都只有本机当前用户能解 |
 | 工作台 | `workspace.json` | 成稿、对话、历史提示词 |
 | 档案 | `archive.json` | 档案库 |
+| 出图 | `images\` | ComfyUI 生成的图片(位置可在设置中更换) |
 | 记事本 | `notebooks.json` | 记事本的本子与记录 |
 | 角色 | `characters.json`、`characters\` | 自存的角色及图片 |
 | 反推 | `reverse.json`、`reverse.img` | 参考图及反推结果 |

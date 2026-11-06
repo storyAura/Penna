@@ -55,7 +55,7 @@ class _SummarySection extends StatelessWidget {
                           ),
                           const SizedBox(height: 12),
                         ],
-                        if (prompt.isNotEmpty)
+                        if (prompt.isNotEmpty) ...[
                           _CopyCard(
                             icon: Icons.verified_outlined,
                             iconColor: PennaColors.accent,
@@ -72,7 +72,10 @@ class _SummarySection extends StatelessWidget {
                             text: prompt,
                             toast: tr('已复制'),
                             onCopied: vm.recordPrompt,
+                            extra: _GenerateButton(vm: vm),
                           ),
+                          _ComfyStrip(runner: vm.comfy),
+                        ],
                         if (vm.promptLog.isNotEmpty) ...[
                           const SizedBox(height: 14),
                           Text(tr('历史提示词'), style: draftLabelStyle),
@@ -259,8 +262,12 @@ class _CopyCard extends StatelessWidget {
     required this.text,
     required this.toast,
     this.onCopied,
+    this.extra,
     this.fontSize = 11.5,
   });
+
+  /// 复制按钮左边再放的按钮(最终提示词卡片上的「出图」)。
+  final Widget? extra;
 
   /// 正文字号:放大查看的窗口里大一号。
   final double fontSize;
@@ -295,6 +302,7 @@ class _CopyCard extends StatelessWidget {
                   ),
                 ),
               ),
+              ?extra,
               PennaButton(
                 label: tr('一键复制'),
                 icon: Icons.content_copy,

@@ -6,8 +6,10 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../../data/services/skill_store.dart';
 import '../local/local_model.dart';
+import '../studio/comfy_runner.dart';
 import 'settings_agent_sections.dart';
 import 'settings_app_section.dart';
+import 'settings_comfy_section.dart';
 import 'settings_extension_sections.dart';
 import 'settings_llm_section.dart';
 import 'settings_local_section.dart';
@@ -24,6 +26,7 @@ List<_Tab> get _tabs => [
   (icon: Icons.school_outlined, label: 'Skills'),
   (icon: Icons.tune, label: tr('参数与工具')),
   (icon: Icons.electrical_services, label: 'MCP'),
+  (icon: Icons.brush_outlined, label: 'ComfyUI'),
   (icon: Icons.bolt_outlined, label: tr('快捷操作')),
   (icon: Icons.memory_outlined, label: tr('本地反推')),
   (icon: Icons.settings_applications_outlined, label: tr('软件设置')),
@@ -36,11 +39,13 @@ class SettingsPage extends StatefulWidget {
     required this.service,
     required this.skills,
     required this.local,
+    required this.comfy,
   });
 
   final ConfigService service;
   final SkillStore skills;
   final LocalModel local;
+  final ComfyRunner comfy;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -110,8 +115,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     3 => SkillsSection(service: service, skills: widget.skills),
                     4 => AbilitySection(service: service),
                     5 => McpSection(service: service),
-                    6 => QuickActionSection(service: service),
-                    7 => LocalSection(service: service, local: widget.local),
+                    6 => ComfySection(service: service, runner: widget.comfy),
+                    7 => QuickActionSection(service: service),
+                    8 => LocalSection(service: service, local: widget.local),
                     _ => AppSection(service: service),
                   },
                 ),

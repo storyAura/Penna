@@ -1,5 +1,9 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
+import '../../../core/harness/attachment.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../data/services/archive_store.dart';
 import '../../core/theme.dart';
@@ -8,11 +12,13 @@ import '../../core/widgets.dart';
 import '../archive/archive_page.dart';
 import '../settings/settings_sections.dart';
 import 'body_card.dart';
+import 'image_viewer.dart';
 import 'polish_dialog.dart';
 import 'studio_view_model.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
 
+part 'comfy_strip.dart';
 part 'prompt_summary.dart';
 
 /// 顶栏里的小计数,例如「128 字符」。
@@ -140,8 +146,24 @@ class _DraftSectionState extends State<_DraftSection> {
       title: vm.pageName,
     );
     if (picked == null) return;
-    archive.add(text: text, title: picked.title, category: picked.category);
+    final id = archive.add(
+      text: text,
+      title: picked.title,
+      category: picked.category,
+    );
     if (context.mounted) showToast(context, tr('已存进档案库'));
+    await _preview(id, vm.comfy.latestFor(vm.finalPrompt));
+  }
+
+  /// 用 ComfyUI 出过的图给档案库里这一条做预览图(转成 WebP)。
+  Future<void> _preview(String? id, String? image) async {
+    if (id == null || image == null) return;
+    try {
+      final webp = await toPreviewWebP(await File(image).readAsBytes());
+      if (webp != null) archive.setImage(id, webp);
+    } on FileSystemException catch (e) {
+      debugPrint(tr('预览图没存上:{0}', [e.message]));
+    }
   }
 
   /// 把眼前这个系列的每一页都存进档案库:一页一条,分类就是系列的名字。
@@ -164,11 +186,18 @@ class _DraftSectionState extends State<_DraftSection> {
     final now = DateTime.now();
     // 档案库里新的在前:倒着存,第 1 页才排在最上面。时间各错开一点,编号不会撞。
     for (final (i, p) in prompts.reversed.indexed) {
-      archive.add(
+      final id = archive.add(
         text: p.text,
         title: p.title,
         category: category,
         now: now.add(Duration(microseconds: i)),
+      );
+      // 只配用这一页的提示词出的图,不拿别的页的凑数。
+      unawaited(
+        _preview(
+          id,
+          vm.comfy.latestFor(stripSectionLabels(p.text), any: false),
+        ),
       );
     }
     final skipped = all.length - prompts.length;

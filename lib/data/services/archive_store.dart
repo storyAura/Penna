@@ -43,19 +43,20 @@ class ArchiveStore extends ChangeNotifier {
       if (e.kind == kind) e.category,
   }.toList();
 
-  /// 存一条;[text] 是空的就不存。分类没填归「未分类」。
-  void add({
+  /// 存一条,返回它的 id;[text] 是空的就不存,返回 null。分类没填归「未分类」。
+  String? add({
     required String text,
     String title = '',
     String category = '',
     String kind = archivePrompt,
     DateTime? now,
   }) {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty) return null;
     final time = now ?? DateTime.now();
+    final id = '${time.microsecondsSinceEpoch}';
     _set([
       (
-        id: '${time.microsecondsSinceEpoch}',
+        id: id,
         time: time,
         category: category.trim().isEmpty ? uncategorized : category.trim(),
         title: title.trim(),
@@ -65,6 +66,7 @@ class ArchiveStore extends ChangeNotifier {
       ),
       ..._entries,
     ]);
+    return id;
   }
 
   void remove(String id) {

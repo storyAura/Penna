@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
 
+import 'comfy_settings.dart';
 import 'mcp_server.dart';
 import '../../l10n/l10n.dart';
 
+export 'comfy_settings.dart';
 export 'mcp_server.dart';
 
 part 'moss_preset.dart';
@@ -405,6 +407,7 @@ class AppConfig {
     this.updateChannel = 'main',
     this.quickActions = defaultQuickActions,
     this.mcpServers = const [],
+    this.comfy = const ComfySettings(),
     this.secrets = const {},
   });
 
@@ -498,6 +501,7 @@ class AppConfig {
         for (final s in m['mcpServers'] as List? ?? const [])
           McpServer.fromJson(s as Map<String, dynamic>),
       ],
+      comfy: ComfySettings.fromJson(m['comfy']),
     );
   }
 
@@ -642,6 +646,7 @@ class AppConfig {
   /// 聊天框上方的快捷操作,先后就是显示顺序。
   final List<QuickAction> quickActions;
   final List<McpServer> mcpServers;
+  final ComfySettings comfy;
   final Map<String, String> secrets;
 
   Map<String, dynamic> toJson() => {
@@ -686,6 +691,7 @@ class AppConfig {
       for (final a in quickActions) {'label': a.label, 'prompt': a.prompt},
     ],
     'mcpServers': [for (final s in mcpServers) s.toJson()],
+    'comfy': comfy.toJson(),
   };
 
   /// 开关一个 Skill。
@@ -768,6 +774,7 @@ class AppConfig {
     String? updateChannel,
     List<QuickAction>? quickActions,
     List<McpServer>? mcpServers,
+    ComfySettings? comfy,
     Map<String, String>? secrets,
   }) => AppConfig(
     llms: llms ?? this.llms,
@@ -809,6 +816,7 @@ class AppConfig {
     updateChannel: updateChannel ?? this.updateChannel,
     quickActions: quickActions ?? this.quickActions,
     mcpServers: mcpServers ?? this.mcpServers,
+    comfy: comfy ?? this.comfy,
     secrets: secrets ?? this.secrets,
   );
 
