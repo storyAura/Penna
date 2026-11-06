@@ -117,7 +117,7 @@ class _Tab extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
-          duration: Motion.base,
+          duration: Motion.of(context, Motion.base),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
             color: selected ? PennaColors.card : PennaColors.slate50,
@@ -211,16 +211,18 @@ class _HistoryCardState extends State<_HistoryCard> {
             builder: (context, box) {
               final style = monoStyle.copyWith(fontSize: 11.5);
               // 收起时放得下就不用「展开」按钮。
-              final long = (TextPainter(
+              final painter = TextPainter(
                 text: TextSpan(text: clean, style: style),
                 maxLines: _historyLines,
                 textDirection: TextDirection.ltr,
-              )..layout(maxWidth: box.maxWidth)).didExceedMaxLines;
+              )..layout(maxWidth: box.maxWidth);
+              final long = painter.didExceedMaxLines;
+              painter.dispose();
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   AnimatedSize(
-                    duration: Motion.base,
+                    duration: Motion.of(context, Motion.base),
                     curve: Motion.swift,
                     alignment: Alignment.topLeft,
                     child: Text(

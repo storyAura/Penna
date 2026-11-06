@@ -35,6 +35,13 @@ class _SmoothPosition extends ScrollPositionWithSingleContext {
   double? _target;
 
   @override
+  void beginActivity(ScrollActivity? newActivity) {
+    // 拖动、跳转和动画结束都会换活动,旧滚轮目标到这里即失效。
+    _target = null;
+    super.beginActivity(newActivity);
+  }
+
+  @override
   void pointerScroll(double delta) {
     // 还没排过版时没有可滚范围,交给默认处理。
     if (delta == 0 || !hasContentDimensions) return super.pointerScroll(delta);
@@ -46,13 +53,9 @@ class _SmoothPosition extends ScrollPositionWithSingleContext {
       minScrollExtent,
       maxScrollExtent,
     );
-    if (to == pixels) return;
-    _target = to;
-    animateTo(to, duration: _wheelDuration, curve: Motion.swift).whenComplete(
-      () {
-        if (_target == to) _target = null;
-      },
-    );
+    if (to == pixels) return goIdle();
+    animateTo(to, duration: _wheelDuration, curve: Motion.swift);
+    if (activity is DrivenScrollActivity) _target = to;
   }
 }
 

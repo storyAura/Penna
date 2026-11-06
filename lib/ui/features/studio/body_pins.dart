@@ -197,7 +197,7 @@ class _DropSlot extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           AnimatedSize(
-            duration: Motion.base,
+            duration: Motion.of(context, Motion.base),
             curve: Motion.swift,
             alignment: Alignment.topCenter,
             child: incoming.isEmpty

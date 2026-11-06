@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +10,7 @@ import 'theme.dart';
 import 'widgets.dart';
 import '../../l10n/l10n.dart';
 import 'motion.dart';
+import 'native_drop.dart';
 
 /// 一张图的位置:点一下选图或直接拖进来;有图时显示它,右上角可以换图、移除。
 class ImageDrop extends StatefulWidget {
@@ -51,6 +51,7 @@ class _ImageDropState extends State<ImageDrop> {
         File(path),
         compress: widget.compress,
       );
+      if (!mounted) return;
       if (!picked.isImage) throw AttachmentException(tr('这不是图片'));
       widget.onChanged(picked);
       if (picked.compressed && context.mounted) {
@@ -111,7 +112,7 @@ class _ImageDropState extends State<ImageDrop> {
   @override
   Widget build(BuildContext context) {
     final image = widget.image;
-    final drop = DropTarget(
+    final drop = PennaDropTarget(
       onDragEntered: (_) => _hover(true),
       onDragExited: (_) => _hover(false),
       onDragDone: (d) {
@@ -137,7 +138,7 @@ class _ImageDropState extends State<ImageDrop> {
             child: IgnorePointer(
               child: AnimatedOpacity(
                 opacity: _over ? 1 : 0,
-                duration: Motion.snap,
+                duration: Motion.of(context, Motion.snap),
                 child: const _DropHint(),
               ),
             ),

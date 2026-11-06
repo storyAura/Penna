@@ -503,6 +503,7 @@ class _ScenePainter extends CustomPainter {
       Paint()..color = color,
     );
     tp.paint(canvas, r.topLeft + const Offset(4, 1));
+    tp.dispose();
   }
 
   @override

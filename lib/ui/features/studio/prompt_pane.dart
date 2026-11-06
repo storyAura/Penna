@@ -138,9 +138,10 @@ class _DraftSectionState extends State<_DraftSection> {
       context,
       archive.categoriesOf(archivePrompt),
       title: vm.pageName,
+      onSave: (entry) =>
+          archive.add(text: text, title: entry.title, category: entry.category),
     );
     if (picked == null) return;
-    archive.add(text: text, title: picked.title, category: picked.category);
     if (context.mounted) showToast(context, tr('已存进档案库'));
   }
 
@@ -164,12 +165,13 @@ class _DraftSectionState extends State<_DraftSection> {
     final now = DateTime.now();
     // 档案库里新的在前:倒着存,第 1 页才排在最上面。时间各错开一点,编号不会撞。
     for (final (i, p) in prompts.reversed.indexed) {
-      archive.add(
+      final added = archive.add(
         text: p.text,
         title: p.title,
         category: category,
         now: now.add(Duration(microseconds: i)),
       );
+      if (!added) return showToast(context, tr('保存失败'), warn: true);
     }
     final skipped = all.length - prompts.length;
     showToast(
@@ -260,7 +262,7 @@ class _DraftSectionState extends State<_DraftSection> {
         ),
         // 这个系列不止一页时滑出来:把整个系列一起存。
         AnimatedSize(
-          duration: Motion.base,
+          duration: Motion.of(context, Motion.base),
           curve: Motion.swift,
           alignment: Alignment.centerLeft,
           child: series

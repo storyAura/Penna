@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +14,44 @@ import 'fixtures.dart';
 
 void main() {
   tearDown(() => applyLook(const AppConfig()));
+
+  testWidgets('连续切换主题并在动画中卸载会释放所有截图', (tester) async {
+    final alive = <ui.Image>{};
+    var created = 0;
+    final onCreate = ui.Image.onCreate;
+    final onDispose = ui.Image.onDispose;
+    ui.Image.onCreate = (image) {
+      created++;
+      alive.add(image);
+      onCreate?.call(image);
+    };
+    ui.Image.onDispose = (image) {
+      alive.remove(image);
+      onDispose?.call(image);
+    };
+    addTearDown(() {
+      ui.Image.onCreate = onCreate;
+      ui.Image.onDispose = onDispose;
+    });
+    final config = tempConfig();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LookSwitcher(
+          config: config,
+          child: Builder(builder: (_) => ColoredBox(color: PennaColors.bg)),
+        ),
+      ),
+    );
+    for (final mode in ['on', 'off', 'on']) {
+      config.update(config.config.copyWith(darkTheme: mode));
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(PennaColors.isDark, mode == 'on');
+    }
+    expect(created, greaterThan(0));
+    await tester.pumpWidget(const SizedBox());
+    expect(alive, isEmpty);
+    expect(tester.binding.transientCallbackCount, 0);
+  });
 
   test('tr:查不到就用原文,{0} 按顺序填', () {
     useLanguage('xx');

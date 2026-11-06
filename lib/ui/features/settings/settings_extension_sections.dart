@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
@@ -14,6 +13,7 @@ import 'settings_agent_sections.dart';
 import 'settings_sections.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
+import '../../core/native_drop.dart';
 
 /// 「添加 Skill」窗口交回来的:拖进来或选中的文件,或者手写的整篇 SKILL.md。
 typedef _NewSkill = ({String? path, String? text});
@@ -283,7 +283,7 @@ class _AddSkillDialogState extends State<_AddSkillDialog> {
   @override
   Widget build(BuildContext context) {
     final ready = _name.trim().isNotEmpty && _body.trim().isNotEmpty;
-    return DropTarget(
+    return PennaDropTarget(
       onDragEntered: (_) => setState(() => _over = true),
       onDragExited: (_) => setState(() => _over = false),
       onDragDone: (d) {
@@ -302,7 +302,7 @@ class _AddSkillDialogState extends State<_AddSkillDialog> {
                   onTap: _pick,
                   borderRadius: BorderRadius.circular(8),
                   child: AnimatedContainer(
-                    duration: Motion.snap,
+                    duration: Motion.of(context, Motion.snap),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     decoration: BoxDecoration(
                       color: _over

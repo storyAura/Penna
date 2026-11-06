@@ -482,7 +482,19 @@ class _TypingDotsState extends State<TypingDots>
   late final _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1900),
-  )..repeat();
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _controller
+        ..stop()
+        ..value = 0;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
+  }
 
   @override
   void dispose() {
@@ -511,12 +523,16 @@ class _TypingDotsState extends State<TypingDots>
                     padding: const EdgeInsets.only(right: 3.5),
                     child: Transform.translate(
                       offset: Offset(0, -2 * up),
-                      child: CircleAvatar(
-                        radius: 1.5 + 0.5 * up,
-                        backgroundColor: Color.lerp(
-                          PennaColors.slate400,
-                          PennaColors.primary,
-                          up,
+                      child: Container(
+                        width: 3 + up,
+                        height: 3 + up,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color.lerp(
+                            PennaColors.slate400,
+                            PennaColors.primary,
+                            up,
+                          ),
                         ),
                       ),
                     ),
@@ -573,7 +589,7 @@ class _DraftCardState extends State<_DraftCard> {
     };
     final ready = !writing && draft.complete && status == DraftStatus.ready;
     return AnimatedContainer(
-      duration: Motion.base,
+      duration: Motion.of(context, Motion.base),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: PennaColors.card,
@@ -598,7 +614,7 @@ class _DraftCardState extends State<_DraftCard> {
                       children: [
                         AnimatedRotation(
                           turns: open ? 0.25 : 0,
-                          duration: Motion.base,
+                          duration: Motion.of(context, Motion.base),
                           child: Icon(
                             Icons.chevron_right,
                             size: 16,
@@ -632,7 +648,7 @@ class _DraftCardState extends State<_DraftCard> {
               ),
               const SizedBox(width: 8),
               AnimatedSwitcher(
-                duration: Motion.base,
+                duration: Motion.of(context, Motion.base),
                 transitionBuilder: (child, animation) => ScaleTransition(
                   scale: animation,
                   child: FadeTransition(opacity: animation, child: child),
@@ -650,7 +666,7 @@ class _DraftCardState extends State<_DraftCard> {
           ),
           // 一段一段长出来,卡片跟着平滑变高。
           AnimatedSize(
-            duration: Motion.base,
+            duration: Motion.of(context, Motion.base),
             curve: Motion.swift,
             alignment: Alignment.topCenter,
             child: Column(

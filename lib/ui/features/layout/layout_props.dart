@@ -307,7 +307,7 @@ class _BoxCard extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
         borderColor: selected ? color : null,
         child: AnimatedSize(
-          duration: Motion.base,
+          duration: Motion.of(context, Motion.base),
           curve: Motion.swift,
           alignment: Alignment.topCenter,
           child: Column(

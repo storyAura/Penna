@@ -24,10 +24,12 @@ Future<({String title, String category})?> showSaveDialog(
   BuildContext context,
   List<String> categories, {
   String title = '',
+  bool Function(({String title, String category}))? onSave,
 }) {
   var category = categories.firstOrNull ?? '';
   // 点了已有分类后,分类输入框靠它重建来显示选中的名字。
   var picks = 0;
+  var failed = false;
   return showDialog<({String title, String category})>(
     context: context,
     builder: (context) => StatefulBuilder(
@@ -71,6 +73,11 @@ Future<({String title, String category})?> showSaveDialog(
                   ],
                 ),
               ],
+              if (failed)
+                Text(
+                  tr('保存失败'),
+                  style: TextStyle(color: PennaColors.diffDelText),
+                ),
             ],
           ),
         ),
@@ -80,8 +87,14 @@ Future<({String title, String category})?> showSaveDialog(
             child: Text(tr('取消')),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(context, (title: title, category: category)),
+            onPressed: () {
+              final entry = (title: title, category: category);
+              if (onSave != null && !onSave(entry)) {
+                setState(() => failed = true);
+              } else {
+                Navigator.pop(context, entry);
+              }
+            },
             child: Text(tr('保存')),
           ),
         ],
@@ -146,7 +159,9 @@ class _ArchivePageState extends State<ArchivePage> {
   Future<void> _delete(ArchiveEntry entry) async {
     final name = entry.title.isEmpty ? tr('这条记录') : tr('「{0}」', [entry.title]);
     if (await confirmDelete(context, tr('删除{0}?', [name]), tr('删掉后找不回来。'))) {
-      widget.archive.remove(entry.id);
+      if (!widget.archive.remove(entry.id) && mounted) {
+        showToast(context, tr('保存失败'), warn: true);
+      }
     }
   }
 

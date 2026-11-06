@@ -20,7 +20,7 @@ Future<void> showFullCanvas(
   context: context,
   barrierDismissible: false,
   barrierLabel: tr('全屏摆放'),
-  transitionDuration: Motion.snap,
+  transitionDuration: Motion.of(context, Motion.snap),
   pageBuilder: (context, _, _) =>
       _FullCanvas(board: board, onToggle3D: onToggle3D),
 );

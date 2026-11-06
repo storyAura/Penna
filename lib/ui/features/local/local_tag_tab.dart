@@ -196,7 +196,7 @@ class _TagResultViewState extends State<_TagResultView> {
         child: GestureDetector(
           onTap: () => _toggle(t.tag),
           child: AnimatedContainer(
-            duration: Motion.snap,
+            duration: Motion.of(context, Motion.snap),
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
             decoration: BoxDecoration(
               color: !on

@@ -124,7 +124,7 @@ class _PickState extends State<MultiPick> {
       onTap: () => _toggle(item.label),
       borderRadius: BorderRadius.circular(6),
       child: AnimatedContainer(
-        duration: Motion.snap,
+        duration: Motion.of(context, Motion.snap),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: on ? PennaColors.primaryBg : PennaColors.card,
@@ -358,7 +358,7 @@ class _FormPickState extends State<FormPick> {
                         ),
                       const Spacer(),
                       AnimatedSwitcher(
-                        duration: Motion.snap,
+                        duration: Motion.of(context, Motion.snap),
                         child: _picked.containsKey(g)
                             ? const SizedBox.shrink()
                             : Text(tr('你定'), style: hint),

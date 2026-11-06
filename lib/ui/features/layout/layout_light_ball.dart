@@ -219,6 +219,7 @@ class _BallPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
       )..layout();
       label.paint(canvas, c - Offset(label.width / 2, label.height / 2));
+      label.dispose();
     }
   }
 

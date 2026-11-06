@@ -283,7 +283,7 @@ class _DownloadRow extends StatelessWidget {
       onTap: onSelect,
       borderRadius: BorderRadius.circular(6),
       child: AnimatedContainer(
-        duration: Motion.snap,
+        duration: Motion.of(context, Motion.snap),
         padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
         margin: const EdgeInsets.only(bottom: 4),
         decoration: BoxDecoration(
@@ -445,7 +445,7 @@ class _GroupedModelListState extends State<_GroupedModelList> {
             _handle(index),
             AnimatedRotation(
               turns: open ? 0.25 : 0,
-              duration: Motion.base,
+              duration: Motion.of(context, Motion.base),
               child: Icon(
                 Icons.chevron_right,
                 size: 18,

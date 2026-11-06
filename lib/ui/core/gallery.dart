@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
@@ -10,6 +9,7 @@ import '../../l10n/l10n.dart';
 import 'theme.dart';
 import 'widgets.dart';
 import 'motion.dart';
+import 'native_drop.dart';
 
 // 档案库、角色库共用的零件:列表 / 大缩略图两种看法、拖着换顺序、
 // 把图片拖上来当预览图(转成 WebP)。
@@ -145,7 +145,7 @@ class _GalleryItemState extends State<GalleryItem> {
 
   @override
   Widget build(BuildContext context) {
-    return DropTarget(
+    return PennaDropTarget(
       onDragEntered: (_) => setState(() => _fileOver = true),
       onDragExited: (_) => setState(() => _fileOver = false),
       onDragDone: (d) {
@@ -169,7 +169,7 @@ class _GalleryItemState extends State<GalleryItem> {
               ),
               childWhenDragging: Opacity(opacity: 0.35, child: widget.child),
               child: AnimatedContainer(
-                duration: Motion.snap,
+                duration: Motion.of(context, Motion.snap),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(

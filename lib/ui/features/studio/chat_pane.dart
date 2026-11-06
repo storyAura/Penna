@@ -29,6 +29,7 @@ import 'side_chat.dart';
 import 'studio_view_model.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
+import '../../core/native_drop.dart';
 
 part 'chat_composer.dart';
 part 'context_ring.dart';
@@ -108,9 +109,7 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
     final onSide =
         box != null &&
         box.hasSize &&
-        (box.localToGlobal(Offset.zero) & box.size).contains(
-          details.globalPosition,
-        );
+        box.size.contains(box.globalToLocal(details.globalPosition));
     onSide ? _side.currentState!._attach(paths) : _attach(paths);
   }
 
@@ -380,7 +379,7 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
   @override
   Widget build(BuildContext context) {
     final messages = widget.vm.messages;
-    return DropTarget(
+    return PennaDropTarget(
       onDragEntered: (_) => setState(() => _dragging = true),
       onDragExited: (_) => setState(() => _dragging = false),
       onDragDone: _drop,
@@ -483,7 +482,7 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
                 ignoring: !_away,
                 child: AnimatedScale(
                   scale: _away ? 1 : 0,
-                  duration: Motion.base,
+                  duration: Motion.of(context, Motion.base),
                   curve: Curves.easeOutBack,
                   child: Tooltip(
                     message: tr('回到底部'),
@@ -645,6 +644,10 @@ mixin _Attachments<T extends StatefulWidget> on State<T> {
 
   /// 加上一个附件;它是压缩过的图就提醒一句(压缩能在软件设置里关掉)。
   void _add(Attachment attachment) {
+    // 多次拖放或粘贴能同时读文件,提交时仍要守住数量上限。
+    if (_attachments.length >= maxAttachments) {
+      return showToast(context, tr('最多 {0} 个附件', [maxAttachments]), warn: true);
+    }
     setState(() {
       _attachments = List.unmodifiable([..._attachments, attachment]);
     });
@@ -656,10 +659,6 @@ mixin _Attachments<T extends StatefulWidget> on State<T> {
 
   /// 对话里以前发过的图(看大图时点「附到输入框」)再附一次。
   void _reuse(Attachment attachment) {
-    if (_attachments.length >= maxAttachments) {
-      showToast(context, tr('最多 {0} 个附件', [maxAttachments]), warn: true);
-      return;
-    }
     // 已经附着同一张的不再加。
     if (!_attachments.contains(attachment)) _add(attachment);
     _inputFocus.requestFocus();
@@ -672,11 +671,13 @@ mixin _Attachments<T extends StatefulWidget> on State<T> {
   /// 把选中或拖进来的文件加成附件;读不了的逐个提示,不影响其余的。
   Future<void> _attach(Iterable<String> paths) async {
     for (final path in paths) {
+      if (!mounted) return;
       if (_attachments.length >= maxAttachments) {
-        if (mounted) {
-          showToast(context, tr('最多 {0} 个附件', [maxAttachments]), warn: true);
-        }
-        return;
+        return showToast(
+          context,
+          tr('最多 {0} 个附件', [maxAttachments]),
+          warn: true,
+        );
       }
       try {
         final attachment = await readAttachment(
@@ -710,8 +711,6 @@ mixin _Attachments<T extends StatefulWidget> on State<T> {
       }
       final problem = attachment.bytes!.length > maxImageBytes
           ? tr('图片超过 {0}', [maxImageLabel])
-          : _attachments.length >= maxAttachments
-          ? tr('最多 {0} 个附件', [maxAttachments])
           : null;
       if (problem != null) return showToast(context, problem, warn: true);
       _add(attachment);

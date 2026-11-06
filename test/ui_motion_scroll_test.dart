@@ -8,7 +8,9 @@ import 'package:penna/data/models/app_config.dart';
 import 'package:penna/ui/core/scroll_strip.dart';
 import 'package:penna/ui/core/smooth_scroll.dart';
 import 'package:penna/ui/core/theme.dart';
+import 'package:penna/ui/core/widgets.dart';
 import 'package:penna/ui/features/studio/chat_tabs.dart';
+import 'package:penna/ui/features/studio/chat_message_view.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 import 'package:penna/ui/shell.dart';
 
@@ -255,6 +257,85 @@ void main() {
     expect(scroll.offset, 240);
   });
 
+  testWidgets('同帧反向滚轮抵消后不会继续向原方向滚动', (tester) async {
+    final scroll = SmoothScrollController();
+    addTearDown(scroll.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ListView(
+          controller: scroll,
+          children: const [SizedBox(height: 2000)],
+        ),
+      ),
+    );
+    scroll.jumpTo(500);
+    final at = tester.getCenter(find.byType(ListView));
+    for (final delta in [120.0, -120.0]) {
+      await tester.sendEventToBinding(
+        PointerScrollEvent(position: at, scrollDelta: Offset(0, delta)),
+      );
+    }
+    await tester.pumpAndSettle();
+    expect(scroll.offset, 500);
+  });
+
+  testWidgets('拖动或跳转打断滚轮动画后不再沿用旧目标', (tester) async {
+    final scroll = SmoothScrollController();
+    addTearDown(scroll.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ListView(
+          controller: scroll,
+          children: const [SizedBox(height: 2000)],
+        ),
+      ),
+    );
+    scroll.jumpTo(500);
+    scroll.position.pointerScroll(120);
+    scroll.jumpTo(800);
+    scroll.position.pointerScroll(40);
+    await tester.pumpAndSettle();
+    expect(scroll.offset, 840);
+  });
+
+  testWidgets('等待回复的打字点随减少动画设置停止和恢复', (tester) async {
+    Future<void> show(bool reduce) => tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(disableAnimations: reduce),
+          child: const TypingDots(),
+        ),
+      ),
+    );
+    await show(false);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.binding.transientCallbackCount, greaterThan(0));
+    await show(true);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(find.byType(TypingDots), findsOneWidget);
+    await show(false);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.binding.transientCallbackCount, greaterThan(0));
+  });
+
+  testWidgets('减少动画时普通选项的选中态立即完成', (tester) async {
+    Future<void> show(bool selected) => tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: PennaChip(label: '选项', selected: selected, onTap: () {}),
+          ),
+        ),
+      ),
+    );
+    await show(false);
+    await show(true);
+    expect(find.byIcon(Icons.check), findsOneWidget);
+    expect(tester.binding.transientCallbackCount, 0);
+  });
+
   testWidgets('切页暂停后台打字动画,返回时恢复', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
@@ -322,6 +403,8 @@ void main() {
     await tester.tap(find.byTooltip('设置'));
     await tester.pump();
 
+    // 视口 LayoutBuilder 的焦点交接会另排一帧;不推进时钟,避免把动画等完才断言。
+    await tester.pump();
     expect(tester.binding.transientCallbackCount, 0);
   });
 }
