@@ -4,7 +4,12 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/comfyui.dart';
+import 'package:penna/core/harness/comfyui_progress.dart';
+import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/comfy_images.dart';
+import 'package:penna/ui/features/studio/studio_view_model.dart';
+
+import 'fixtures.dart';
 
 Map<String, Object?> _node(String type, Map<String, Object?> inputs) => {
   'class_type': type,
@@ -75,6 +80,34 @@ void main() {
     });
   });
 
+  test('拆出图标签:空的、自闭合、带提示词,流式时半截的不显示', () {
+    expect(splitGenerate('好<generate-image></generate-image>'), (
+      prose: '好',
+      asked: true,
+      prompt: '',
+    ));
+    expect(splitGenerate('好<generate-image/>').asked, isTrue);
+    expect(
+      splitGenerate('<generate-image> a cat </generate-image>').prompt,
+      'a cat',
+    );
+    expect(splitGenerate('好<generate-im').prose, '好');
+    expect(splitGenerate('好').asked, isFalse);
+  });
+
+  test('进度:大半按采样步数,用了缓存的节点算做完', () {
+    final t = ComfyProgressTracker(defaultWorkflow('m'));
+    expect(t.handle('status', {}), isNull);
+    final cached = t.handle('execution_cached', {
+      'nodes': ['4', '6', '7'],
+    })!;
+    expect(cached, closeTo(0.1 * 3 / 7, 1e-9));
+    // 只有一步的不算。
+    expect(t.handle('progress', {'node': '4', 'value': 1, 'max': 1}), isNull);
+    final half = t.handle('progress', {'node': '3', 'value': 5, 'max': 10})!;
+    expect(half, closeTo(cached + 0.45, 1e-9));
+  });
+
   test('只认 API 格式', () {
     expect(
       () => parseApiWorkflow('{"nodes": [], "links": []}'),
@@ -104,13 +137,19 @@ void main() {
     late HttpServer server;
     late Map<String, Object?> queued;
     var polls = 0;
+    final sockets = <WebSocket>[];
 
     setUp(() async {
       polls = 0;
+      sockets.clear();
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       server.listen((req) async {
         final res = req.response;
         final path = req.uri.path;
+        if (path == '/ws') {
+          sockets.add(await WebSocketTransformer.upgrade(req));
+          return;
+        }
         if (path == '/object_info/CheckpointLoaderSimple') {
           res.write(
             jsonEncode({
@@ -129,10 +168,42 @@ void main() {
             }),
           );
         } else if (path == '/prompt') {
-          queued =
-              jsonDecode(await utf8.decoder.bind(req).join())
-                  as Map<String, Object?>;
+          queued = jsonDecode(
+            await utf8.decoder.bind(req).join(),
+          ) as Map<String, Object?>;
           res.write(jsonEncode({'prompt_id': 'p1'}));
+          // 进度:别人的单子不算,采样器走到一半、走完,整单做完。
+          for (final m in [
+            {
+              'type': 'progress',
+              'data': {
+                'node': '3',
+                'value': 9,
+                'max': 10,
+                'prompt_id': 'other',
+              },
+            },
+            {
+              'type': 'executing',
+              'data': {'node': '3', 'prompt_id': 'p1'},
+            },
+            {
+              'type': 'progress',
+              'data': {'node': '3', 'value': 5, 'max': 10, 'prompt_id': 'p1'},
+            },
+            {
+              'type': 'progress',
+              'data': {'node': '3', 'value': 10, 'max': 10, 'prompt_id': 'p1'},
+            },
+            {
+              'type': 'executing',
+              'data': {'node': null, 'prompt_id': 'p1'},
+            },
+          ]) {
+            for (final ws in sockets) {
+              ws.add(jsonEncode(m));
+            }
+          }
         } else if (path == '/history/p1') {
           // 第一次问还没做完。
           res.write(
@@ -167,17 +238,62 @@ void main() {
       });
     });
 
-    tearDown(() => server.close(force: true));
+    tearDown(() async {
+      for (final ws in sockets) {
+        await ws.close();
+      }
+      await server.close(force: true);
+    });
 
     test('没导入工作流时用内置文生图和第一个模型,出的图下载回来', () async {
       final client = ComfyClient('http://127.0.0.1:${server.port}/')
         ..poll = Duration.zero;
-      final images = await client.run('', 'a cat');
+      final seen = <double>[];
+      final images = await client.run('', 'a cat', onProgress: seen.add);
       expect(images.single.name, 'Penna_0001.png');
+      expect(seen, isNotEmpty);
+      expect(seen.last, greaterThan(0.9));
+      expect(seen.first, lessThan(seen.last));
       expect(images.single.bytes, [1, 2, 3]);
       final prompt = queued['prompt'] as Map;
       expect((prompt['6'] as Map)['inputs']['text'], 'a cat');
       expect((prompt['4'] as Map)['inputs']['ckpt_name'], 'm.safetensors');
+    });
+
+    test('Agent 写了出图标签:出图,图贴回那条回复', () async {
+      final service = tempConfig();
+      service.update(
+        service.config
+            .putLlm(
+              const LlmProfile(
+                id: 'a',
+                name: 'A',
+                baseUrl: 'http://a',
+                model: 'm',
+              ),
+            )
+            .copyWith(
+              comfy: ComfySettings(url: 'http://127.0.0.1:${server.port}'),
+            ),
+      );
+      final vm = StudioViewModel(
+        config: service,
+        streamChat: (_) =>
+            Stream.value('好的。<generate-image>【主体】a cat</generate-image>'),
+      );
+      expect(vm.send('画一只猫'), isNull);
+      for (var i = 0; i < 100 && vm.messages.last.images.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      final reply = vm.messages.last;
+      expect(reply.images, hasLength(1));
+      expect(File(reply.images.single).readAsBytesSync(), [1, 2, 3]);
+      // 标注不带进提示词。
+      expect(
+        ((queued['prompt'] as Map)['6'] as Map)['inputs']['text'],
+        'a cat',
+      );
+      expect(vm.comfy.latestFor('a cat'), reply.images.single);
     });
 
     test('停止时报 canceled', () async {

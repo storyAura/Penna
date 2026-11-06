@@ -391,6 +391,7 @@ extension StudioContext on StudioViewModel {
       _draftFormatPrompt(cfg.glossLanguage),
       _skillPrompt(cfg),
       webSearchGuide,
+      _comfyPrompt,
       // 「画面规划」是默认的第一步,不靠模型自己想起来用。
       _planFirstPrompt,
       _characterPrompt,

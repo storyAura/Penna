@@ -25,11 +25,19 @@ class ComfyRunner extends ChangeNotifier {
   bool _running = false;
   String? _error;
   List<GeneratedImage> _images = const [];
+  ComfyProgress? _progress;
+  Object? _owner;
 
   /// 每次开始、停止加一,作废之前那次的结果。
   int _run = 0;
 
   bool get running => _running;
+
+  /// 正在出的这张进行到哪了(0 到 1);还在排队、或听不到进度时是 null。
+  ComfyProgress? get progress => _progress;
+
+  /// 正在出的这张是谁要的(对话里那条回复的时刻;工作台的按钮是 null)。
+  Object? get owner => _owner;
 
   /// 上一次出错的原因;成功或重新开始时清掉。
   String? get error => _error;
@@ -49,27 +57,44 @@ class ComfyRunner extends ChangeNotifier {
       _images.where((i) => i.prompt == prompt).firstOrNull?.path ??
       (any ? _images.firstOrNull?.path : null);
 
-  /// 用 [prompt] 出图。已经在出图时不理。
-  Future<void> generate(String prompt) async {
-    if (_running || prompt.trim().isEmpty) return;
+  /// 用 [prompt] 出图,返回出的图和出错的原因(停止了两个都是空的)。
+  /// 已经在出图时不出,报原因。[owner] 记着是谁要的,出图时界面据此显示进度。
+  Future<({List<GeneratedImage> images, String? error})> generate(
+    String prompt, {
+    Object? owner,
+  }) async {
+    const none = <GeneratedImage>[];
+    if (_running) return (images: none, error: tr('正在出另一张图'));
+    if (prompt.trim().isEmpty) {
+      return (images: none, error: tr('没有可出图的提示词'));
+    }
     final run = ++_run;
     _running = true;
     _error = null;
+    _progress = null;
+    _owner = owner;
     notifyListeners();
     final settings = config.config.comfy;
     final client = ComfyClient(
       settings.url,
       key: config.config.secrets[comfyKeyName] ?? '',
     );
+    var saved = <GeneratedImage>[];
+    String? error;
     try {
       final out = await client.run(
         settings.workflow,
         prompt,
         canceled: () => run != _run,
+        onProgress: (p) {
+          if (run != _run) return;
+          _progress = p;
+          notifyListeners();
+        },
       );
-      if (run != _run) return;
+      if (run != _run) return (images: none, error: null);
       final now = DateTime.now();
-      final saved = [
+      saved = [
         for (final image in out)
           (
             path: saveComfyImage(imageDir, image.name, image.bytes, now).path,
@@ -81,18 +106,19 @@ class ComfyRunner extends ChangeNotifier {
         [...saved.reversed, ..._images].take(_maxImages),
       );
     } on ComfyException catch (e) {
-      if (run == _run && !e.canceled) _error = e.message;
+      if (!e.canceled) error = e.message;
     } on FileSystemException catch (e) {
-      if (run == _run) _error = tr('图片没存上:{0}', [e.message]);
+      error = tr('图片没存上:{0}', [e.message]);
     } on Object catch (e) {
       // 没料到的错误只报类型,原文可能带着地址里的 Key。
-      if (run == _run) _error = tr('出图失败({0})', [e.runtimeType]);
-    } finally {
-      if (run == _run) {
-        _running = false;
-        notifyListeners();
-      }
+      error = tr('出图失败({0})', [e.runtimeType]);
     }
+    if (run != _run) return (images: none, error: null);
+    _running = false;
+    _owner = null;
+    _error = error;
+    notifyListeners();
+    return (images: saved, error: error);
   }
 
   /// 停止:ComfyUI 那边的单子在下一次问进度时撤掉。
@@ -100,6 +126,7 @@ class ComfyRunner extends ChangeNotifier {
     if (!_running) return;
     _run++;
     _running = false;
+    _owner = null;
     notifyListeners();
   }
 

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/chat_peek.dart';
+import '../../../core/harness/comfyui.dart';
 import '../../../core/harness/context_meter.dart';
 import '../../../core/harness/characters/character_dict.dart';
 import '../../../core/harness/characters/character_mentions.dart';
@@ -36,6 +37,7 @@ export 'comfy_runner.dart';
 
 part 'studio_auto_lookup.dart';
 part 'studio_chat.dart';
+part 'studio_comfy.dart';
 part 'studio_context.dart';
 part 'studio_draft.dart';
 part 'studio_history.dart';

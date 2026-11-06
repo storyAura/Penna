@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux-4F7CF7" alt="platform">
   <img src="https://img.shields.io/badge/Flutter-desktop-4F7CF7?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.13%2B-F26D7D?logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/version-1.0.3--261106--2--dev-F26D7D" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.3--261106--3--dev-F26D7D" alt="version">
   <img src="https://img.shields.io/badge/license-MIT-4F7CF7" alt="license">
 </p>
 
@@ -34,7 +34,7 @@ Penna 是面向文生图**正面提示词**的创作工具,覆盖撰写、修改
 - **区域控制工作台**:框选区域逐块描述,生成 MOSS-Image 布局 JSON;可排多格漫画页。
 - **本地反推**:内置 20 个 Tag 模型与 15 个看图模型,也可调用在线模型反推。
 - **标签与角色库**:内置约 7.6 万个 Danbooru 标签与 7.4 万个角色,Agent 写词前自动查询。
-- **ComfyUI 出图**:接入本机或云端的 ComfyUI,最终提示词一键出图,存档时自动生成预览图。
+- **ComfyUI 出图**:接入本机或云端的 ComfyUI,最终提示词一键出图并显示进度,Agent 可在对话中出图,存档时自动生成预览图。
 - **模型接入**:OpenAI 兼容接口、Google 接口与 Grok 账号登录,多个模型组成后备链。
 - **更多**:Skills、档案库、记事本、操作记录树、MCP、四种界面语言、深色模式、应用内更新。
 

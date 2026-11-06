@@ -272,6 +272,8 @@ extension StudioChat on StudioViewModel {
             if (!layoutOnly) {
               _deliverDraft();
               _checkTags();
+              // 成稿放好之后再出图:标签里没写提示词时用的是这页放好的成稿。
+              _deliverImage();
             }
             _deliverCharacters();
             // 透视在 _deliverLayout 里先放(没有布局时它自己放)。

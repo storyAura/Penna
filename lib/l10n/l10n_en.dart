@@ -1179,5 +1179,9 @@ const en = <String, String>{
   '出图失败({0})': 'Generation failed ({0})',
   '出图': 'Generate',
   '用 ComfyUI 出图': 'Generate with ComfyUI',
-  '出图中': 'Generating',
+  '正在出另一张图': 'Another image is being generated',
+  '没有可出图的提示词': 'No prompt to generate from',
+  '出图失败:{0}': 'Generation failed: {0}',
+  '排队中': 'Queued',
+  '出图中 · {0}%': 'Generating · {0}%',
 };

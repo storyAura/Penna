@@ -134,7 +134,8 @@ Penna uses ComfyUI as its image generation backend, talking to ComfyUI's built-i
 
 - **Connection**: enter the address in **Settings → ComfyUI**, `http://127.0.0.1:8188` by default; for a cloud ComfyUI enter its address and, when required, a key (sent as Bearer).
 - **Workflow**: a built-in text-to-image workflow is used by default, with the first model in ComfyUI. A JSON from ComfyUI's **Export (API)** can be imported instead: the prompt goes into the positive prompt box (found along the sampler's positive link, through FluxGuidance and BasicGuider); a box containing `{{prompt}}` takes precedence. The seed is randomized on every run.
-- **Generate**: **Generate** on the **Final prompt** card sends the current prompt to ComfyUI; results appear as thumbnails below the card and open full size on click.
+- **Generate**: **Generate** on the **Final prompt** card sends the current prompt to ComfyUI; a progress bar shows queueing and generation, and results appear as thumbnails below the card and open full size on click.
+- **Generate from chat**: ask the Agent for an image in chat (for example "show me one"); it generates from the current page's prompt or the prompt it just wrote, with progress and images shown below that reply.
 - **Image folder**: images are saved in `Documents\Penna\images` with names starting `Penna-`. The location can be changed in Settings, and existing images move with it.
 - **Previews**: on saving to the Archive, the newest image generated from that prompt (or the newest image overall) becomes a WebP preview; **Save series** adds previews only to pages that have generated images.
 

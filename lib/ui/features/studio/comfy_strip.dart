@@ -4,7 +4,7 @@ part of 'prompt_pane.dart';
 
 const _thumbHeight = 84.0;
 
-/// 「出图」按钮:把最终提示词交给 ComfyUI。出图时变成「停止」。
+/// 「出图」按钮:把最终提示词交给 ComfyUI。出图时变灰,停止在下面的进度条上。
 class _GenerateButton extends StatelessWidget {
   const _GenerateButton({required this.vm});
 
@@ -13,20 +13,15 @@ class _GenerateButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: vm.comfy,
-    builder: (context, _) => vm.comfy.running
-        ? PennaButton(
-            label: tr('停止'),
-            icon: Icons.stop_circle_outlined,
-            borderColor: PennaColors.border,
-            onPressed: vm.comfy.stop,
-          )
-        : PennaButton(
-            label: tr('出图'),
-            icon: Icons.brush_outlined,
-            tooltip: tr('用 ComfyUI 出图'),
-            borderColor: PennaColors.border,
-            onPressed: () => vm.comfy.generate(vm.finalPrompt),
-          ),
+    builder: (context, _) => PennaButton(
+      label: tr('出图'),
+      icon: Icons.brush_outlined,
+      tooltip: tr('用 ComfyUI 出图'),
+      borderColor: PennaColors.border,
+      onPressed: vm.comfy.running
+          ? null
+          : () => vm.comfy.generate(vm.finalPrompt),
+    ),
   );
 }
 
@@ -35,16 +30,6 @@ class _ComfyStrip extends StatelessWidget {
   const _ComfyStrip({required this.runner});
 
   final ComfyRunner runner;
-
-  Attachment _attachment(String path) {
-    final name = File(path).uri.pathSegments.last;
-    final ext = name.substring(name.lastIndexOf('.') + 1).toLowerCase();
-    return Attachment.saved(
-      name: name,
-      file: path,
-      mime: imageMimes[ext] ?? 'image/png',
-    );
-  }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -60,20 +45,7 @@ class _ComfyStrip extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (runner.running)
-              Row(
-                children: [
-                  const SizedBox.square(
-                    dimension: 12,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    tr('出图中'),
-                    style: TextStyle(fontSize: 12, color: PennaColors.slate500),
-                  ),
-                ],
-              ),
+            if (runner.running) ComfyProgressRow(runner: runner),
             if (error != null)
               SelectableText(
                 error,
@@ -101,7 +73,7 @@ class _ComfyStrip extends StatelessWidget {
   Widget _thumb(BuildContext context, String path) => MouseRegion(
     cursor: SystemMouseCursors.click,
     child: GestureDetector(
-      onTap: () => showImageViewer(context, _attachment(path)),
+      onTap: () => showImageViewer(context, comfyImageAttachment(path)),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(6),
         child: Image.file(

@@ -414,6 +414,7 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
         onAdoptLayout: _adoptLayout,
         onOpenLayout: widget.onOpenLayout,
         onReuseAttachment: _reuse,
+        comfy: widget.vm.comfy,
         streaming: widget.vm.isStreaming && last,
         onRetry: !widget.vm.isStreaming && last && !message.fromUser
             ? _retry

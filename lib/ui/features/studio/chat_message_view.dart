@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/characters/character_dict.dart';
 import '../../../core/harness/chat_peek.dart';
+import '../../../core/harness/comfyui.dart' show splitGenerate;
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
@@ -14,6 +15,7 @@ import '../../../data/services/skill_store.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'attachment_view.dart';
+import 'comfy_progress_view.dart';
 import 'layout_card.dart';
 import 'markdown_text.dart';
 import 'mention.dart';
@@ -70,10 +72,14 @@ class ChatMessageView extends StatelessWidget {
     this.onOption,
     this.onReuseAttachment,
     this.draftSections = const [],
+    this.comfy,
   });
 
   /// 当前页成稿的各段(标注 + 提示词开头)。回复问"转哪几段"时直接从这里列。
   final List<PickItem> draftSections;
+
+  /// 出图的进度:这条回复要的图正在出时显示在它下面。
+  final ComfyRunner? comfy;
 
   /// 用户点了回复里的一个选项;为 null 时选项只是灰的(不是最后一条回复,或正在生成)。
   final ValueChanged<String>? onOption;
@@ -159,12 +165,40 @@ class ChatMessageView extends StatelessWidget {
     );
   }
 
+  /// 这条回复出的图;正在出时是进度条。
+  List<Widget> _images(bool asked) {
+    final runner = comfy;
+    return [
+      if (asked && runner != null && !streaming)
+        ListenableBuilder(
+          listenable: runner,
+          builder: (context, _) => runner.owner == message.time
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: ComfyProgressRow(runner: runner),
+                )
+              : const SizedBox.shrink(),
+        ),
+      if (message.images.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        AttachmentStrip(
+          attachments: [
+            for (final p in message.images) comfyImageAttachment(p),
+          ],
+          onReuse: onReuseAttachment,
+        ),
+      ],
+    ];
+  }
+
   /// Agent 回复的正文:说的话、新成稿卡片,生成完后再加一排操作。
   List<Widget> _reply(BuildContext context) {
     final m = message;
     // 先拆新 Skill:它正文里举例用的成稿标签不能被当成成稿。
+    // 出图标签由程序交给 ComfyUI,聊天里只留进度和出好的图。
+    final generate = splitGenerate(m.text);
     final peeked = splitPeek(
-      splitPeek(m.text, readSideChat).prose,
+      splitPeek(generate.prose, readSideChat).prose,
       readMainChat,
     ).prose;
     final tools = splitLocalTools(
@@ -241,6 +275,7 @@ class ChatMessageView extends StatelessWidget {
           newSkill == null &&
           laid.json == null &&
           picks.isEmpty &&
+          !generate.asked &&
           !m.stopped)
         // 以前只画一个省略号:模型写了程序没接住的标签时,用户看不出发生了什么。
         _RawReply(m.text),
@@ -284,6 +319,7 @@ class ChatMessageView extends StatelessWidget {
           ),
         ),
       ],
+      ..._images(generate.asked),
       // 给用户点的选项:点一下就当成他的回答发出去。
       // 这条回复已经把成稿写出来了就不显示:没有什么还要他先点头的。
       // 问挑哪几段,当前页却一段都没有:说一声,让用户自己打字回答。

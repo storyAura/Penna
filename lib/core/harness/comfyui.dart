@@ -5,6 +5,9 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import '../../l10n/l10n.dart';
+import 'comfyui_progress.dart';
+
+export 'comfyui_progress.dart' show ComfyProgress;
 
 // 把 ComfyUI 当出图的后端:直接用它自带的 HTTP 接口,不用装插件,也不走 MCP。
 // POST /prompt 排队 → 轮询 GET /history/{id} → GET /view 下载图片。
@@ -16,6 +19,34 @@ const comfyPromptMark = '{{prompt}}';
 
 /// 冷启动要先把几个 GB 的模型读进显存,等久一点。
 const comfyMaxWait = Duration(minutes: 10);
+
+/// Agent 要出图时在回复里写的标签。
+const generateImageTag = 'generate-image';
+
+/// 拆出回复里的 `<generate-image>…</generate-image>`(也认 `<generate-image/>`):
+/// [asked] 是写了这个标签,[prompt] 是里面写的提示词(空的是用眼前这页的最终提示词)。
+/// 流式时半截的标签先不显示。
+({String prose, bool asked, String prompt}) splitGenerate(String reply) {
+  final full = RegExp(
+    '<$generateImageTag\\s*/>|<$generateImageTag\\s*>([\\s\\S]*?)</$generateImageTag>',
+  );
+  final found = full.allMatches(reply).toList();
+  var prose = reply.replaceAll(full, '');
+  const open = '<$generateImageTag';
+  final half = prose.indexOf(open);
+  if (half >= 0) prose = prose.substring(0, half);
+  for (var n = open.length - 1; n > 1; n--) {
+    if (prose.endsWith(open.substring(0, n))) {
+      prose = prose.substring(0, prose.length - n);
+      break;
+    }
+  }
+  return (
+    prose: prose.trim(),
+    asked: found.isNotEmpty,
+    prompt: found.isEmpty ? '' : (found.last[1] ?? '').trim(),
+  );
+}
 
 /// 给用户看的错误;不含 Key。
 class ComfyException implements Exception {
@@ -326,10 +357,12 @@ class ComfyClient {
 
   /// 用 [workflow](导入的 API 格式全文;空的用内置文生图)出图,返回出的每一张。
   /// [canceled] 返回 true 时把单子从队列里撤掉(正在跑的就打断),抛 canceled 的 [ComfyException]。
+  /// [onProgress] 报整单的进度(0 到 1),听不到 WebSocket 时不报。
   Future<List<ComfyImage>> run(
     String workflow,
     String prompt, {
     bool Function()? canceled,
+    void Function(ComfyProgress)? onProgress,
   }) async {
     final Map<String, Object?> base;
     if (workflow.trim().isEmpty) {
@@ -339,13 +372,33 @@ class ComfyClient {
     } else {
       base = parseApiWorkflow(workflow);
     }
-    final queued = await _json('POST', '/prompt', {
-      'prompt': prepareWorkflow(base, prompt),
-      'client_id': 'penna',
-    });
-    final id = queued is Map ? queued['prompt_id'] : null;
-    if (id is! String) throw ComfyException(tr('ComfyUI 没有返回任务编号'));
-    final outputs = await _wait(id, canceled);
+    final prepared = prepareWorkflow(base, prompt);
+    // 进度按 client_id 发到对应的 WebSocket 上:先连上再排队。
+    final clientId = 'penna-${Random().nextInt(1 << 32)}';
+    String? id;
+    final stopWatching = onProgress == null
+        ? () {}
+        : await watchComfyProgress(
+            _root,
+            clientId,
+            prepared,
+            promptId: () => id,
+            onProgress: onProgress,
+            key: key,
+          );
+    final Object? outputs;
+    try {
+      final queued = await _json('POST', '/prompt', {
+        'prompt': prepared,
+        'client_id': clientId,
+      });
+      final got = queued is Map ? queued['prompt_id'] : null;
+      if (got is! String) throw ComfyException(tr('ComfyUI 没有返回任务编号'));
+      id = got;
+      outputs = await _wait(got, canceled);
+    } finally {
+      stopWatching();
+    }
     final files = pickOutputImages(outputs);
     if (files.isEmpty) {
       throw ComfyException(tr('工作流跑完了,但没有出图:请确认里面有保存图像的节点'));
