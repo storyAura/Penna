@@ -125,6 +125,27 @@ class _ComfySectionState extends State<ComfySection> {
           ),
         ),
         gap,
+        // Agent 写了出图标签时:直接出,还是在回复下面放一个「出图」等用户点。
+        PennaCard(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Expanded(child: Text(tr('Agent 出图'), style: titleStyle)),
+              for (final (auto, label) in [
+                (true, tr('直接出图')),
+                (false, tr('手动确认')),
+              ]) ...[
+                const SizedBox(width: 6),
+                PennaChip(
+                  label: label,
+                  selected: _comfy.autoGenerate == auto,
+                  onTap: () => _put(_comfy.copyWith(autoGenerate: auto)),
+                ),
+              ],
+            ],
+          ),
+        ),
+        gap,
         PennaCard(
           padding: const EdgeInsets.all(14),
           child: Column(

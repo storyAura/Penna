@@ -553,6 +553,55 @@ void main() {
       expect(vm.messages, isEmpty);
     });
 
+    test('手动确认:回复说完不出图,点「出图」才出;成稿卡片上的用那份成稿', () async {
+      final service = tempConfig();
+      service.update(
+        service.config
+            .putLlm(
+              const LlmProfile(
+                id: 'a',
+                name: 'A',
+                baseUrl: 'http://a',
+                model: 'm',
+              ),
+            )
+            .copyWith(comfy: _at(server.port).copyWith(autoGenerate: false)),
+      );
+      final vm = StudioViewModel(
+        config: service,
+        streamChat: (_) =>
+            Stream.value('好的<generate-image>a cat</generate-image>'),
+      );
+      expect(vm.send('出图'), isNull);
+      await pumpEventQueue();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(vm.comfy.running, isFalse);
+      expect(vm.messages.last.images, isEmpty);
+
+      // 回复下面的「出图」:用标签里写的提示词。
+      vm.generateReply(vm.messages.last);
+      for (var i = 0; i < 100 && vm.messages.last.images.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(vm.messages.last.images, hasLength(1));
+      expect(
+        ((queued['prompt'] as Map)['6'] as Map)['inputs']['text'],
+        'a cat',
+      );
+
+      // 成稿卡片上的「出图」:用那份成稿,出的图接在同一条回复下面。
+      polls = 0;
+      vm.generateReply(vm.messages.last, prompt: 'a dog');
+      for (var i = 0; i < 100 && vm.messages.last.images.length < 2; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(vm.messages.last.images, hasLength(2));
+      expect(
+        ((queued['prompt'] as Map)['6'] as Map)['inputs']['text'],
+        'a dog',
+      );
+    });
+
     test('停止时报 canceled', () async {
       final client = ComfyClient('http://127.0.0.1:${server.port}')
         ..poll = Duration.zero;

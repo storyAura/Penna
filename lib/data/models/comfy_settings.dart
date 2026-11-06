@@ -35,6 +35,7 @@ class ComfySettings {
     this.flowId = builtinWorkflowId,
     this.loraPresets = const [],
     this.imageDir = '',
+    this.autoGenerate = true,
   });
 
   /// 读设置。旧版只有一个地址(`url`)和一个工作流(`workflow`、`workflowName`),照样读成列表。
@@ -100,6 +101,7 @@ class ComfySettings {
             ),
       ]),
       imageDir: m['imageDir'] as String? ?? '',
+      autoGenerate: m['autoGenerate'] as bool? ?? true,
     );
   }
 
@@ -117,6 +119,9 @@ class ComfySettings {
 
   /// 出的图存在哪;空的是「文档\Penna\images」。
   final String imageDir;
+
+  /// Agent 写了出图标签就直接出;关掉时回复下面出一个「出图」按钮,用户点了才出。
+  final bool autoGenerate;
 
   /// 眼前那一台(id 对不上时用第一台)。
   ComfyServer get server =>
@@ -146,6 +151,7 @@ class ComfySettings {
         },
     ],
     'imageDir': imageDir,
+    'autoGenerate': autoGenerate,
   };
 
   ComfySettings copyWith({
@@ -155,6 +161,7 @@ class ComfySettings {
     String? flowId,
     List<LoraPreset>? loraPresets,
     String? imageDir,
+    bool? autoGenerate,
   }) => ComfySettings(
     servers: servers == null ? this.servers : List.unmodifiable(servers),
     serverId: serverId ?? this.serverId,
@@ -164,6 +171,7 @@ class ComfySettings {
         ? this.loraPresets
         : List.unmodifiable(loraPresets),
     imageDir: imageDir ?? this.imageDir,
+    autoGenerate: autoGenerate ?? this.autoGenerate,
   );
 
   /// 新增或替换一台(按 id)。

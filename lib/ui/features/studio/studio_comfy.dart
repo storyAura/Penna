@@ -34,60 +34,83 @@ extension StudioComfy on StudioViewModel {
   /// 写给副聊天的系统提示也带上(副聊天同样能出图、换工作流)。
   String get comfyGuide => layoutOnly ? '' : _comfyPrompt;
 
+  /// 改主聊天里 [at] 那条回复(按时刻找,出图期间对话里可能又多了几条);
+  /// 已经不在眼前的对话里(换了对话)就不改,图还在出图列表和文件夹里。
+  void Function(ChatMessage Function(ChatMessage)) _updateAt(DateTime at) =>
+      (change) {
+        final i = _messages.indexWhere((m) => !m.fromUser && m.time == at);
+        if (i < 0) return;
+        _messages = List.unmodifiable([
+          ..._messages.take(i),
+          change(_messages[i]),
+          ..._messages.skip(i + 1),
+        ]);
+        _changed();
+      };
+
   /// 主聊天的回复正常结束时:照它写的 ComfyUI 标签做事,结果记在这条回复上。
   void _deliverComfy() {
     if (_messages.isEmpty) return;
     final reply = _messages.last;
-    deliverComfy(reply.text, reply.time, (change) {
-      final i = _messages.indexWhere(
-        (m) => !m.fromUser && m.time == reply.time,
-      );
-      // 那条回复已经不在眼前的对话里(换了对话)就不贴,图还在出图列表和文件夹里。
-      if (i < 0) return;
-      _messages = List.unmodifiable([
-        ..._messages.take(i),
-        change(_messages[i]),
-        ..._messages.skip(i + 1),
-      ]);
-      _changed();
-    });
+    deliverComfy(reply.text, reply.time, _updateAt(reply.time));
   }
 
+  /// 主聊天里点了「出图」(回复下面、成稿卡片上):[prompt] 见 [generateFor]。
+  void generateReply(ChatMessage reply, {String? prompt}) => generateFor(
+    reply.text,
+    reply.time,
+    _updateAt(reply.time),
+    prompt: prompt,
+  );
+
   /// 回复里的 ComfyUI 标签(主聊天、副聊天共用):写了 `<comfy-workflow>` 先换工作流,
-  /// 换不成就不出图;写了 `<generate-image>` 就出图,不等它(要几十秒),出完贴回 [at] 那条回复。
-  /// [update] 改那条回复(按时刻找,出图期间对话里可能又多了几条)。
+  /// 换不成就不出图;写了 `<generate-image>` 就出图(设置成手动确认时等用户点回复下面的「出图」)。
+  /// [update] 改那条回复。
   void deliverComfy(
     String reply,
     DateTime at,
     void Function(ChatMessage Function(ChatMessage)) update,
   ) {
     if (layoutOnly) return;
-    void note(String text) => update(
-      (m) => m.copyWith(toolSummary: [?m.toolSummary, text].join(' · ')),
-    );
     final prose = splitNewSkill(reply).prose;
     final flows = splitToolTag(prose, comfyWorkflowTag).queries;
     if (flows.isNotEmpty) {
       final done = comfy.switchWorkflow(flows.last);
-      note(
+      _noteOn(
+        update,
         done.flow != null
             ? tr('已换工作流:{0}', [done.flow])
             : tr('没换成工作流:{0}', [done.problem]),
       );
       if (done.flow == null) return;
     }
-    final asked = splitGenerate(prose);
-    if (!asked.asked) return;
-    // 标签里没写就用眼前这页(这条回复的成稿已经放上去了)。
-    // ponytail: 成稿成了待确认改动时用的还是改之前的;要求模型这时把提示词写进标签。
-    final prompt = asked.prompt.isNotEmpty
-        ? stripSectionLabels(asked.prompt)
-        : finalPrompt;
+    if (!splitGenerate(prose).asked || !config.config.comfy.autoGenerate) {
+      return;
+    }
+    generateFor(reply, at, update);
+  }
+
+  /// 出图,不等它(要几十秒),出完贴回 [at] 那条回复,出错记在它上面。
+  /// [prompt] 不给就用回复里出图标签写的,标签里没写就用眼前这页的最终提示词
+  /// (这条回复的成稿已经放上去了)。
+  // ponytail: 成稿成了待确认改动时用的还是改之前的;要求模型这时把提示词写进标签。
+  void generateFor(
+    String reply,
+    DateTime at,
+    void Function(ChatMessage Function(ChatMessage)) update, {
+    String? prompt,
+  }) {
+    final asked = splitGenerate(splitNewSkill(reply).prose);
+    final text =
+        prompt ??
+        (asked.prompt.isNotEmpty
+            ? stripSectionLabels(asked.prompt)
+            : finalPrompt);
     unawaited(() async {
-      final done = await comfy.generate(prompt, owner: at);
+      final done = await comfy.generate(text, owner: at);
       if (_disposed) return;
       if (done.error != null) {
-        note(tr('出图失败:{0}', [done.error]));
+        _noteOn(update, tr('出图失败:{0}', [done.error]));
       } else if (done.images.isNotEmpty) {
         update(
           (m) => m.copyWith(
@@ -97,4 +120,11 @@ extension StudioComfy on StudioViewModel {
       }
     }());
   }
+
+  void _noteOn(
+    void Function(ChatMessage Function(ChatMessage)) update,
+    String text,
+  ) => update(
+    (m) => m.copyWith(toolSummary: [?m.toolSummary, text].join(' · ')),
+  );
 }

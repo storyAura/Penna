@@ -299,20 +299,30 @@ class SideChat extends ChangeNotifier {
     _seen = _workspace;
     // 出图、换工作流和主聊天一样,图贴在副聊天这条回复下面(成稿放好之后再出)。
     final reply = _messages.last;
-    main.deliverComfy(reply.text, reply.time, (change) {
-      final i = _messages.indexWhere(
-        (m) => !m.fromUser && m.time == reply.time,
-      );
-      if (i < 0) return;
-      _messages = List.unmodifiable([
-        ..._messages.take(i),
-        change(_messages[i]),
-        ..._messages.skip(i + 1),
-      ]);
-      main.sideChanged();
-      notifyListeners();
-    });
+    main.deliverComfy(reply.text, reply.time, _updateAt(reply.time));
   }
+
+  /// 改 [at] 那条回复(按时刻找,出图期间可能又多了几条);不在了就不改。
+  void Function(ChatMessage Function(ChatMessage)) _updateAt(DateTime at) =>
+      (change) {
+        final i = _messages.indexWhere((m) => !m.fromUser && m.time == at);
+        if (i < 0) return;
+        _messages = List.unmodifiable([
+          ..._messages.take(i),
+          change(_messages[i]),
+          ..._messages.skip(i + 1),
+        ]);
+        main.sideChanged();
+        notifyListeners();
+      };
+
+  /// 点了「出图」(回复下面、成稿卡片上):和主聊天的一样,图贴在副聊天这条回复下面。
+  void generateReply(ChatMessage reply, {String? prompt}) => main.generateFor(
+    reply.text,
+    reply.time,
+    _updateAt(reply.time),
+    prompt: prompt,
+  );
 
   /// 区域控制那边:写完的 `<layout>` 和主聊天的一样放到画板上(照 page 新开一页、
   /// 另起系列并换过去,接上本系列的画风和角色卡),记一笔在这条回复上。

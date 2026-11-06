@@ -76,6 +76,7 @@ class ChatMessageView extends StatelessWidget {
     this.onReuseAttachment,
     this.draftSections = const [],
     this.comfy,
+    this.onGenerate,
   });
 
   /// 当前页成稿的各段(标注 + 提示词开头)。回复问"转哪几段"时直接从这里列。
@@ -83,6 +84,10 @@ class ChatMessageView extends StatelessWidget {
 
   /// 出图的进度:这条回复要的图正在出时显示在它下面。
   final ComfyRunner? comfy;
+
+  /// 点了「出图」:回复下面的(null,用出图标签里的提示词)或成稿卡片上的(那份成稿)。
+  /// 为 null 时没有这些按钮(区域控制的对话)。
+  final void Function(String? prompt)? onGenerate;
 
   /// 用户点了回复里的一个选项;为 null 时选项只是灰的(不是最后一条回复,或正在生成)。
   final ValueChanged<String>? onOption;
@@ -169,19 +174,11 @@ class ChatMessageView extends StatelessWidget {
   }
 
   /// 这条回复出的图;正在出时是进度条。
+  /// 写了出图标签([asked])的回复下面:没在出图时是「出图」按钮
+  /// (设成手动确认时要点它才出;出过了是「再出一张」)。
   List<Widget> _images(bool asked) {
     final runner = comfy;
     return [
-      if (asked && runner != null && !streaming)
-        ListenableBuilder(
-          listenable: runner,
-          builder: (context, _) => runner.owner == message.time
-              ? Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: ComfyProgressRow(runner: runner),
-                )
-              : const SizedBox.shrink(),
-        ),
       if (message.images.isNotEmpty) ...[
         const SizedBox(height: 10),
         AttachmentStrip(
@@ -192,6 +189,32 @@ class ChatMessageView extends StatelessWidget {
           height: _generatedHeight,
         ),
       ],
+      if (runner != null && !streaming)
+        ListenableBuilder(
+          listenable: runner,
+          builder: (context, _) => runner.owner == message.time
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: ComfyProgressRow(runner: runner),
+                )
+              : asked && onGenerate != null
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: PennaButton(
+                      label: message.images.isEmpty ? tr('出图') : tr('再出一张'),
+                      icon: Icons.brush_outlined,
+                      background: PennaColors.primary,
+                      foreground: Colors.white,
+                      onPressed: runner.running
+                          ? null
+                          : () => onGenerate!(null),
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
     ];
   }
 
@@ -299,6 +322,9 @@ class ChatMessageView extends StatelessWidget {
             writing: streaming && i == drafts.length - 1,
             status: draftStatus(draft.text),
             onAdopt: () => onAdoptDraft(draft),
+            onGenerate: onGenerate == null
+                ? null
+                : () => onGenerate!(stripSectionLabels(draft.text)),
           ),
         ),
       ],
@@ -571,197 +597,6 @@ class _TypingDotsState extends State<TypingDots>
               ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// 回复里另出的新成稿:分段列出,一键放到左侧等用户确认。
-class _DraftCard extends StatefulWidget {
-  const _DraftCard({
-    required this.draft,
-    required this.writing,
-    required this.status,
-    required this.onAdopt,
-  });
-
-  final AgentDraft draft;
-
-  /// 还在生成:先不让放。
-  final bool writing;
-  final DraftStatus status;
-  final VoidCallback onAdopt;
-
-  @override
-  State<_DraftCard> createState() => _DraftCardState();
-}
-
-class _DraftCardState extends State<_DraftCard> {
-  /// 用户自己点过折叠或展开;没点过就按状态来。
-  bool? _open;
-
-  AgentDraft get draft => widget.draft;
-  bool get writing => widget.writing;
-  DraftStatus get status => widget.status;
-  VoidCallback get onAdopt => widget.onAdopt;
-
-  @override
-  Widget build(BuildContext context) {
-    // 已经送到左侧的收起来(内容在左边看),还没送的、正在写的摊开。
-    final open = _open ?? (writing || status == DraftStatus.ready);
-    final (label, icon) = switch (status) {
-      _ when writing => (tr('正在写'), Icons.edit_outlined),
-      // 被打断或出错的半截成稿不让放,免得把残缺的内容盖到成稿上。
-      _ when !draft.complete => (tr('不完整'), Icons.error_outline),
-      DraftStatus.ready => (tr('放到成稿'), Icons.keyboard_double_arrow_left),
-      DraftStatus.pending => (tr('待确认'), Icons.hourglass_empty),
-      DraftStatus.applied => (tr('已在成稿'), Icons.check),
-    };
-    final ready = !writing && draft.complete && status == DraftStatus.ready;
-    return AnimatedContainer(
-      duration: Motion.base,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: PennaColors.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: ready ? PennaColors.primaryBorder : PennaColors.border,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              // 点标题这一截折叠或展开。
-              Expanded(
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => setState(() => _open = !open),
-                    child: Row(
-                      children: [
-                        AnimatedRotation(
-                          turns: open ? 0.25 : 0,
-                          duration: Motion.base,
-                          child: Icon(
-                            Icons.chevron_right,
-                            size: 16,
-                            color: PennaColors.primary,
-                          ),
-                        ),
-                        const SizedBox(width: 2),
-                        Flexible(
-                          child: Text(
-                            [
-                              switch (draft.page) {
-                                null => tr('新成稿'),
-                                final page when int.tryParse(page) != null =>
-                                  tr('新成稿 · 第 {0} 页', [page]),
-                                _ => tr('新成稿 · 新的一页'),
-                              },
-                              ?draft.name,
-                            ].where((s) => s.isNotEmpty).join(' · '),
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: PennaColors.primary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              AnimatedSwitcher(
-                duration: Motion.base,
-                transitionBuilder: (child, animation) => ScaleTransition(
-                  scale: animation,
-                  child: FadeTransition(opacity: animation, child: child),
-                ),
-                child: PennaButton(
-                  key: ValueKey(label),
-                  label: label,
-                  icon: icon,
-                  background: PennaColors.primary,
-                  foreground: Colors.white,
-                  onPressed: ready ? onAdopt : null,
-                ),
-              ),
-            ],
-          ),
-          // 一段一段长出来,卡片跟着平滑变高。
-          AnimatedSize(
-            duration: Motion.base,
-            curve: Motion.swift,
-            alignment: Alignment.topCenter,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (!open) const SizedBox(width: double.infinity),
-                // 收起时各段的标注竖着列一行一个,当摘要。
-                if (!open)
-                  for (final l in draft.sections.map((s) => s.label))
-                    if (l.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 18, top: 4),
-                        child: Text(
-                          '·  $l',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: PennaColors.slate500,
-                          ),
-                        ),
-                      ),
-                for (final s
-                    in open ? draft.sections : const <DraftSection>[]) ...[
-                  const SizedBox(height: 8),
-                  PennaCard(
-                    color: PennaColors.slate50,
-                    borderColor: PennaColors.slate100,
-                    radius: 6,
-                    padding: const EdgeInsets.all(8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (s.label.isNotEmpty) ...[
-                          Text(
-                            s.label,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: PennaColors.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                        ],
-                        SelectableText(
-                          contextMenuBuilder: pennaTextMenu,
-                          s.text,
-                          style: monoStyle.copyWith(fontSize: 12),
-                        ),
-                        if (s.zh.isNotEmpty)
-                          Text(
-                            s.zh,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              height: 1.5,
-                              color: PennaColors.slate400,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -1216,4 +1216,8 @@ const en = <String, String>{
   '复制提示词': 'Copy prompt',
   '{0} 张 · 读自 {1}': '{0} images · from {1}',
   'ComfyUI 里还没有出过的图': 'No images in ComfyUI yet',
+  'Agent 出图': 'Agent generation',
+  '直接出图': 'Generate right away',
+  '手动确认': 'Confirm first',
+  '再出一张': 'Generate again',
 };
