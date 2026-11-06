@@ -9,6 +9,7 @@ import 'package:penna/core/harness/providers/llm_http.dart';
 import 'package:penna/core/harness/comfyui_progress.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/comfy_images.dart';
+import 'package:penna/ui/features/studio/comfy_progress_view.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 
 import 'fixtures.dart';
@@ -129,8 +130,26 @@ void main() {
     expect(ComfySettings.fromJson(null).flow, isNull);
     final again = ComfySettings.fromJson(jsonDecode(jsonEncode(old.toJson())));
     expect(again.toJson(), old.toJson());
+    // 选中的 id 对不上时用第一个;删掉眼前那个就换到剩下的第一个。
+    final two = const ComfySettings(flowId: 'gone')
+        .putFlow((id: 'a', name: 'A', text: '{}'))
+        .putFlow((id: 'b', name: 'B', text: '{}'));
+    expect(two.flow?.id, 'a');
+    expect(two.copyWith(flowId: 'b').removeFlow('b').flow?.id, 'a');
+    expect(two.removeFlow('a').removeFlow('b').flow, isNull);
     // 本机那台的 Key 沿用旧键名。
     expect(comfyKeyName(comfyLocalId), 'comfy.key');
+  });
+
+  test('同一张图每次拿到的是同一个附件:重建界面时不重新读、不闪', () {
+    expect(
+      identical(
+        comfyImageAttachment('a/x.png'),
+        comfyImageAttachment('a/x.png'),
+      ),
+      isTrue,
+    );
+    expect(comfyImageAttachment('a/x.webp').mime, 'image/webp');
   });
 
   test('只认 API 格式', () {
@@ -340,38 +359,42 @@ void main() {
       expect(vm.comfy.latestFor('a cat'), reply.images.single);
     });
 
-    test('测连接、读名单;按名字或模型换工作流;内置的改过后另存一份;LoRA 配置', () async {
+    test('测连接、读名单;内置的改过后另存一份;按名字或模型换工作流;LoRA 配置', () async {
       final service = tempConfig();
-      service.update(
-        service.config.copyWith(
-          comfy: _at(server.port).putFlow((
-            id: 'f2',
-            name: 'SDXL 二采',
-            text: jsonEncode(defaultWorkflow('sdxl/m2.safetensors')),
-          )),
-        ),
-      );
+      service.update(service.config.copyWith(comfy: _at(server.port)));
       final runner = ComfyRunner(service);
       await runner.check(full: true);
       expect(runner.status?.connected, isTrue);
       expect(runner.status?.version, '9.9');
       expect(runner.loraOptions, ['style.safetensors']);
-      expect(runner.workflowName, '内置 · 文生图');
-      expect(runner.flowChoices.map((f) => f.name), ['内置 · 文生图', 'SDXL 二采']);
-      // 按它用的模型找:去掉文件夹和后缀也认。
-      expect(runner.switchWorkflow('M2').flow, 'SDXL 二采');
-      expect(service.config.comfy.flowId, 'f2');
-      expect(runner.switchWorkflow('内置').flow, '内置 · 文生图');
-      expect(runner.switchWorkflow('nope').problem, contains('nope'));
+      // 一个都没导入:只有内置文生图。
+      expect(runner.flowChoices.map((f) => f.name), ['内置 · 文生图']);
 
       // 内置的加了 LoRA:另存一份并换过去,名字照旧。
       expect(
         runner.edit((wf) => addLora(wf, 'style.safetensors', 0.7)),
         isNull,
       );
-      expect(service.config.comfy.flows, hasLength(2));
+      expect(service.config.comfy.flows, hasLength(1));
       expect(runner.workflowName, '内置 · 文生图');
       expect(loraSlots(runner.workflow!).single.strength, 0.7);
+
+      // 导入了别的:下拉里只有导入的,没有现拼的内置文生图。
+      service.update(
+        service.config.copyWith(
+          comfy: service.config.comfy.putFlow((
+            id: 'f2',
+            name: 'SDXL 二采',
+            text: jsonEncode(defaultWorkflow('sdxl/m2.safetensors')),
+          )),
+        ),
+      );
+      expect(runner.flowChoices.map((f) => f.name), ['内置 · 文生图', 'SDXL 二采']);
+      // 按它用的模型找:去掉文件夹和后缀也认。
+      expect(runner.switchWorkflow('M2').flow, 'SDXL 二采');
+      expect(runner.flowId, 'f2');
+      expect(runner.switchWorkflow('内置').flow, '内置 · 文生图');
+      expect(runner.switchWorkflow('nope').problem, contains('nope'));
 
       // 存一套,改掉,再用回那一套。
       expect(runner.saveLoraPreset('柔和'), isNull);
@@ -396,11 +419,17 @@ void main() {
               ),
             )
             .copyWith(
-              comfy: _at(server.port).putFlow((
-                id: 'f2',
-                name: 'SDXL 二采',
-                text: jsonEncode(defaultWorkflow('sdxl/m2.safetensors')),
-              )),
+              comfy: _at(server.port)
+                  .putFlow((
+                    id: 'f1',
+                    name: 'Moss',
+                    text: jsonEncode(defaultWorkflow('m.safetensors')),
+                  ))
+                  .putFlow((
+                    id: 'f2',
+                    name: 'SDXL 二采',
+                    text: jsonEncode(defaultWorkflow('sdxl/m2.safetensors')),
+                  )),
             ),
       );
       final replies = [
@@ -422,8 +451,9 @@ void main() {
       await pumpEventQueue();
       // 系统提示里有每个工作流和它用的模型。
       final system = seen.single.messages.first['content']!;
-      expect(system, contains('- 内置 · 文生图(眼前用的):m.safetensors'));
+      expect(system, contains('- Moss(眼前用的):m.safetensors'));
       expect(system, contains('- SDXL 二采:sdxl/m2.safetensors'));
+      expect(system, isNot(contains('内置 · 文生图')));
       expect(vm.messages.last.toolSummary, contains('没换成工作流'));
       expect(vm.comfy.running, isFalse);
 

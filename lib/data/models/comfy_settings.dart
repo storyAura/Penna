@@ -6,7 +6,7 @@ const comfyDefaultUrl = 'http://127.0.0.1:8188';
 /// 新装时那一台(本机)的 id;它的 Key 沿用最早只有一台时的键名。
 const comfyLocalId = 'local';
 
-/// 内置文生图在工作流下拉里的 id(它不存全文,用的时候按第一个模型现拼)。
+/// 内置文生图的 id:一个工作流都没导入时才用它(不存全文,用的时候按第一个模型现拼)。
 const builtinWorkflowId = '';
 
 /// 一台 ComfyUI 的 Key 在 `AppConfig.secrets` 里的键(给云端前面的反向代理用,本机的不用填)。
@@ -122,8 +122,9 @@ class ComfySettings {
   ComfyServer get server =>
       servers.where((s) => s.id == serverId).firstOrNull ?? servers.first;
 
-  /// 眼前的工作流;内置文生图(或 id 对不上)是 null。
-  ComfyFlow? get flow => flows.where((f) => f.id == flowId).firstOrNull;
+  /// 眼前的工作流;id 对不上时用第一个。一个都没导入时是 null(用内置文生图)。
+  ComfyFlow? get flow =>
+      flows.where((f) => f.id == flowId).firstOrNull ?? flows.firstOrNull;
 
   Map<String, Object?> toJson() => {
     'servers': [
@@ -192,14 +193,17 @@ class ComfySettings {
         : [...flows, flow],
   );
 
-  /// 删掉一个工作流;删的是眼前那个就回到内置文生图。
-  ComfySettings removeFlow(String id) => copyWith(
-    flows: [
+  /// 删掉一个工作流;删的是眼前那个就换到剩下的第一个(都删了用内置文生图)。
+  ComfySettings removeFlow(String id) {
+    final rest = [
       for (final f in flows)
         if (f.id != id) f,
-    ],
-    flowId: flowId == id ? builtinWorkflowId : flowId,
-  );
+    ];
+    return copyWith(
+      flows: rest,
+      flowId: flowId == id ? rest.firstOrNull?.id ?? builtinWorkflowId : flowId,
+    );
+  }
 
   /// 存一套 LoRA 配置;同名的换掉。
   ComfySettings putLoraPreset(LoraPreset preset) => copyWith(

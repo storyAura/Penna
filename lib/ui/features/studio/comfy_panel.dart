@@ -45,7 +45,8 @@ class ComfyPanel extends StatelessWidget {
     final wf = runner.workflow;
     final models = wf == null ? const <ModelSlot>[] : modelSlots(wf);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
+      // 底下多留一截:窗口右下角盖着一行版本号。
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 32),
       children: [
         _heading('ComfyUI'),
         _Menu<String>(
@@ -75,7 +76,7 @@ class ComfyPanel extends StatelessWidget {
           items: [
             for (final f in runner.flowChoices) (value: f.id, label: f.name),
           ],
-          selected: comfy.flowId,
+          selected: runner.flowId,
           onSelected: runner.selectFlow,
         ),
         for (final m in models)
@@ -124,7 +125,7 @@ class ComfyPanel extends StatelessWidget {
           },
         ),
       ),
-      // 存好的几套 LoRA:点一套就照它开关、改权重;最后一项把眼前的存成一套。
+      // 存好的几套 LoRA:点一套就照它开关、改权重;最后一项「新建」把眼前的存成一套。
       _Menu<String>(
         leading: Icon(
           Icons.layers_outlined,
@@ -134,7 +135,7 @@ class ComfyPanel extends StatelessWidget {
         label: tr('LoRA 配置'),
         items: [
           for (final p in comfy.loraPresets) (value: p.name, label: p.name),
-          (value: '', label: tr('把眼前的存成一套…')),
+          (value: '', label: tr('新建')),
         ],
         onSelected: (name) async {
           if (name.isNotEmpty) {

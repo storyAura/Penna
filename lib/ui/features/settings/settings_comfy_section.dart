@@ -143,16 +143,15 @@ class _ComfySectionState extends State<ComfySection> {
                 ],
               ),
               const SizedBox(height: 6),
-              _FlowRow(
-                name: tr(builtinWorkflowName),
-                selected: _comfy.flowId == builtinWorkflowId,
-                onSelect: () =>
-                    _put(_comfy.copyWith(flowId: builtinWorkflowId)),
-              ),
+              if (_comfy.flows.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(tr('还没导入,出图用内置文生图'), style: hintStyle),
+                ),
               for (final flow in _comfy.flows)
                 _FlowRow(
                   name: tr(flow.name),
-                  selected: _comfy.flowId == flow.id,
+                  selected: _comfy.flow?.id == flow.id,
                   onSelect: () => _put(_comfy.copyWith(flowId: flow.id)),
                   onRemove: () => _removeFlow(flow),
                 ),

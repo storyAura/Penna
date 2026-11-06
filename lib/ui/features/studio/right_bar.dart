@@ -46,6 +46,9 @@ class RightBar extends StatefulWidget {
 
 class _RightBarState extends State<RightBar> {
   _Panel? _open;
+
+  /// 面板里画的是哪个:收起的动画播完才清掉,收的过程中内容还在。
+  _Panel? _shown;
   Timer? _poll;
 
   ComfyRunner get runner => widget.runner;
@@ -65,7 +68,10 @@ class _RightBarState extends State<RightBar> {
   }
 
   void _toggle(_Panel panel) {
-    setState(() => _open = _open == panel ? null : panel);
+    setState(() {
+      _open = _open == panel ? null : panel;
+      if (_open != null) _shown = _open;
+    });
     // 打开时把名单也重读一遍:ComfyUI 那边可能刚放进新模型、新 LoRA。
     if (_open == _Panel.comfy) unawaited(runner.check(full: true));
   }
@@ -73,6 +79,7 @@ class _RightBarState extends State<RightBar> {
   @override
   Widget build(BuildContext context) {
     final open = _open;
+    final shown = _shown;
     final width = _stripWidth + (open == null ? 0 : _panelWidth);
     return ListenableBuilder(
       listenable: Listenable.merge([runner, widget.config, vm]),
@@ -80,6 +87,9 @@ class _RightBarState extends State<RightBar> {
         duration: Motion.of(context, Motion.base),
         curve: Motion.swift,
         width: width,
+        onEnd: () {
+          if (_open == null && _shown != null) setState(() => _shown = null);
+        },
         decoration: BoxDecoration(
           boxShadow: open == null
               ? null
@@ -95,7 +105,7 @@ class _RightBarState extends State<RightBar> {
               children: [
                 SizedBox(
                   width: _panelWidth,
-                  child: open == null ? null : _glass(_panel(open)),
+                  child: shown == null ? null : _glass(_panel(shown)),
                 ),
                 _strip(open),
               ],
@@ -148,8 +158,8 @@ class _RightBarState extends State<RightBar> {
                     ? null
                     : () => runner.check(full: true),
               ),
+            // 不带悬停提示:点了按钮就收走了,提示会挂在原处。
             IconButton(
-              tooltip: tr('收起'),
               iconSize: 16,
               visualDensity: VisualDensity.compact,
               color: PennaColors.slate400,

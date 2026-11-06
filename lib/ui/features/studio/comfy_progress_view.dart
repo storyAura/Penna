@@ -7,8 +7,13 @@ import '../../../l10n/l10n.dart';
 import '../../core/theme.dart';
 import 'comfy_runner.dart';
 
+/// 建过的附件,按路径记着:每次重建都新建一个的话,图会重新读一遍、闪一下
+/// (附件读出的内容按对象记,图片按内容判断是不是同一张)。
+// ponytail: 只增不减,一张图一个小对象,内容读一次留在内存里;出图上千张时再加上限。
+final _attachments = <String, Attachment>{};
+
 /// 出的图当成图片附件显示(点开看大图、复制),文件读不了时显示空的。
-Attachment comfyImageAttachment(String path) {
+Attachment comfyImageAttachment(String path) => _attachments[path] ??= () {
   final name = File(path).uri.pathSegments.last;
   final ext = name.substring(name.lastIndexOf('.') + 1).toLowerCase();
   return Attachment.saved(
@@ -16,7 +21,7 @@ Attachment comfyImageAttachment(String path) {
     file: path,
     mime: imageMimes[ext] ?? 'image/png',
   );
-}
+}();
 
 /// 出图进度:一行字(排队中 / 出图中 · 40%)加一条进度条,右边可以停止。
 class ComfyProgressRow extends StatelessWidget {

@@ -38,15 +38,17 @@ extension ComfyFlows on ComfyRunner {
       ? tr('未命名')
       : tr(flow.name);
 
-  /// 下拉里的工作流:内置文生图在最前,id 是 [builtinWorkflowId]。
-  List<({String id, String name})> get flowChoices => [
-    (id: builtinWorkflowId, name: tr(builtinWorkflowName)),
-    for (final f in _settings.flows) (id: f.id, name: _flowName(f)),
-  ];
+  /// 下拉里的工作流:导入的那些;一个都没有时只有内置文生图(id 是 [builtinWorkflowId])。
+  List<({String id, String name})> get flowChoices => _settings.flows.isEmpty
+      ? [(id: builtinWorkflowId, name: tr(builtinWorkflowName))]
+      : [for (final f in _settings.flows) (id: f.id, name: _flowName(f))];
+
+  /// 眼前用的工作流的 id(内置文生图是 [builtinWorkflowId])。
+  String get flowId => _settings.flow?.id ?? builtinWorkflowId;
 
   /// 换工作流。
   void selectFlow(String id) {
-    if (id == _settings.flowId) return;
+    if (id == flowId) return;
     _put(_settings.copyWith(flowId: id));
     _changed();
   }
@@ -134,7 +136,7 @@ extension ComfyFlows on ComfyRunner {
   /// Agent 看的:每个工作流叫什么、用什么模型,眼前是哪个。
   String get flowsForAgent => [
     for (final c in flowChoices)
-      '- ${c.name}${c.id == _settings.flowId ? '(眼前用的)' : ''}:'
+      '- ${c.name}${c.id == flowId ? '(眼前用的)' : ''}:'
           '${_modelsOf(c.id).isEmpty ? '模型未知' : _modelsOf(c.id).join('、')}',
   ].join('\n');
 

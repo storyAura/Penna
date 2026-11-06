@@ -1202,7 +1202,6 @@ const en = <String, String>{
   '添加 ComfyUI': 'Add ComfyUI',
   '设为当前': 'Use this',
   'LoRA 配置': 'LoRA presets',
-  '把眼前的存成一套…': 'Save current as a preset…',
   '存成一套 LoRA 配置': 'Save as LoRA preset',
   '没说换成哪个': 'No target given',
   '「{0}」对得上好几个工作流': '"{0}" matches several workflows',
@@ -1210,4 +1209,6 @@ const en = <String, String>{
   '还没有历史对话': 'No past chats yet',
   '已换工作流:{0}': 'Workflow changed: {0}',
   '没换成工作流:{0}': 'Workflow not changed: {0}',
+  '还没导入,出图用内置文生图': 'None imported yet; the built-in text-to-image is used',
+  '新建': 'New',
 };
