@@ -335,13 +335,28 @@ class ComfyClient {
     return system is Map ? '${system['comfyui_version'] ?? ''}' : '';
   }
 
+  /// 测连接:版本和这一问来回花了多少毫秒。
+  Future<({String version, int ms})> ping() async {
+    final clock = Stopwatch()..start();
+    final v = await version();
+    return (version: v, ms: clock.elapsedMilliseconds);
+  }
+
   /// ComfyUI 里放着的大模型,内置的文生图用第一个。
-  Future<List<String>> checkpoints() async {
-    final info = await _json('GET', '/object_info/CheckpointLoaderSimple');
+  Future<List<String>> checkpoints() =>
+      options('CheckpointLoaderSimple', 'ckpt_name');
+
+  /// [type] 这种节点的 [key] 能选哪些(模型、LoRA 的文件名)。没有这种节点时是空的。
+  Future<List<String>> options(String type, String key) async {
+    final info = await _json(
+      'GET',
+      '/object_info/${Uri.encodeComponent(type)}',
+    );
+    final inputs = ((info as Map?)?[type] as Map?)?['input'] as Map?;
     // 老写法 [[名字…], {…}],新写法 ["COMBO", {options: [名字…]}]。
     final spec =
-        (((info as Map?)?['CheckpointLoaderSimple'] as Map?)?['input']
-            as Map?)?['required']?['ckpt_name'];
+        (inputs?['required'] as Map?)?[key] ??
+        (inputs?['optional'] as Map?)?[key];
     final names = spec is List && spec.isNotEmpty
         ? spec[0] is List
               ? spec[0] as List

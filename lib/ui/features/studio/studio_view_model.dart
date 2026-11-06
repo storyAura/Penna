@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/chat_peek.dart';
+import '../../../core/harness/comfy_workflow.dart';
 import '../../../core/harness/comfyui.dart';
 import '../../../core/harness/context_meter.dart';
 import '../../../core/harness/characters/character_dict.dart';

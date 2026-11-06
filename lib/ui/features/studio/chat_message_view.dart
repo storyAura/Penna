@@ -27,6 +27,9 @@ import '../../core/motion.dart';
 
 part 'chat_message_bits.dart';
 
+/// ComfyUI 出的图在回复下面显示多高。
+const _generatedHeight = 280.0;
+
 /// 工具记录里的一行:压成一行,太长的截掉。
 String _preview(String text) {
   final line = text.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -186,6 +189,7 @@ class ChatMessageView extends StatelessWidget {
             for (final p in message.images) comfyImageAttachment(p),
           ],
           onReuse: onReuseAttachment,
+          height: _generatedHeight,
         ),
       ],
     ];
@@ -197,8 +201,10 @@ class ChatMessageView extends StatelessWidget {
     // 先拆新 Skill:它正文里举例用的成稿标签不能被当成成稿。
     // 出图标签由程序交给 ComfyUI,聊天里只留进度和出好的图。
     final generate = splitGenerate(m.text);
+    // 换模型的标签也由程序做,结果记在回复的记录上。
+    final model = splitToolTag(generate.prose, comfyModelTag);
     final peeked = splitPeek(
-      splitPeek(generate.prose, readSideChat).prose,
+      splitPeek(model.prose, readSideChat).prose,
       readMainChat,
     ).prose;
     final tools = splitLocalTools(
@@ -276,6 +282,7 @@ class ChatMessageView extends StatelessWidget {
           laid.json == null &&
           picks.isEmpty &&
           !generate.asked &&
+          model.queries.isEmpty &&
           !m.stopped)
         // 以前只画一个省略号:模型写了程序没接住的标签时,用户看不出发生了什么。
         _RawReply(m.text),

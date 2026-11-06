@@ -3,7 +3,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:penna/core/harness/comfy_workflow.dart';
 import 'package:penna/core/harness/comfyui.dart';
+import 'package:penna/core/harness/providers/llm_http.dart';
 import 'package:penna/core/harness/comfyui_progress.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/comfy_images.dart';
@@ -159,12 +161,33 @@ void main() {
                     'ckpt_name': [
                       'COMBO',
                       {
-                        'options': ['m.safetensors'],
+                        'options': ['m.safetensors', 'sdxl/m2.safetensors'],
                       },
                     ],
                   },
                 },
               },
+            }),
+          );
+        } else if (path == '/object_info/LoraLoaderModelOnly') {
+          res.write(
+            jsonEncode({
+              'LoraLoaderModelOnly': {
+                'input': {
+                  'required': {
+                    'lora_name': [
+                      ['style.safetensors'],
+                      {},
+                    ],
+                  },
+                },
+              },
+            }),
+          );
+        } else if (path == '/system_stats') {
+          res.write(
+            jsonEncode({
+              'system': {'comfyui_version': '9.9'},
             }),
           );
         } else if (path == '/prompt') {
@@ -294,6 +317,85 @@ void main() {
         'a cat',
       );
       expect(vm.comfy.latestFor('a cat'), reply.images.single);
+    });
+
+    test('测连接、读名单,按名字换模型;内置工作流改过后存成一份', () async {
+      final service = tempConfig();
+      service.update(
+        service.config.copyWith(
+          comfy: ComfySettings(url: 'http://127.0.0.1:${server.port}'),
+        ),
+      );
+      final runner = ComfyRunner(service);
+      await runner.check(full: true);
+      expect(runner.status?.connected, isTrue);
+      expect(runner.status?.version, '9.9');
+      expect(runner.loraOptions, ['style.safetensors']);
+      expect(runner.workflowName, '内置 · 文生图');
+      // 去掉文件夹和后缀也认。
+      expect(runner.switchModel('M2').model, 'sdxl/m2.safetensors');
+      expect(service.config.comfy.workflowName, '内置 · 文生图');
+      expect(modelSlots(runner.workflow!).single.value, 'sdxl/m2.safetensors');
+      expect(runner.switchModel('nope').problem, contains('nope'));
+      // 加 LoRA:插在模型加载器后面。
+      expect(
+        runner.edit((wf) => addLora(wf, 'style.safetensors', 0.7)),
+        isNull,
+      );
+      expect(loraSlots(runner.workflow!).single.strength, 0.7);
+    });
+
+    test('Agent 先换模型再出图;换不成就不出图', () async {
+      final service = tempConfig();
+      service.update(
+        service.config
+            .putLlm(
+              const LlmProfile(
+                id: 'a',
+                name: 'A',
+                baseUrl: 'http://a',
+                model: 'm',
+              ),
+            )
+            .copyWith(
+              comfy: ComfySettings(url: 'http://127.0.0.1:${server.port}'),
+            ),
+      );
+      final replies = [
+        '<$comfyModelTag>nope</$comfyModelTag><generate-image>a dog</generate-image>',
+        '换好了。<$comfyModelTag>m2</$comfyModelTag><generate-image>a cat</generate-image>',
+      ];
+      var turn = 0;
+      final seen = <LlmRequest>[];
+      final vm = StudioViewModel(
+        config: service,
+        streamChat: (req) {
+          seen.add(req);
+          return Stream.value(replies[turn++]);
+        },
+      );
+      await vm.comfy.check(full: true);
+
+      expect(vm.send('换 nope 出图'), isNull);
+      await pumpEventQueue();
+      // 系统提示里有当前模型和能选的。
+      expect(
+        seen.single.messages.first['content'],
+        contains('现在是 m.safetensors;能选:m.safetensors、sdxl/m2.safetensors'),
+      );
+      expect(vm.messages.last.toolSummary, contains('没换成模型'));
+      expect(vm.comfy.running, isFalse);
+
+      expect(vm.send('换 m2 出图'), isNull);
+      for (var i = 0; i < 100 && vm.messages.last.images.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(vm.messages.last.toolSummary, contains('sdxl/m2.safetensors'));
+      expect(vm.messages.last.images, hasLength(1));
+      expect(
+        ((queued['prompt'] as Map)['4'] as Map)['inputs']['ckpt_name'],
+        'sdxl/m2.safetensors',
+      );
     });
 
     test('停止时报 canceled', () async {

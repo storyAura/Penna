@@ -14,6 +14,7 @@ import '../../core/widgets.dart';
 import '../archive/archive_page.dart';
 import '../settings/settings_sections.dart';
 import '../studio/activity_bar.dart';
+import '../studio/comfy_bar.dart';
 import '../studio/chat_pane.dart';
 import '../studio/page_strip.dart';
 import '../studio/studio_view_model.dart';
@@ -407,6 +408,7 @@ class _LayoutPageState extends State<LayoutPage> {
                             ),
                           ),
                         ),
+                        const SizedBox(width: ComfyBar.closedWidth),
                       ],
                     ),
                   ),
@@ -418,6 +420,16 @@ class _LayoutPageState extends State<LayoutPage> {
                     child: ListenableBuilder(
                       listenable: widget.chat,
                       builder: (context, _) => ActivityBar(vm: widget.chat),
+                    ),
+                  ),
+                  // ComfyUI 侧栏:和工作台共用一份连接、工作流。
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: ComfyBar(
+                      runner: widget.vm.comfy,
+                      config: widget.config,
                     ),
                   ),
                 ],

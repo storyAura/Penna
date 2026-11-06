@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -49,9 +50,10 @@ class _ComfySectionState extends State<ComfySection> {
         _comfy.url,
         key: _service.config.secrets[comfyKeyName] ?? '',
       );
-      final version = await client.version();
-      final models = await client.checkpoints();
-      result = tr('已连接 · ComfyUI {0} · {1} 个模型', [version, models.length]);
+      final p = await client.ping();
+      result = tr('已连接 · ComfyUI {0} · {1} ms', [p.version, p.ms]);
+      // 侧栏跟着刷新:地址、Key 可能刚改过。
+      unawaited(widget.runner.check(full: true));
     } on ComfyException catch (e) {
       result = e.message;
       failed = true;
