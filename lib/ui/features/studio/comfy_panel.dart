@@ -106,13 +106,11 @@ class ComfyPanel extends StatelessWidget {
     return [
       _heading(
         slots.isEmpty ? 'LoRA' : 'LoRA · ${slots.length}',
-        TextButton.icon(
-          style: TextButton.styleFrom(
-            visualDensity: VisualDensity.compact,
-            textStyle: const TextStyle(fontSize: 12),
-          ),
-          icon: const Icon(Icons.add, size: 14),
-          label: Text(tr('添加')),
+        // 用 PennaButton:TextButton 自己给的字体样式会盖掉 Penna 的字体。
+        PennaButton(
+          icon: Icons.add,
+          label: tr('添加'),
+          foreground: PennaColors.primary,
           onPressed: () async {
             final picked = await _pickName(
               context,

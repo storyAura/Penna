@@ -13,9 +13,13 @@ import '../../core/widgets.dart';
 import '../layout/layout_board.dart';
 import '../settings/settings_sections.dart';
 import '../studio/studio_view_model.dart';
+import 'comfy_gallery.dart';
 import '../../../l10n/l10n.dart';
 
 /// 大缩略图的格子至少这么宽;格子之间隔这么远。
+/// 「图片」分区:不在档案库的存档里,直接读 ComfyUI(`comfy_gallery.dart`)。
+const _imagesKind = 'images';
+
 const _tileWidth = 200.0;
 const _gap = 10.0;
 
@@ -230,6 +234,7 @@ class _ArchivePageState extends State<ArchivePage> {
                   for (final (kind, label) in [
                     (archivePrompt, tr('提示词')),
                     (archiveLayout, tr('区域控制')),
+                    (_imagesKind, tr('图片')),
                   ]) ...[
                     PennaChip(
                       label: label,
@@ -241,19 +246,31 @@ class _ArchivePageState extends State<ArchivePage> {
                     ),
                     const SizedBox(width: 6),
                   ],
-                  const SizedBox(width: 4),
-                  Text(
-                    tr('{0} 条', [all.length]),
-                    style: TextStyle(fontSize: 11, color: PennaColors.slate500),
-                  ),
-                  const Spacer(),
-                  ViewSwitch(
-                    grid: _grid,
-                    onChanged: (g) => setState(() => _grid = g),
-                  ),
+                  if (_kind != _imagesKind) ...[
+                    const SizedBox(width: 4),
+                    Text(
+                      tr('{0} 条', [all.length]),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: PennaColors.slate500,
+                      ),
+                    ),
+                    const Spacer(),
+                    ViewSwitch(
+                      grid: _grid,
+                      onChanged: (g) => setState(() => _grid = g),
+                    ),
+                  ],
                 ],
               ),
-              if (all.isEmpty)
+              if (_kind == _imagesKind)
+                Expanded(
+                  child: ComfyGallery(
+                    vm: widget.vm,
+                    onOpenStudio: widget.onOpenStudio,
+                  ),
+                )
+              else if (all.isEmpty)
                 Expanded(
                   child: Center(
                     child: Text(

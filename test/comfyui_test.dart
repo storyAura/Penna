@@ -153,6 +153,55 @@ void main() {
     expect(comfyImageAttachment('a/x.webp').mime, 'image/webp');
   });
 
+  test('读 ComfyUI 的历史:新的在前,找回当时的提示词,预览图不算', () {
+    Map<String, Object?> run(String text, int at, List<Map> images) => {
+      'prompt': [
+        0,
+        'x',
+        prepareWorkflow(defaultWorkflow('m'), text),
+        {},
+        ['9'],
+      ],
+      'outputs': {
+        '9': {'images': images},
+      },
+      'status': {
+        'status_str': 'success',
+        'messages': [
+          [
+            'execution_start',
+            {'timestamp': at - 5},
+          ],
+          [
+            'execution_success',
+            {'timestamp': at},
+          ],
+        ],
+      },
+    };
+    final shots = parseHistory({
+      'old': run('a fox', 1000, [
+        {'filename': 'a.png', 'type': 'output'},
+      ]),
+      'new': run('a cat', 2000, [
+        {'filename': 'b.png', 'type': 'output'},
+        {'filename': 'c.png', 'type': 'output'},
+        {'filename': 'tmp.png', 'type': 'temp'},
+      ]),
+    });
+    expect(shots.map((s) => s.file['filename']), ['b.png', 'c.png', 'a.png']);
+    expect(shots.first.prompt, 'a cat');
+    expect(shots.last.time, DateTime.fromMillisecondsSinceEpoch(1000));
+    expect(parseHistory('nope'), isEmpty);
+    // 缩略图让 ComfyUI 压成 WebP。
+    final client = ComfyClient('http://h:1/', key: 'k');
+    expect(
+      client.viewUrl(shots.first.file, preview: true),
+      'http://h:1/view?filename=b.png&subfolder&type=output&preview=webp%3B75',
+    );
+    expect(client.headers, {'authorization': 'Bearer k'});
+  });
+
   test('只认 API 格式', () {
     expect(
       () => parseApiWorkflow('{"nodes": [], "links": []}'),

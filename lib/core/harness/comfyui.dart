@@ -212,6 +212,57 @@ Map<String, Object?> prepareWorkflow(
   return wf;
 }
 
+/// 跑过的工作流里正面提示词框的字;找不到是空串。
+String positivePromptOf(Map<String, Object?> workflow) {
+  final box = _positiveTextNode(workflow);
+  return '${box?['text'] ?? box?['text_g'] ?? ''}'.trim();
+}
+
+/// ComfyUI 出过的一张图:哪一单、文件(给 /view 用)、当时的正面提示词、出完的时刻。
+typedef ComfyShot = ({
+  String id,
+  Map<String, Object?> file,
+  String prompt,
+  DateTime? time,
+});
+
+/// 读 `/history` 的结果:每一单出的图,新的在前。
+/// 一单是 `{prompt: [序号, id, 工作流, …], outputs: {…}, status: {messages: [[事件, {timestamp}]…]}}`。
+List<ComfyShot> parseHistory(Object? json) {
+  if (json is! Map) return const [];
+  final shots = <ComfyShot>[];
+  // 返回的顺序是先跑的在前:倒过来一单一单读,同一单里的几张照原来的先后。
+  for (final MapEntry(key: id, value: entry)
+      in json.entries.toList().reversed) {
+    if (entry is! Map) continue;
+    final p = entry['prompt'];
+    final wf = p is List && p.length > 2 && p[2] is Map
+        ? (p[2] as Map).cast<String, Object?>()
+        : null;
+    final prompt = wf == null ? '' : positivePromptOf(wf);
+    DateTime? time;
+    final status = entry['status'];
+    for (final m in status is Map ? status['messages'] as List? ?? [] : []) {
+      if (m is List && m.length > 1 && m[1] is Map) {
+        final at = (m[1] as Map)['timestamp'];
+        if (at is int) time = DateTime.fromMillisecondsSinceEpoch(at);
+      }
+    }
+    for (final f in pickOutputImages(entry['outputs'])) {
+      shots.add((id: '$id', file: f, prompt: prompt, time: time));
+    }
+  }
+  final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+  // 有时刻的再按时刻排(排序不保证稳定,同一时刻的按原来的先后)。
+  final ordered = shots.indexed.toList()
+    ..sort((a, b) {
+      final byTime = (b.$2.time ?? epoch).compareTo(a.$2.time ?? epoch);
+      // 同一时刻(同一单的几张)保持原来的先后。
+      return byTime != 0 ? byTime : a.$1.compareTo(b.$1);
+    });
+  return [for (final (_, s) in ordered) s];
+}
+
 /// 一次运行的结果里要下载的图:有存下来的(SaveImage,type 是 output)就只要它们,
 /// 没有才要预览图(PreviewImage,type 是 temp)。
 List<Map<String, Object?>> pickOutputImages(Object? outputs) {
@@ -334,6 +385,32 @@ class ComfyClient {
     final system = stats is Map ? stats['system'] : null;
     return system is Map ? '${system['comfyui_version'] ?? ''}' : '';
   }
+
+  /// 最近 [max] 单出过的图(ComfyUI 重启后它的历史就清空了)。
+  Future<List<ComfyShot>> history({int max = 300}) async =>
+      parseHistory(await _json('GET', '/history?max_items=$max'));
+
+  /// 一张图的地址;[preview] 时让 ComfyUI 压成 WebP 再给(缩略图用,小得多)。
+  String viewUrl(Map<String, Object?> file, {bool preview = false}) {
+    final query = Uri(
+      queryParameters: {
+        'filename': '${file['filename']}',
+        'subfolder': '${file['subfolder'] ?? ''}',
+        'type': '${file['type'] ?? 'output'}',
+        if (preview) 'preview': 'webp;75',
+      },
+    ).query;
+    return '$_root/view?$query';
+  }
+
+  /// 请求图片时要带的头(有 Key 时)。
+  Map<String, String> get headers => {
+    if (key.isNotEmpty) HttpHeaders.authorizationHeader: 'Bearer $key',
+  };
+
+  /// 下载一张图的原图。
+  Future<Uint8List> download(Map<String, Object?> file) =>
+      _send('GET', viewUrl(file).substring(_root.length));
 
   /// 测连接:版本和这一问来回花了多少毫秒。
   Future<({String version, int ms})> ping() async {

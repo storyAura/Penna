@@ -76,6 +76,9 @@ class ComfyRunner extends ChangeNotifier {
   /// 扩展([ComfyFlows])里通知界面用它:`notifyListeners` 是受保护的。
   void _changed() => notifyListeners();
 
+  /// 连眼前那台 ComfyUI(读历史、下图用)。
+  ComfyClient get client => _client;
+
   ComfyClient get _client {
     final server = config.config.comfy.server;
     return ComfyClient(

@@ -1212,4 +1212,8 @@ const en = <String, String>{
   '还没导入,出图用内置文生图': 'None imported yet; the built-in text-to-image is used',
   '新建': 'New',
   '在文件夹中显示': 'Show in folder',
+  '读取失败({0})': 'Failed to load ({0})',
+  '复制提示词': 'Copy prompt',
+  '{0} 张 · 读自 {1}': '{0} images · from {1}',
+  'ComfyUI 里还没有出过的图': 'No images in ComfyUI yet',
 };
