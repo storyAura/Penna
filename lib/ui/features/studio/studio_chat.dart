@@ -273,8 +273,8 @@ extension StudioChat on StudioViewModel {
               _deliverDraft();
               _checkTags();
               // 成稿放好之后再出图:标签里没写提示词时用的是这页放好的成稿。
-              // 要换模型的先换,换不成就不出图。
-              if (_deliverModel()) _deliverImage();
+              // 要换工作流的先换,换不成就不出图。
+              if (_deliverWorkflow()) _deliverImage();
             }
             _deliverCharacters();
             // 透视在 _deliverLayout 里先放(没有布局时它自己放)。

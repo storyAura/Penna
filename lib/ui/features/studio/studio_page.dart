@@ -4,7 +4,7 @@ import '../../../data/services/archive_store.dart';
 import '../../../data/services/config_service.dart';
 import '../../core/theme.dart';
 import 'activity_bar.dart';
-import 'comfy_bar.dart';
+import 'right_bar.dart';
 import 'chat_pane.dart';
 import 'prompt_pane.dart';
 import 'studio_view_model.dart';
@@ -134,8 +134,8 @@ class _StudioPageState extends State<StudioPage> {
                         onOpenLayout: widget.onOpenLayout,
                       ),
                     ),
-                    // 给收起的 ComfyUI 侧栏留出窄边;展开时它盖在对话栏上。
-                    const SizedBox(width: ComfyBar.closedWidth),
+                    // 给右边的侧栏留出窄边;展开时它盖在对话栏上。
+                    const SizedBox(width: RightBar.closedWidth),
                   ],
                 ),
               ),
@@ -149,7 +149,11 @@ class _StudioPageState extends State<StudioPage> {
                 right: 0,
                 top: 0,
                 bottom: 0,
-                child: ComfyBar(runner: widget.vm.comfy, config: widget.config),
+                child: RightBar(
+                  vm: widget.vm,
+                  runner: widget.vm.comfy,
+                  config: widget.config,
+                ),
               ),
             ],
           ),

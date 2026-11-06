@@ -14,7 +14,7 @@ import '../../core/widgets.dart';
 import '../archive/archive_page.dart';
 import '../settings/settings_sections.dart';
 import '../studio/activity_bar.dart';
-import '../studio/comfy_bar.dart';
+import '../studio/right_bar.dart';
 import '../studio/chat_pane.dart';
 import '../studio/page_strip.dart';
 import '../studio/studio_view_model.dart';
@@ -408,7 +408,7 @@ class _LayoutPageState extends State<LayoutPage> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: ComfyBar.closedWidth),
+                        const SizedBox(width: RightBar.closedWidth),
                       ],
                     ),
                   ),
@@ -422,12 +422,13 @@ class _LayoutPageState extends State<LayoutPage> {
                       builder: (context, _) => ActivityBar(vm: widget.chat),
                     ),
                   ),
-                  // ComfyUI 侧栏:和工作台共用一份连接、工作流。
+                  // 右边的侧栏:ComfyUI 和工作台共用一份连接、工作流;历史对话是区域控制这场的。
                   Positioned(
                     right: 0,
                     top: 0,
                     bottom: 0,
-                    child: ComfyBar(
+                    child: RightBar(
+                      vm: widget.chat,
                       runner: widget.vm.comfy,
                       config: widget.config,
                     ),

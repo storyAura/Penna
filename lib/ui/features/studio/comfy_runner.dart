@@ -11,6 +11,8 @@ import '../../../data/services/comfy_images.dart';
 import '../../../data/services/config_service.dart';
 import '../../../l10n/l10n.dart';
 
+part 'comfy_runner_flows.dart';
+
 /// 出过的一张图:存在哪,用的哪条提示词。
 typedef GeneratedImage = ({String path, String prompt, DateTime time});
 
@@ -23,8 +25,8 @@ typedef ComfyStatus = ({bool connected, int ms, String version, String? error});
 /// 内置文生图的名字(存进设置的是原文,显示时翻译)。
 const builtinWorkflowName = '内置 · 文生图';
 
-/// LoRA 的可选名单在 [ComfyRunner] 里的键。
-const _loraOptions = 'LoraLoaderModelOnly/lora_name';
+/// 可选名单在 [ComfyRunner] 里的键:LoRA、内置文生图的模型。
+const _loraOptions = 'lora', _ckptOptions = 'ckpt';
 
 /// 两次测连接至少隔多久(两个页面的侧栏都会来问)。
 const _checkGap = Duration(seconds: 5);
@@ -45,7 +47,7 @@ class ComfyRunner extends ChangeNotifier {
   bool _checking = false;
   DateTime? _checkedAt;
 
-  /// 「节点类型/输入名」→ 能选的文件名;[_optionsOf] 是读这份名单时的工作流全文。
+  /// 能选的文件名(LoRA、模型);[_optionsOf] 是读这份名单时连的哪台。
   Map<String, List<String>> _options = const {};
   String? _optionsOf;
 
@@ -71,20 +73,26 @@ class ComfyRunner extends ChangeNotifier {
 
   bool get checking => _checking;
 
-  ComfyClient get _client => ComfyClient(
-    config.config.comfy.url,
-    key: config.config.secrets[comfyKeyName] ?? '',
-  );
+  /// 扩展([ComfyFlows])里通知界面用它:`notifyListeners` 是受保护的。
+  void _changed() => notifyListeners();
+
+  ComfyClient get _client {
+    final server = config.config.comfy.server;
+    return ComfyClient(
+      server.url,
+      key: config.config.secrets[comfyKeyName(server.id)] ?? '',
+    );
+  }
 
   /// 测连接(侧栏定时来问);[full] 时连带重读模型、LoRA 的名单。
-  /// 工作流换了也重读。刚测过不久的不再测。
+  /// 换了一台也重读。刚测过不久的不再测。
   Future<void> check({bool full = false}) async {
     final last = _checkedAt;
     if (_checking ||
         !full &&
             last != null &&
             DateTime.now().difference(last) < _checkGap &&
-            _optionsOf == config.config.comfy.workflow) {
+            _optionsOf == config.config.comfy.server.url) {
       return;
     }
     _checking = true;
@@ -93,10 +101,10 @@ class ComfyRunner extends ChangeNotifier {
     try {
       final p = await client.ping();
       _status = (connected: true, ms: p.ms, version: p.version, error: null);
-      final text = config.config.comfy.workflow;
-      if (full || _optionsOf != text) {
-        _options = await _readOptions(client, text);
-        _optionsOf = text;
+      final url = config.config.comfy.server.url;
+      if (full || _optionsOf != url) {
+        _options = await _readOptions(client);
+        _optionsOf = url;
       }
     } on ComfyException catch (e) {
       _status = (connected: false, ms: 0, version: '', error: e.message);
@@ -112,107 +120,6 @@ class ComfyRunner extends ChangeNotifier {
       _checkedAt = DateTime.now();
       notifyListeners();
     }
-  }
-
-  /// 工作流里每个模型加载器能选的模型,和 LoRA 能选的。
-  Future<Map<String, List<String>>> _readOptions(
-    ComfyClient client,
-    String text,
-  ) async {
-    final wf = _parse(text);
-    final slots = wf == null
-        ? [(type: 'CheckpointLoaderSimple', key: 'ckpt_name')]
-        : [for (final s in modelSlots(wf)) (type: s.type, key: s.key)];
-    return {
-      for (final s in slots)
-        '${s.type}/${s.key}': await client.options(s.type, s.key),
-      _loraOptions: await client.options('LoraLoaderModelOnly', 'lora_name'),
-    };
-  }
-
-  /// [type] 节点的 [key] 能选哪些;还没读到是空的。
-  List<String> optionsFor(String type, String key) =>
-      _options['$type/$key'] ?? const [];
-
-  List<String> get loraOptions => _options[_loraOptions] ?? const [];
-
-  ComfyWorkflow? _parse(String text) {
-    if (text.trim().isEmpty) return null;
-    try {
-      return parseApiWorkflow(text);
-    } on ComfyException {
-      return null;
-    }
-  }
-
-  /// 眼前用的工作流。内置的要连上 ComfyUI、知道第一个模型才有。
-  ComfyWorkflow? get workflow {
-    final text = config.config.comfy.workflow;
-    if (text.trim().isNotEmpty) return _parse(text);
-    final first = optionsFor('CheckpointLoaderSimple', 'ckpt_name').firstOrNull;
-    return first == null ? null : defaultWorkflow(first);
-  }
-
-  /// 眼前用的工作流叫什么(已翻译)。
-  String get workflowName {
-    final c = config.config.comfy;
-    return tr(c.workflow.trim().isEmpty ? builtinWorkflowName : c.workflowName);
-  }
-
-  /// 改工作流(换模型、改 LoRA),存进设置。内置的改过之后存成一份,名字照旧。
-  /// 改不了返回原因。
-  String? edit(ComfyWorkflow Function(ComfyWorkflow) change) {
-    final wf = workflow;
-    if (wf == null) return tr('还没连上 ComfyUI');
-    final ComfyWorkflow next;
-    try {
-      next = change(wf);
-    } on ComfyException catch (e) {
-      return e.message;
-    }
-    final c = config.config.comfy;
-    final text = jsonEncode(next);
-    config.update(
-      config.config.copyWith(
-        comfy: c.copyWith(
-          workflow: text,
-          workflowName: c.workflow.trim().isEmpty
-              ? builtinWorkflowName
-              : c.workflowName,
-        ),
-      ),
-    );
-    // 只改了值,加载器还是那几个:名单不用重读。
-    _optionsOf = text;
-    notifyListeners();
-    return null;
-  }
-
-  /// 按名字换模型(Agent 写的 `<comfy-model>`):在工作流的模型加载器能选的里找,
-  /// 完整名字、去掉文件夹和后缀的名字对上,或只有一个包含它的。返回换上的文件名,或找不到的原因。
-  ({String? model, String? problem}) switchModel(String wanted) {
-    final wf = workflow;
-    if (wf == null) return (model: null, problem: tr('还没连上 ComfyUI'));
-    String short(String s) => s
-        .split(RegExp(r'[\\/]'))
-        .last
-        .replaceAll(RegExp(r'\.[A-Za-z0-9]+$'), '')
-        .toLowerCase();
-    final w = wanted.trim().toLowerCase();
-    for (final slot in modelSlots(wf)) {
-      final names = optionsFor(slot.type, slot.key);
-      final hit =
-          names.where((n) => n.toLowerCase() == w).firstOrNull ??
-          names.where((n) => short(n) == short(w)).firstOrNull ??
-          switch (names.where((n) => n.toLowerCase().contains(w)).toList()) {
-            [final only] => only,
-            _ => null,
-          };
-      if (hit == null) continue;
-      final problem = edit((wf) => setModel(wf, slot.node, slot.key, hit));
-      return (model: problem == null ? hit : null, problem: problem);
-    }
-    return (model: null, problem: tr('ComfyUI 里没有「{0}」', [wanted.trim()]));
   }
 
   /// 现在存图的文件夹。
@@ -244,16 +151,13 @@ class ComfyRunner extends ChangeNotifier {
     _progress = null;
     _owner = owner;
     notifyListeners();
-    final settings = config.config.comfy;
-    final client = ComfyClient(
-      settings.url,
-      key: config.config.secrets[comfyKeyName] ?? '',
-    );
+    final client = _client;
     var saved = <GeneratedImage>[];
     String? error;
     try {
       final out = await client.run(
-        settings.workflow,
+        // 空的是内置文生图。
+        config.config.comfy.flow?.text ?? '',
         prompt,
         canceled: () => run != _run,
         onProgress: (p) {

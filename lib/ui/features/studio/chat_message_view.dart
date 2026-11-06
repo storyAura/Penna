@@ -201,8 +201,8 @@ class ChatMessageView extends StatelessWidget {
     // 先拆新 Skill:它正文里举例用的成稿标签不能被当成成稿。
     // 出图标签由程序交给 ComfyUI,聊天里只留进度和出好的图。
     final generate = splitGenerate(m.text);
-    // 换模型的标签也由程序做,结果记在回复的记录上。
-    final model = splitToolTag(generate.prose, comfyModelTag);
+    // 换工作流的标签也由程序做,结果记在回复的记录上。
+    final model = splitToolTag(generate.prose, comfyWorkflowTag);
     final peeked = splitPeek(
       splitPeek(model.prose, readSideChat).prose,
       readMainChat,

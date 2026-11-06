@@ -39,6 +39,11 @@ Map<String, Object?> get _flux => {
   }),
 };
 
+/// 只有一台、连到本机 [port] 的设置。
+ComfySettings _at(int port) => ComfySettings(
+  servers: [(id: comfyLocalId, name: '本机', url: 'http://127.0.0.1:$port')],
+);
+
 void main() {
   group('prepareWorkflow', () {
     test('有 {{prompt}} 记号就换掉它,种子重摇,原来的不动', () {
@@ -108,6 +113,24 @@ void main() {
     expect(t.handle('progress', {'node': '4', 'value': 1, 'max': 1}), isNull);
     final half = t.handle('progress', {'node': '3', 'value': 5, 'max': 10})!;
     expect(half, closeTo(cached + 0.45, 1e-9));
+  });
+
+  test('旧设置(一个地址、一个工作流)读成列表,存回去再读一样', () {
+    final old = ComfySettings.fromJson({
+      'url': 'http://10.0.0.2:8188',
+      'workflow': '{"1":{"class_type":"SaveImage","inputs":{}}}',
+      'workflowName': 'Moss',
+      'imageDir': 'D:/img',
+    });
+    expect(old.server.url, 'http://10.0.0.2:8188');
+    expect(old.serverId, comfyLocalId);
+    expect(old.flow?.name, 'Moss');
+    expect(old.imageDir, 'D:/img');
+    expect(ComfySettings.fromJson(null).flow, isNull);
+    final again = ComfySettings.fromJson(jsonDecode(jsonEncode(old.toJson())));
+    expect(again.toJson(), old.toJson());
+    // 本机那台的 Key 沿用旧键名。
+    expect(comfyKeyName(comfyLocalId), 'comfy.key');
   });
 
   test('只认 API 格式', () {
@@ -295,9 +318,7 @@ void main() {
                 model: 'm',
               ),
             )
-            .copyWith(
-              comfy: ComfySettings(url: 'http://127.0.0.1:${server.port}'),
-            ),
+            .copyWith(comfy: _at(server.port)),
       );
       final vm = StudioViewModel(
         config: service,
@@ -319,11 +340,15 @@ void main() {
       expect(vm.comfy.latestFor('a cat'), reply.images.single);
     });
 
-    test('测连接、读名单,按名字换模型;内置工作流改过后存成一份', () async {
+    test('测连接、读名单;按名字或模型换工作流;内置的改过后另存一份;LoRA 配置', () async {
       final service = tempConfig();
       service.update(
         service.config.copyWith(
-          comfy: ComfySettings(url: 'http://127.0.0.1:${server.port}'),
+          comfy: _at(server.port).putFlow((
+            id: 'f2',
+            name: 'SDXL 二采',
+            text: jsonEncode(defaultWorkflow('sdxl/m2.safetensors')),
+          )),
         ),
       );
       final runner = ComfyRunner(service);
@@ -332,20 +357,33 @@ void main() {
       expect(runner.status?.version, '9.9');
       expect(runner.loraOptions, ['style.safetensors']);
       expect(runner.workflowName, '内置 · 文生图');
-      // 去掉文件夹和后缀也认。
-      expect(runner.switchModel('M2').model, 'sdxl/m2.safetensors');
-      expect(service.config.comfy.workflowName, '内置 · 文生图');
-      expect(modelSlots(runner.workflow!).single.value, 'sdxl/m2.safetensors');
-      expect(runner.switchModel('nope').problem, contains('nope'));
-      // 加 LoRA:插在模型加载器后面。
+      expect(runner.flowChoices.map((f) => f.name), ['内置 · 文生图', 'SDXL 二采']);
+      // 按它用的模型找:去掉文件夹和后缀也认。
+      expect(runner.switchWorkflow('M2').flow, 'SDXL 二采');
+      expect(service.config.comfy.flowId, 'f2');
+      expect(runner.switchWorkflow('内置').flow, '内置 · 文生图');
+      expect(runner.switchWorkflow('nope').problem, contains('nope'));
+
+      // 内置的加了 LoRA:另存一份并换过去,名字照旧。
       expect(
         runner.edit((wf) => addLora(wf, 'style.safetensors', 0.7)),
         isNull,
       );
+      expect(service.config.comfy.flows, hasLength(2));
+      expect(runner.workflowName, '内置 · 文生图');
+      expect(loraSlots(runner.workflow!).single.strength, 0.7);
+
+      // 存一套,改掉,再用回那一套。
+      expect(runner.saveLoraPreset('柔和'), isNull);
+      final slot = loraSlots(runner.workflow!).single;
+      runner.edit((wf) => setLora(wf, slot.node, slot.key, strength: 0.2));
+      expect(loraSlots(runner.workflow!).single.strength, 0.2);
+      final preset = service.config.comfy.loraPresets.single;
+      expect(runner.applyLoraPreset(preset), isNull);
       expect(loraSlots(runner.workflow!).single.strength, 0.7);
     });
 
-    test('Agent 先换模型再出图;换不成就不出图', () async {
+    test('Agent 换成用那个模型的工作流再出图;换不成就不出图', () async {
       final service = tempConfig();
       service.update(
         service.config
@@ -358,12 +396,16 @@ void main() {
               ),
             )
             .copyWith(
-              comfy: ComfySettings(url: 'http://127.0.0.1:${server.port}'),
+              comfy: _at(server.port).putFlow((
+                id: 'f2',
+                name: 'SDXL 二采',
+                text: jsonEncode(defaultWorkflow('sdxl/m2.safetensors')),
+              )),
             ),
       );
       final replies = [
-        '<$comfyModelTag>nope</$comfyModelTag><generate-image>a dog</generate-image>',
-        '换好了。<$comfyModelTag>m2</$comfyModelTag><generate-image>a cat</generate-image>',
+        '<$comfyWorkflowTag>nope</$comfyWorkflowTag><generate-image>a dog</generate-image>',
+        '换好了。<$comfyWorkflowTag>SDXL 二采</$comfyWorkflowTag><generate-image>a cat</generate-image>',
       ];
       var turn = 0;
       final seen = <LlmRequest>[];
@@ -378,19 +420,18 @@ void main() {
 
       expect(vm.send('换 nope 出图'), isNull);
       await pumpEventQueue();
-      // 系统提示里有当前模型和能选的。
-      expect(
-        seen.single.messages.first['content'],
-        contains('现在是 m.safetensors;能选:m.safetensors、sdxl/m2.safetensors'),
-      );
-      expect(vm.messages.last.toolSummary, contains('没换成模型'));
+      // 系统提示里有每个工作流和它用的模型。
+      final system = seen.single.messages.first['content']!;
+      expect(system, contains('- 内置 · 文生图(眼前用的):m.safetensors'));
+      expect(system, contains('- SDXL 二采:sdxl/m2.safetensors'));
+      expect(vm.messages.last.toolSummary, contains('没换成工作流'));
       expect(vm.comfy.running, isFalse);
 
-      expect(vm.send('换 m2 出图'), isNull);
+      expect(vm.send('用 m2 出图'), isNull);
       for (var i = 0; i < 100 && vm.messages.last.images.isEmpty; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 100));
       }
-      expect(vm.messages.last.toolSummary, contains('sdxl/m2.safetensors'));
+      expect(vm.messages.last.toolSummary, contains('已换工作流:SDXL 二采'));
       expect(vm.messages.last.images, hasLength(1));
       expect(
         ((queued['prompt'] as Map)['4'] as Map)['inputs']['ckpt_name'],
