@@ -78,8 +78,8 @@ class _ComfyStrip extends StatelessWidget {
       onTap: () => showImageViewer(context, comfyImageAttachment(path)),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(6),
-        child: Image.file(
-          File(path),
+        child: Image.memory(
+          comfyImageAttachment(path).bytes!,
           height: _thumbHeight,
           cacheHeight: (_thumbHeight * 2).round(),
           fit: BoxFit.cover,

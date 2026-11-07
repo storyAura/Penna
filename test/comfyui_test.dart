@@ -9,7 +9,6 @@ import 'package:penna/core/harness/providers/llm_http.dart';
 import 'package:penna/core/harness/comfyui_progress.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/comfy_images.dart';
-import 'package:penna/ui/features/studio/comfy_progress_view.dart';
 import 'package:penna/ui/features/studio/side_chat.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 

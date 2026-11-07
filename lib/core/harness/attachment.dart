@@ -235,6 +235,10 @@ const previewMaxSide = 768;
 Future<Uint8List?> toPreviewWebP(Uint8List bytes) =>
     Isolate.run(() => _toWebP(bytes, maxSide: previewMaxSide));
 
+/// ComfyUI 出的图存盘用:尺寸不变,转成有损 WebP,在另一个线程里做。读不了返回 null。
+Future<Uint8List?> toStoredWebP(Uint8List bytes) =>
+    Isolate.run(() => _toWebP(bytes, maxSide: 1 << 30));
+
 Uint8List? _toWebP(Uint8List bytes, {int maxSide = compressMaxSide}) {
   final image = img.decodeImage(bytes);
   if (image == null) return null;

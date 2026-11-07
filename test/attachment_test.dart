@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:penna/core/harness/attachment.dart';
 import 'package:penna/core/harness/providers/gemini_provider.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
@@ -36,6 +37,13 @@ LlmRequest _req(String protocol) => LlmRequest(
 );
 
 void main() {
+  test('出的图存盘时转成 WebP,尺寸不变', () async {
+    final png = img.encodePng(img.Image(width: 3000, height: 1200));
+    final webp = await toStoredWebP(png);
+    final back = img.decodeWebP(webp!)!;
+    expect((back.width, back.height), (3000, 1200));
+  });
+
   group('读附件', () {
     test('图片按扩展名认,其余当文本', () async {
       final image = await readAttachment(_file('猫 1.PNG', _pixels));

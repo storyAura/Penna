@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/harness/attachment.dart';
 import '../../../core/harness/comfy_workflow.dart';
 import '../../../core/harness/comfyui.dart';
 import '../../../data/models/app_config.dart';
@@ -12,6 +13,23 @@ import '../../../data/services/config_service.dart';
 import '../../../l10n/l10n.dart';
 
 part 'comfy_runner_flows.dart';
+
+/// 建过的附件,按路径记着:每次重建都新建一个的话,图会重新读一遍、闪一下
+/// (附件读出的内容按对象记,图片按内容判断是不是同一张)。这次运行出的图记的是原图。
+// ponytail: 只增不减,一张图一个小对象,内容读一次留在内存里;出图上千张时再加上限。
+final _attachments = <String, Attachment>{};
+
+String _mimeOf(String name) =>
+    imageMimes[name.substring(name.lastIndexOf('.') + 1).toLowerCase()] ??
+    'image/png';
+
+/// 出的图当成图片附件显示(点开看大图、复制),文件读不了时显示空的。
+Attachment comfyImageAttachment(String path) =>
+    _attachments[path] ??= Attachment.saved(
+      name: File(path).uri.pathSegments.last,
+      file: path,
+      mime: _mimeOf(path),
+    );
 
 /// 出过的一张图:存在哪,用的哪条提示词。
 typedef GeneratedImage = ({String path, String prompt, DateTime time});
@@ -171,14 +189,24 @@ class ComfyRunner extends ChangeNotifier {
       );
       if (run != _run) return (images: none, error: null);
       final now = DateTime.now();
-      saved = [
-        for (final image in out)
-          (
-            path: saveComfyImage(imageDir, image.name, image.bytes, now).path,
-            prompt: prompt,
-            time: now,
-          ),
-      ];
+      saved = [];
+      for (final image in out) {
+        final small = await _forDisk(image);
+        final path = saveComfyImage(
+          imageDir,
+          small.name,
+          small.bytes,
+          now,
+        ).path;
+        // 这次运行里显示、复制的是传回来的原图;磁盘上的是压过的。
+        _attachments[path] = Attachment.image(
+          name: image.name,
+          mime: _mimeOf(image.name),
+          bytes: image.bytes,
+        );
+        saved.add((path: path, prompt: prompt, time: now));
+      }
+      if (run != _run) return (images: none, error: null);
       _images = List.unmodifiable(
         [...saved.reversed, ..._images].take(_maxImages),
       );
@@ -196,6 +224,19 @@ class ComfyRunner extends ChangeNotifier {
     _error = error;
     notifyListeners();
     return (images: saved, error: error);
+  }
+
+  /// 存盘用的那份:转成 WebP(尺寸不变);转不了或没变小就存原图。
+  Future<ComfyImage> _forDisk(ComfyImage image) async {
+    try {
+      final webp = await toStoredWebP(image.bytes);
+      if (webp != null && webp.length < image.bytes.length) {
+        return (name: 'image.webp', bytes: webp);
+      }
+    } on Object catch (e) {
+      debugPrint('出的图没压成 WebP,存原图:${e.runtimeType}');
+    }
+    return image;
   }
 
   /// 停止:ComfyUI 那边的单子在下一次问进度时撤掉。
