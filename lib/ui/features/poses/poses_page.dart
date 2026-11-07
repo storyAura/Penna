@@ -8,6 +8,7 @@ import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
+import '../studio/image_viewer.dart' show copyImage;
 import '../settings/settings_sections.dart' show confirmDelete;
 import 'pose_library.dart';
 
@@ -352,18 +353,33 @@ class _PoseDialog extends StatefulWidget {
 class _PoseDialogState extends State<_PoseDialog> {
   late PoseView _view = widget.pose.views.first;
 
-  void _send() {
-    final Attachment image;
+  /// 复制完在按钮旁说一声:弹窗盖着,底下的提示条看不见。
+  String? _note;
+
+  /// 眼前这个视角的图;读不了时在弹窗里说明,返回 null。
+  Attachment? _image() {
     try {
-      image = Attachment.image(
+      return Attachment.image(
         name: '${widget.pose.id}_${_view.angle}.webp',
         mime: 'image/webp',
         bytes: File(_view.path).readAsBytesSync(),
       );
     } on FileSystemException {
-      showToast(context, tr('读不了这张图'), warn: true);
-      return;
+      setState(() => _note = tr('读不了这张图'));
+      return null;
     }
+  }
+
+  Future<void> _copy() async {
+    final image = _image();
+    if (image == null) return;
+    final problem = await copyImage(image);
+    if (mounted) setState(() => _note = problem ?? tr('已复制'));
+  }
+
+  void _send() {
+    final image = _image();
+    if (image == null) return;
     Navigator.pop(context);
     widget.onSend(
       image,
@@ -421,11 +437,27 @@ class _PoseDialogState extends State<_PoseDialog> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  const Spacer(),
+                  Expanded(
+                    child: Text(
+                      _note ?? '',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: PennaColors.slate500,
+                      ),
+                    ),
+                  ),
                   PennaButton(
                     label: tr('关闭'),
                     borderColor: PennaColors.border,
                     onPressed: () => Navigator.pop(context),
+                  ),
+                  const SizedBox(width: 8),
+                  PennaButton(
+                    label: tr('复制图片'),
+                    icon: Icons.copy_outlined,
+                    borderColor: PennaColors.border,
+                    onPressed: _copy,
                   ),
                   const SizedBox(width: 8),
                   PennaButton(
