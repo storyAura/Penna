@@ -2,17 +2,21 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
+import 'comfy_queue_panel.dart';
 import 'studio_view_model.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
 
 const _closedWidth = 30.0;
-const _openWidth = 210.0;
+const _openWidth = 230.0;
+
+/// 左侧栏展开的是哪一块。
+enum _Panel { actions, queue }
 
 String _clock(DateTime t) =>
     [t.hour, t.minute, t.second].map((n) => '$n'.padLeft(2, '0')).join(':');
 
-/// 工作台最左边的操作记录:平时是一条窄边,点开是一列流水账(新的在上)。
+/// 工作台最左边的一条窄边:操作记录(一列流水账,新的在上)和出图队列,点哪个图标展开哪个。
 class ActivityBar extends StatefulWidget {
   const ActivityBar({super.key, required this.vm});
 
@@ -27,11 +31,55 @@ class ActivityBar extends StatefulWidget {
 }
 
 class _ActivityBarState extends State<ActivityBar> {
-  bool _open = false;
+  _Panel? _panel;
+
+  bool get _open => _panel != null;
+
+  /// 出图队列只在主工作区有(区域控制的对话不出图)。
+  bool get _hasQueue => !widget.vm.layoutOnly;
+
+  void _toggle(_Panel p) => setState(() => _panel = _panel == p ? null : p);
+
+  /// 一个切换按钮:展开的那块高亮;排着队时队列图标上带个数。
+  Widget _button(_Panel p) {
+    final queue = p == _Panel.queue;
+    final selected = _panel == p;
+    final runner = widget.vm.comfy;
+    return Tooltip(
+      message: queue ? tr('出图队列') : tr('操作记录'),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => _toggle(p),
+        child: Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: selected ? PennaColors.primaryBg : null,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: ListenableBuilder(
+            listenable: runner,
+            builder: (context, _) => Badge(
+              isLabelVisible: queue && (runner.running || runner.waiting > 0),
+              label: Text('${runner.waiting + (runner.running ? 1 : 0)}'),
+              backgroundColor: PennaColors.primary,
+              textStyle: const TextStyle(fontSize: 9),
+              child: Icon(
+                queue ? Icons.burst_mode_outlined : Icons.history,
+                size: 16,
+                color: selected ? PennaColors.primary : PennaColors.slate500,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final actions = widget.vm.actions;
+    final panels = [_Panel.actions, if (_hasQueue) _Panel.queue];
     return AnimatedContainer(
       duration: Motion.base,
       curve: Motion.swift,
@@ -53,45 +101,48 @@ class _ActivityBarState extends State<ActivityBar> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Tooltip(
-                message: _open ? tr('收起操作记录') : tr('操作记录'),
-                child: InkWell(
-                  onTap: () => setState(() => _open = !_open),
-                  child: SizedBox(
-                    height: 38,
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 7),
-                        Icon(
-                          Icons.history,
-                          size: 16,
-                          color: PennaColors.slate500,
-                        ),
-                        if (_open) ...[
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              tr('操作记录'),
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+              if (!_open)
+                for (final p in panels)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Center(child: _button(p)),
+                  )
+              else
+                SizedBox(
+                  height: 38,
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 2),
+                      for (final p in panels) _button(p),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _panel == _Panel.queue ? tr('出图队列') : tr('操作记录'),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
-                          Icon(
+                        ),
+                      ),
+                      Tooltip(
+                        message: tr('收起'),
+                        child: InkWell(
+                          onTap: () => setState(() => _panel = null),
+                          child: Icon(
                             Icons.chevron_left,
                             size: 16,
                             color: PennaColors.slate400,
                           ),
-                          const SizedBox(width: 6),
-                        ],
-                      ],
-                    ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
                   ),
                 ),
-              ),
               if (_open) const Divider(height: 1),
-              if (_open)
+              if (_panel == _Panel.queue)
+                Expanded(child: ComfyQueuePanel(runner: widget.vm.comfy)),
+              if (_panel == _Panel.actions)
                 Expanded(
                   child: actions.isEmpty
                       ? Center(

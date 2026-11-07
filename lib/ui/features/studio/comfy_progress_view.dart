@@ -51,3 +51,37 @@ class ComfyProgressRow extends StatelessWidget {
     );
   }
 }
+
+/// 排在队列里还没轮到的那一单:前面还有几张,右边可以撤掉。
+class ComfyQueuedRow extends StatelessWidget {
+  const ComfyQueuedRow({super.key, required this.runner, required this.owner});
+
+  final ComfyRunner runner;
+  final Object owner;
+
+  @override
+  Widget build(BuildContext context) {
+    final job = runner.jobs
+        .where((j) => j.owner == owner && j.state == ComfyJobState.waiting)
+        .firstOrNull;
+    if (job == null) return const SizedBox.shrink();
+    return Row(
+      children: [
+        Icon(Icons.schedule, size: 14, color: PennaColors.slate500),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            tr('已加入出图队列 · 前面还有 {0} 张', [runner.aheadOf(owner) ?? 0]),
+            style: TextStyle(fontSize: 12, color: PennaColors.slate500),
+          ),
+        ),
+        PennaButton(
+          label: tr('撤掉'),
+          icon: Icons.close,
+          borderColor: PennaColors.border,
+          onPressed: () => runner.cancel(job.id),
+        ),
+      ],
+    );
+  }
+}

@@ -394,6 +394,7 @@ class AppConfig {
     this.darkFrom = 19 * 60,
     this.darkTo = 7 * 60,
     this.uiScale = 1,
+    this.navOrder = const [],
     this.disabledSkills = const {},
     this.tagSearchOnline = true,
     this.piercing = false,
@@ -471,6 +472,9 @@ class AppConfig {
           .clamp(minUiScale, maxUiScale)
           .toDouble(),
       tagSearchOnline: m['tagSearchOnline'] as bool? ?? true,
+      navOrder: List.unmodifiable([
+        for (final id in m['navOrder'] as List? ?? const []) '$id',
+      ]),
       piercing: m['piercing'] as bool? ?? false,
       piercingPrompt: m['piercingPrompt'] as String? ?? '',
       layoutQuality: m['layoutQuality'] as String? ?? defaultLayoutQuality,
@@ -598,6 +602,9 @@ class AppConfig {
   /// 界面整体放大几倍(高分屏上嫌小时调),1 是原样。
   final double uiScale;
 
+  /// 左边图标栏各页的顺序(页的 id,见 `ui/core/nav_pages.dart`);空的是默认顺序。
+  final List<String> navOrder;
+
   /// 成稿每段下面的对照译文(〔译〕)和机翻用什么语言,跟着界面语言走:
   /// 'zh'(简体)、'zh-Hant'、'ja';英文界面不要对照,为 null。
   String? get glossLanguage => switch (language) {
@@ -676,6 +683,7 @@ class AppConfig {
     'darkFrom': darkFrom,
     'darkTo': darkTo,
     'uiScale': uiScale,
+    if (navOrder.isNotEmpty) 'navOrder': navOrder,
     'disabledSkills': disabledSkills.toList(),
     'tagSearchOnline': tagSearchOnline,
     'piercing': piercing,
@@ -761,6 +769,7 @@ class AppConfig {
     int? darkFrom,
     int? darkTo,
     double? uiScale,
+    List<String>? navOrder,
     Set<String>? disabledSkills,
     bool? tagSearchOnline,
     bool? piercing,
@@ -803,6 +812,7 @@ class AppConfig {
     darkFrom: darkFrom ?? this.darkFrom,
     darkTo: darkTo ?? this.darkTo,
     uiScale: uiScale ?? this.uiScale,
+    navOrder: navOrder == null ? this.navOrder : List.unmodifiable(navOrder),
     disabledSkills: disabledSkills ?? this.disabledSkills,
     tagSearchOnline: tagSearchOnline ?? this.tagSearchOnline,
     piercing: piercing ?? this.piercing,

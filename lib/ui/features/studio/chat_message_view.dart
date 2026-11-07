@@ -197,6 +197,11 @@ class ChatMessageView extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 10),
                   child: ComfyProgressRow(runner: runner),
                 )
+              : runner.aheadOf(message.time) != null
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: ComfyQueuedRow(runner: runner, owner: message.time),
+                )
               : asked && onGenerate != null
               ? Padding(
                   padding: const EdgeInsets.only(top: 10),
@@ -207,9 +212,8 @@ class ChatMessageView extends StatelessWidget {
                       icon: Icons.brush_outlined,
                       background: PennaColors.primary,
                       foreground: Colors.white,
-                      onPressed: runner.running
-                          ? null
-                          : () => onGenerate!(null),
+                      // 正在出别的图时也能点:排进队列。
+                      onPressed: () => onGenerate!(null),
                     ),
                   ),
                 )

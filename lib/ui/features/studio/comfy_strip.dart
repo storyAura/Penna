@@ -20,9 +20,8 @@ class _GenerateButton extends StatelessWidget {
       // 和旁边的「一键复制」分开:实心主题色,深色模式下也看得清。
       background: PennaColors.primary,
       foreground: Colors.white,
-      onPressed: vm.comfy.running
-          ? null
-          : () => vm.comfy.generate(vm.finalPrompt),
+      // 正在出图时也能点:排进队列,出完前一张接着出。
+      onPressed: () => vm.comfy.generate(vm.finalPrompt),
     ),
   );
 }
@@ -39,7 +38,10 @@ class _ComfyStrip extends StatelessWidget {
     builder: (context, _) {
       final error = runner.error;
       final images = runner.images;
-      if (!runner.running && error == null && images.isEmpty) {
+      if (!runner.running &&
+          runner.waiting == 0 &&
+          error == null &&
+          images.isEmpty) {
         return const SizedBox.shrink();
       }
       return Padding(
@@ -48,6 +50,14 @@ class _ComfyStrip extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (runner.running) ComfyProgressRow(runner: runner),
+            if (runner.waiting > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  tr('队列里还有 {0} 张', [runner.waiting]),
+                  style: TextStyle(fontSize: 12, color: PennaColors.slate500),
+                ),
+              ),
             if (error != null)
               SelectableText(
                 error,

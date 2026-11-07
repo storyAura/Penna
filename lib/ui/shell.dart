@@ -24,6 +24,7 @@ import 'features/studio/studio_view_model.dart';
 import 'features/update/update_flow.dart';
 import '../l10n/l10n.dart';
 import 'core/motion.dart';
+import 'core/nav_pages.dart';
 
 export 'core/version.dart';
 
@@ -35,6 +36,17 @@ const _studio = 0,
     _layoutPage = 5,
     _notebookPage = 6,
     _posesPage = 7;
+
+/// 图标栏上的页 id → 在 [Stack] 里排第几。
+const _pageOf = {
+  'studio': _studio,
+  'archive': _archivePage,
+  'characters': _charactersPage,
+  'local': _localPage,
+  'layout': _layoutPage,
+  'notebook': _notebookPage,
+  'poses': _posesPage,
+};
 
 /// 应用外壳:最左图标栏,右边在「工作台」「档案库」「角色库」「姿势图库」「本地反推」「布局」「记事本」「设置」之间切换。
 class AppShell extends StatefulWidget {
@@ -146,7 +158,11 @@ class _AppShellState extends State<AppShell> {
             Expanded(
               child: Row(
                 children: [
-                  _NavRail(page: _page, onSelect: _go),
+                  _NavRail(
+                    page: _page,
+                    order: widget.config.config.navOrder,
+                    onSelect: _go,
+                  ),
                   Expanded(
                     // 几页都一直留着,切去设置时工作台的输入和滚动位置不丢。
                     child: Stack(
@@ -304,13 +320,21 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 class _NavRail extends StatelessWidget {
-  const _NavRail({required this.page, required this.onSelect});
+  const _NavRail({
+    required this.page,
+    required this.order,
+    required this.onSelect,
+  });
 
   final int page;
+
+  /// 用户在「设置 → 软件设置」里排的顺序。
+  final List<String> order;
   final ValueChanged<int> onSelect;
 
   @override
   Widget build(BuildContext context) {
+    final pages = orderedNav(order);
     return Container(
       width: 48,
       // 顶部留白让第一个按钮和右边 PennaBar 那一行垂直居中对齐。
@@ -321,54 +345,25 @@ class _NavRail extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _RailButton(
-            icon: Icons.space_dashboard_outlined,
-            tooltip: tr('工作台'),
-            selected: page == _studio,
-            onTap: () => onSelect(_studio),
-          ),
-          const SizedBox(height: 6),
-          _RailButton(
-            icon: Icons.inventory_2_outlined,
-            tooltip: tr('档案库'),
-            selected: page == _archivePage,
-            onTap: () => onSelect(_archivePage),
-          ),
-          const SizedBox(height: 6),
-          _RailButton(
-            icon: Icons.face_retouching_natural_outlined,
-            tooltip: tr('角色库'),
-            selected: page == _charactersPage,
-            onTap: () => onSelect(_charactersPage),
-          ),
-          const SizedBox(height: 6),
-          _RailButton(
-            icon: Icons.accessibility_new,
-            tooltip: tr('姿势图库'),
-            selected: page == _posesPage,
-            onTap: () => onSelect(_posesPage),
-          ),
-          const SizedBox(height: 6),
-          _RailButton(
-            icon: Icons.memory_outlined,
-            tooltip: tr('本地反推'),
-            selected: page == _localPage,
-            onTap: () => onSelect(_localPage),
-          ),
-          const SizedBox(height: 6),
-          _RailButton(
-            icon: Icons.crop_free,
-            tooltip: tr('区域控制工作台'),
-            selected: page == _layoutPage,
-            onTap: () => onSelect(_layoutPage),
-          ),
-          const SizedBox(height: 6),
-          _RailButton(
-            icon: Icons.sticky_note_2_outlined,
-            tooltip: tr('记事本'),
-            selected: page == _notebookPage,
-            onTap: () => onSelect(_notebookPage),
-          ),
+          for (final (i, p) in pages.indexed) ...[
+            if (i > 0)
+              // 换了一组功能时画一道短线,同组的只留间距。
+              pages[i - 1].group == p.group
+                  ? const SizedBox(height: 6)
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: SizedBox(
+                        width: 20,
+                        child: Divider(height: 1, color: PennaColors.border),
+                      ),
+                    ),
+            _RailButton(
+              icon: p.icon,
+              tooltip: navName(p.id),
+              selected: page == _pageOf[p.id],
+              onTap: () => onSelect(_pageOf[p.id]!),
+            ),
+          ],
           const Spacer(),
           _RailButton(
             icon: Icons.settings_outlined,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show max;
 
 import 'package:flutter/foundation.dart';
 
@@ -12,6 +13,7 @@ import '../../../data/services/comfy_images.dart';
 import '../../../data/services/config_service.dart';
 import '../../../l10n/l10n.dart';
 
+part 'comfy_queue.dart';
 part 'comfy_runner_flows.dart';
 
 /// 建过的附件,按路径记着:每次重建都新建一个的话,图会重新读一遍、闪一下
@@ -52,7 +54,9 @@ const _checkGap = Duration(seconds: 5);
 /// 用 ComfyUI 出图:把最终提示词交给它,出的图存进「设置 → ComfyUI」里的图片位置。
 /// 只在内存里记这次运行出过的图,存档案库时拿最新的一张做预览图。
 class ComfyRunner extends ChangeNotifier {
-  ComfyRunner(this.config);
+  ComfyRunner(this.config) {
+    unawaited(_loadJobs());
+  }
 
   final ConfigService config;
 
@@ -71,6 +75,17 @@ class ComfyRunner extends ChangeNotifier {
 
   /// 每次开始、停止加一,作废之前那次的结果。
   int _run = 0;
+
+  /// 出图队列(新的在前):排着的、正在出的、出完的([ComfyQueue])。
+  List<ComfyJob> _jobs = const [];
+  int _jobSeq = 0;
+
+  /// 排着的单子出完时把结果交回去。
+  final _waiters = <int, Completer<ComfyResult>>{};
+  Future<void> _saving = Future.value();
+
+  /// 出图队列,新的在前。
+  List<ComfyJob> get jobs => _jobs;
 
   bool get running => _running;
 
@@ -155,17 +170,11 @@ class ComfyRunner extends ChangeNotifier {
       _images.where((i) => i.prompt == prompt).firstOrNull?.path ??
       (any ? _images.firstOrNull?.path : null);
 
-  /// 用 [prompt] 出图,返回出的图和出错的原因(停止了两个都是空的)。
-  /// 已经在出图时不出,报原因。[owner] 记着是谁要的,出图时界面据此显示进度。
-  Future<({List<GeneratedImage> images, String? error})> generate(
-    String prompt, {
-    Object? owner,
-  }) async {
+  /// 用 [prompt] 出一张,返回出的图和出错的原因(停止了两个都是空的)。
+  /// 只由队列([ComfyQueue.generate])调,同一时间只有一张。
+  /// [owner] 记着是谁要的,出图时界面据此显示进度。
+  Future<ComfyResult> _execute(String prompt, {Object? owner}) async {
     const none = <GeneratedImage>[];
-    if (_running) return (images: none, error: tr('正在出另一张图'));
-    if (prompt.trim().isEmpty) {
-      return (images: none, error: tr('没有可出图的提示词'));
-    }
     final run = ++_run;
     _running = true;
     _error = null;

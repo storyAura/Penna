@@ -412,6 +412,34 @@ void main() {
       expect(vm.comfy.latestFor('a cat'), reply.images.single);
     });
 
+    test('正在出图时再要一张:排进队列,前一张出完接着出;撤掉排着的;记录存盘读回', () async {
+      final service = tempConfig();
+      service.update(service.config.copyWith(comfy: _at(server.port)));
+      final runner = ComfyRunner(service);
+      final first = runner.generate('a cat');
+      final second = runner.generate('a dog', owner: 'reply');
+      final third = runner.generate('a fox');
+      expect(runner.running, isTrue);
+      expect(runner.waiting, 2);
+      expect(runner.aheadOf('reply'), 1);
+      runner.cancel(runner.jobs.first.id);
+      expect((await third).images, isEmpty);
+
+      expect((await first).error, isNull);
+      expect((await second).images, hasLength(1));
+      final [fox, dog, cat] = runner.jobs;
+      expect(fox.state, ComfyJobState.canceled);
+      expect([dog.state, cat.state], everyElement(ComfyJobState.done));
+      expect(dog.started!.isBefore(cat.finished!), isFalse);
+      expect(cat.took, isNotNull);
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      final again = ComfyRunner(service);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(again.jobs.map((j) => j.prompt), ['a fox', 'a dog', 'a cat']);
+      expect(again.jobs[1].images, dog.images);
+    });
+
     test('测连接、读名单;内置的改过后另存一份;按名字或模型换工作流;LoRA 配置', () async {
       final service = tempConfig();
       service.update(service.config.copyWith(comfy: _at(server.port)));

@@ -13,6 +13,7 @@ import '../../core/version.dart';
 import '../../core/widgets.dart';
 import '../update/update_flow.dart';
 import 'settings_agent_sections.dart';
+import 'settings_nav_order.dart';
 import 'settings_sections.dart';
 
 /// 软件设置分区最宽多少:够宽时右边另起一栏放对话相关的开关。
@@ -114,6 +115,8 @@ class AppSection extends StatelessWidget {
         ),
         gap,
         _DarkThemeCard(service: service),
+        gap,
+        NavOrderCard(service: service),
         gap,
         Padding(
           padding: const EdgeInsets.only(left: 2, bottom: 8),
