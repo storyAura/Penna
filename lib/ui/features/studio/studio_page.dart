@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/harness/attachment.dart';
 import '../../../data/services/archive_store.dart';
 import '../../../data/services/config_service.dart';
 import '../../core/theme.dart';
@@ -16,6 +17,9 @@ const _maxSplit = 0.7;
 /// 工作台:左成稿 + 可拖分割线 + 右对话。
 // ponytail: 小窗不折叠成页签,靠 windows/runner/win32_window.cpp 里的最小窗口尺寸
 // (1100x700)兜底;要支持更小的窗口时再做页签降级。
+/// 别的页面交给工作台对话的:一句话,可能带一张图。
+typedef ChatHandoff = ({String text, Attachment? image});
+
 class StudioPage extends StatefulWidget {
   const StudioPage({
     super.key,
@@ -35,8 +39,8 @@ class StudioPage extends StatefulWidget {
   /// 切到区域控制工作台。
   final VoidCallback? onOpenLayout;
 
-  /// 别的页面交过来的话(比如本地反推的结果):收到就填进聊天输入框。
-  final ValueNotifier<String?>? inbox;
+  /// 别的页面交过来的话(比如本地反推的结果、姿势图):收到就填进聊天输入框,图附上。
+  final ValueNotifier<ChatHandoff?>? inbox;
 
   @override
   State<StudioPage> createState() => _StudioPageState();
@@ -46,6 +50,9 @@ class _StudioPageState extends State<StudioPage> {
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
   late final _changes = Listenable.merge([widget.vm, widget.config]);
+
+  /// 交给对话栏的附件(别的页面送来的图)。
+  final _attach = ValueNotifier<Attachment?>(null);
   double _split = 0.53;
 
   @override
@@ -56,17 +63,20 @@ class _StudioPageState extends State<StudioPage> {
 
   /// 收下别的页面交过来的话。这时工作台可能还没切到前面(拿不到焦点),等下一帧再填。
   void _takeInbox() {
-    final text = widget.inbox?.value;
-    if (text == null) return;
+    final handoff = widget.inbox?.value;
+    if (handoff == null) return;
     widget.inbox!.value = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _fillInput(text);
+      if (!mounted) return;
+      _fillInput(handoff.text);
+      if (handoff.image != null) _attach.value = handoff.image;
     });
   }
 
   @override
   void dispose() {
     widget.inbox?.removeListener(_takeInbox);
+    _attach.dispose();
     _input.dispose();
     _inputFocus.dispose();
     super.dispose();
@@ -132,6 +142,7 @@ class _StudioPageState extends State<StudioPage> {
                         onQuickAction: _appendInput,
                         onOpenSettings: widget.onOpenSettings,
                         onOpenLayout: widget.onOpenLayout,
+                        attach: _attach,
                       ),
                     ),
                     // 给右边的侧栏留出窄边;展开时它盖在对话栏上。

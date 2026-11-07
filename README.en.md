@@ -35,7 +35,7 @@ Penna is a tool for writing **positive prompts** for text-to-image models, cover
 - **Tags and characters**: about 76,000 Danbooru tags and 74,000 characters built in, looked up by the Agent before writing.
 - **ComfyUI generation**: connects to a local or cloud ComfyUI, generates from the final prompt in one click with live progress, lets the Agent generate in chat and creates an Archive preview on save.
 - **Model APIs**: OpenAI-compatible APIs, the Google API and Grok account sign-in, chained as ordered fallbacks.
-- **More**: Skills, Archive, Notes, an Activity tree, MCP, four interface languages, dark mode and in-app updates.
+- **More**: Skills, Archive, a Pose library, Notes, an Activity tree, MCP, four interface languages, dark mode and in-app updates.
 
 The [feature guide](docs/features.en.md) covers everything in full. A three-page comic laid out in Penna and rendered with MOSS-Image:
 
@@ -87,6 +87,7 @@ Every part of Penna is built on the work of the open-source community.
 | [Danbooru](https://danbooru.donmai.us) and its taggers | The origin of all tag and character data | — |
 | [Laxhar/noob-wiki](https://huggingface.co/datasets/Laxhar/noob-wiki) | Original character tag data | Apache-2.0 |
 | [DanbooruSearch](https://sakizuki-danboorusearch.hf.space) | MCP service for online semantic tag search | — |
+| [Shisei](https://github.com/wquguru/shisei) | Mannequin line art in the Pose library (downloaded on use) | CC0 1.0 |
 
 ### Software and models
 

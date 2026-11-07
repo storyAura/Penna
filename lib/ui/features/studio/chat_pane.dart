@@ -55,6 +55,7 @@ class ChatPane extends StatefulWidget {
     required this.onOpenSettings,
     this.onOpenLayout,
     this.onImage,
+    this.attach,
   });
 
   final StudioViewModel vm;
@@ -69,6 +70,9 @@ class ChatPane extends StatefulWidget {
 
   /// 输入框里放进了一张图(区域控制工作台拿它看横竖)。
   final ValueChanged<Attachment>? onImage;
+
+  /// 别的页面送来的附件:收到就附到输入框。
+  final ValueNotifier<Attachment?>? attach;
 
   @override
   State<ChatPane> createState() => _ChatPaneState();
@@ -133,7 +137,15 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
     super.initState();
     widget.vm.addListener(_followReply);
     widget.input.addListener(_trackMention);
+    widget.attach?.addListener(_takeAttach);
     _toBottom();
+  }
+
+  void _takeAttach() {
+    final a = widget.attach!.value;
+    if (a == null) return;
+    widget.attach!.value = null;
+    _reuse(a);
   }
 
   /// 现在看的这场对话的第一条消息;换了就是换了一场对话。
@@ -154,6 +166,7 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
   void dispose() {
     widget.vm.removeListener(_followReply);
     widget.input.removeListener(_trackMention);
+    widget.attach?.removeListener(_takeAttach);
     _scroll.dispose();
     super.dispose();
   }

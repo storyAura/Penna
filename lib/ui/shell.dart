@@ -15,6 +15,8 @@ import 'features/layout/layout_page.dart';
 import 'features/local/local_model.dart';
 import 'features/local/local_page.dart';
 import 'features/notebook/notebook_page.dart';
+import 'features/poses/pose_library.dart';
+import 'features/poses/poses_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/studio/side_chat.dart';
 import 'features/studio/studio_page.dart';
@@ -31,9 +33,10 @@ const _studio = 0,
     _charactersPage = 3,
     _localPage = 4,
     _layoutPage = 5,
-    _notebookPage = 6;
+    _notebookPage = 6,
+    _posesPage = 7;
 
-/// 应用外壳:最左图标栏,右边在「工作台」「档案库」「角色库」「本地反推」「布局」「记事本」「设置」之间切换。
+/// 应用外壳:最左图标栏,右边在「工作台」「档案库」「角色库」「姿势图库」「本地反推」「布局」「记事本」「设置」之间切换。
 class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
@@ -44,8 +47,12 @@ class AppShell extends StatefulWidget {
     this.archive,
     this.notebooks,
     this.local,
+    this.poses,
     this.checkUpdates = false,
   });
+
+  /// 姿势图库;不给就用一个只在内存里、装不上的(测试用)。
+  final PoseLibrary? poses;
 
   /// 记事本;不给就用一个只在内存里的(测试用)。
   final NotebookStore? notebooks;
@@ -93,6 +100,7 @@ class _AppShellState extends State<AppShell> {
   int _page = _studio;
   late final _archive = widget.archive ?? ArchiveStore();
   late final _notebooks = widget.notebooks ?? NotebookStore();
+  late final _poses = widget.poses ?? PoseLibrary();
   // 角色库跟着工作台走:Agent 存进去的和这一页上看到的是同一份。
   late final _characters = widget.vm.characters ?? CharacterStore();
   // 布局画板同样跟着工作台走:Agent 写的布局放到这一页上。
@@ -112,7 +120,7 @@ class _AppShellState extends State<AppShell> {
       );
 
   /// 别的页面要交给 Agent 的话:工作台收到后填进聊天输入框。
-  final _toChat = ValueNotifier<String?>(null);
+  final _toChat = ValueNotifier<ChatHandoff?>(null);
 
   late final _local =
       widget.local ?? LocalModel(streamChat: widget.vm.streamChat);
@@ -179,7 +187,17 @@ class _AppShellState extends State<AppShell> {
                             onOpenStudio: () => _go(_studio),
                             onSendToAgent: (text) {
                               _go(_studio);
-                              _toChat.value = text;
+                              _toChat.value = (text: text, image: null);
+                            },
+                          ),
+                        ),
+                        _Page(
+                          active: _page == _posesPage,
+                          child: PosesPage(
+                            library: _poses,
+                            onSend: (image, text) {
+                              _go(_studio);
+                              _toChat.value = (text: text, image: image);
                             },
                           ),
                         ),
@@ -321,6 +339,13 @@ class _NavRail extends StatelessWidget {
             tooltip: tr('角色库'),
             selected: page == _charactersPage,
             onTap: () => onSelect(_charactersPage),
+          ),
+          const SizedBox(height: 6),
+          _RailButton(
+            icon: Icons.accessibility_new,
+            tooltip: tr('姿势图库'),
+            selected: page == _posesPage,
+            onTap: () => onSelect(_posesPage),
           ),
           const SizedBox(height: 6),
           _RailButton(

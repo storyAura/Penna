@@ -24,6 +24,7 @@ import 'data/services/skill_store.dart';
 import 'ui/core/look_switcher.dart';
 import 'ui/core/theme.dart';
 import 'ui/features/local/local_model.dart';
+import 'ui/features/poses/pose_library.dart';
 import 'ui/features/layout/layout_board.dart';
 import 'ui/features/studio/studio_view_model.dart';
 import 'ui/shell.dart';
@@ -121,6 +122,9 @@ Future<void> main() async {
     autoFolders: cacheFolders(Platform.environment),
   );
   await local.load();
+  // 姿势图库:用户下载或导入后才有。
+  final poses = PoseLibrary(home);
+  await poses.load();
   // Agent 在对话里要用本地模型反推时,交给本地反推页这一份。
   vm.local = local;
   // 主工作区要排布局时,交给区域控制工作台的 Agent。
@@ -136,6 +140,7 @@ Future<void> main() async {
       archive: archive,
       notebooks: notebooks,
       local: local,
+      poses: poses,
     ),
   );
 }
@@ -229,6 +234,7 @@ class PennaApp extends StatefulWidget {
     required this.archive,
     required this.notebooks,
     required this.local,
+    required this.poses,
   });
 
   final StudioViewModel layoutChat;
@@ -236,6 +242,7 @@ class PennaApp extends StatefulWidget {
   final ArchiveStore archive;
   final NotebookStore notebooks;
   final LocalModel local;
+  final PoseLibrary poses;
   final StudioViewModel vm;
   final ConfigService config;
   final SkillStore skills;
@@ -342,6 +349,7 @@ class _PennaAppState extends State<PennaApp> with WindowListener {
             archive: widget.archive,
             notebooks: widget.notebooks,
             local: widget.local,
+            poses: widget.poses,
             checkUpdates: kReleaseMode,
           ),
         );

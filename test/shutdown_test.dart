@@ -10,6 +10,7 @@ import 'package:penna/data/services/notebook_store.dart';
 import 'package:penna/main.dart';
 import 'package:penna/ui/features/layout/layout_board.dart';
 import 'package:penna/ui/features/local/local_model.dart';
+import 'package:penna/ui/features/poses/pose_library.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 
 import 'fixtures.dart';
@@ -74,6 +75,7 @@ void main() {
         archive: ArchiveStore(),
         notebooks: NotebookStore(),
         local: local,
+        poses: PoseLibrary(),
       ),
     );
     await tester.pumpAndSettle();
