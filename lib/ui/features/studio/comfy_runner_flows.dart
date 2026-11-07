@@ -140,48 +140,74 @@ extension ComfyFlows on ComfyRunner {
           '${_modelsOf(c.id).isEmpty ? '模型未知' : _modelsOf(c.id).join('、')}',
   ].join('\n');
 
-  /// 把眼前工作流的 LoRA(开关、权重)存成一套配置;同名的换掉。
+  /// 眼前用的那套 LoRA 配置;没用哪一套(或已删掉)是 null。
+  LoraPreset? get loraPreset => _settings.loraPresets
+      .where((p) => p.name == _settings.loraPreset)
+      .firstOrNull;
+
+  /// 眼前工作流的 LoRA 和用着的那套配置不一样了(要存才留得住)。
+  bool get loraPresetChanged {
+    final preset = loraPreset;
+    final wf = workflow;
+    return preset != null &&
+        wf != null &&
+        !listEquals(_lorasOf(wf), preset.loras);
+  }
+
+  List<LoraSetting> _lorasOf(ComfyWorkflow wf) => [
+    for (final l in loraSlots(wf))
+      (name: l.name, strength: l.strength, on: l.on),
+  ];
+
+  /// 把眼前工作流的 LoRA(开关、权重)存成一套配置并用上它;同名的换掉。
   String? saveLoraPreset(String name) {
     final wf = workflow;
     if (wf == null) return tr('还没连上 ComfyUI');
     if (name.trim().isEmpty) return tr('名字不能为空');
     _put(
-      _settings.putLoraPreset((
-        name: name.trim(),
-        loras: [
-          for (final l in loraSlots(wf))
-            (name: l.name, strength: l.strength, on: l.on),
-        ],
-      )),
+      _settings
+          .putLoraPreset((name: name.trim(), loras: _lorasOf(wf)))
+          .copyWith(loraPreset: name.trim()),
     );
     _changed();
     return null;
   }
 
-  /// 用一套配置:里面有的 LoRA 照它开关、改权重,工作流里没有的加上;
-  /// 配置里没有的关掉(没有开关的把权重调成 0)。
-  String? applyLoraPreset(LoraPreset preset) => edit((wf) {
-    var next = wf;
-    final wanted = {for (final l in preset.loras) l.name: l};
-    for (final slot in loraSlots(wf)) {
-      final want = wanted.remove(slot.name);
-      next = want != null
-          ? setLora(
-              next,
-              slot.node,
-              slot.key,
-              strength: want.strength,
-              on: want.on,
-            )
-          : slot.canToggle
-          ? setLora(next, slot.node, slot.key, on: false)
-          : setLora(next, slot.node, slot.key, strength: 0);
-    }
-    for (final l in wanted.values) {
-      if (l.on) next = addLora(next, l.name, l.strength);
-    }
-    return next;
-  });
+  /// 用一套配置:工作流里的 LoRA 换成和它一模一样(各套各是各的名单):
+  /// 配置里有的照它开关、改权重,没有的加上,配置里没有的去掉。
+  /// ponytail: 去掉的若是工作流自带的 LoraLoader(也接 CLIP),再加回来只作用于模型;
+  /// 要原样还原就得把整份工作流存进配置。
+  String? applyLoraPreset(LoraPreset preset) {
+    final problem = edit((wf) {
+      var next = wf;
+      final wanted = {for (final l in preset.loras) l.name: l};
+      // 去掉一个只动它自己那一项或那个节点,别的槽位的 node / key 不变,所以照旧表走。
+      for (final slot in loraSlots(wf)) {
+        final want = wanted.remove(slot.name);
+        next = want == null
+            ? removeLora(next, slot.node, slot.key)
+            : setLora(
+                next,
+                slot.node,
+                slot.key,
+                strength: want.strength,
+                on: want.on,
+              );
+      }
+      for (final l in wanted.values) {
+        next = addLora(next, l.name, l.strength);
+        if (!l.on) {
+          final added = loraSlots(next).last;
+          next = setLora(next, added.node, added.key, on: false);
+        }
+      }
+      return next;
+    });
+    if (problem != null) return problem;
+    _put(_settings.copyWith(loraPreset: preset.name));
+    _changed();
+    return null;
+  }
 
   void removeLoraPreset(String name) {
     _put(_settings.removeLoraPreset(name));

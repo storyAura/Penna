@@ -455,9 +455,45 @@ void main() {
       final slot = loraSlots(runner.workflow!).single;
       runner.edit((wf) => setLora(wf, slot.node, slot.key, strength: 0.2));
       expect(loraSlots(runner.workflow!).single.strength, 0.2);
+      // 改了没存:保存按钮亮;用回那一套就回到存的样子。
+      expect(runner.loraPreset?.name, '柔和');
+      expect(runner.loraPresetChanged, isTrue);
       final preset = service.config.comfy.loraPresets.single;
       expect(runner.applyLoraPreset(preset), isNull);
       expect(loraSlots(runner.workflow!).single.strength, 0.7);
+      expect(runner.loraPresetChanged, isFalse);
+
+      // 各套各是各的名单:另一套多加的 LoRA,换回「柔和」时去掉,而不是留着关掉。
+      runner.edit((wf) => addLora(wf, 'extra.safetensors', 0.5));
+      expect(runner.saveLoraPreset('加一个'), isNull);
+      expect(loraSlots(runner.workflow!).map((l) => l.name), hasLength(2));
+      expect(runner.applyLoraPreset(preset), isNull);
+      expect(loraSlots(runner.workflow!).map((l) => l.name), [
+        preset.loras.single.name,
+      ]);
+      // 改了眼前这一套再保存,存回的就是它。
+      final again = loraSlots(runner.workflow!).single;
+      runner.edit((wf) => setLora(wf, again.node, again.key, strength: 0.3));
+      expect(runner.saveLoraPreset(runner.loraPreset!.name), isNull);
+      expect(
+        service.config.comfy.loraPresets
+            .firstWhere((p) => p.name == '柔和')
+            .loras
+            .single
+            .strength,
+        0.3,
+      );
+      expect(runner.loraPresetChanged, isFalse);
+      // 删掉正用着的那一套,就不算用着哪一套了。
+      runner.removeLoraPreset('柔和');
+      expect(runner.loraPreset, isNull);
+      // 设置存盘读回,用着哪一套也留着。
+      expect(
+        ComfySettings.fromJson(
+          service.config.comfy.copyWith(loraPreset: '加一个').toJson(),
+        ).loraPreset,
+        '加一个',
+      );
     });
 
     test('Agent 换成用那个模型的工作流再出图;换不成就不出图', () async {

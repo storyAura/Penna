@@ -123,28 +123,55 @@ class ComfyPanel extends StatelessWidget {
           },
         ),
       ),
-      // 存好的几套 LoRA:点一套就照它开关、改权重;最后一项「新建」把眼前的存成一套。
-      _Menu<String>(
-        leading: Icon(
-          Icons.layers_outlined,
-          size: 14,
-          color: PennaColors.slate500,
-        ),
-        label: tr('LoRA 配置'),
-        items: [
-          for (final p in comfy.loraPresets) (value: p.name, label: p.name),
-          (value: '', label: tr('新建')),
+      // 存好的几套 LoRA:点一套就换成它的名单;最后一项「新建」把眼前的存成一套。
+      // 旁边的保存把改动存回眼前这一套。
+      Row(
+        children: [
+          Expanded(
+            child: _Menu<String>(
+              leading: Icon(
+                Icons.layers_outlined,
+                size: 14,
+                color: PennaColors.slate500,
+              ),
+              label: runner.loraPreset?.name ?? tr('LoRA 配置'),
+              items: [
+                for (final p in comfy.loraPresets)
+                  (value: p.name, label: p.name),
+                (value: '', label: tr('新建')),
+              ],
+              selected: runner.loraPreset?.name,
+              onSelected: (name) async {
+                if (name.isNotEmpty) {
+                  final preset = comfy.loraPresets.firstWhere(
+                    (p) => p.name == name,
+                  );
+                  report(runner.applyLoraPreset(preset));
+                  return;
+                }
+                final asked = await _askText(context, tr('存成一套 LoRA 配置'));
+                if (asked != null) report(runner.saveLoraPreset(asked));
+              },
+              onRemove: runner.removeLoraPreset,
+            ),
+          ),
+          if (runner.loraPreset case final preset?)
+            IconButton(
+              tooltip: tr('保存'),
+              iconSize: 16,
+              visualDensity: VisualDensity.compact,
+              color: PennaColors.primary,
+              icon: const Icon(Icons.save_outlined),
+              onPressed: runner.loraPresetChanged
+                  ? () {
+                      final problem = runner.saveLoraPreset(preset.name);
+                      problem == null
+                          ? showToast(context, tr('已保存'))
+                          : report(problem);
+                    }
+                  : null,
+            ),
         ],
-        onSelected: (name) async {
-          if (name.isNotEmpty) {
-            final preset = comfy.loraPresets.firstWhere((p) => p.name == name);
-            report(runner.applyLoraPreset(preset));
-            return;
-          }
-          final asked = await _askText(context, tr('存成一套 LoRA 配置'));
-          if (asked != null) report(runner.saveLoraPreset(asked));
-        },
-        onRemove: runner.removeLoraPreset,
       ),
       const SizedBox(height: 6),
       for (final slot in slots)

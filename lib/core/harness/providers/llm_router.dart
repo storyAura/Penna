@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import 'gemini_provider.dart';
 import 'openai_provider.dart';
 import 'responses_provider.dart';
@@ -83,6 +85,9 @@ Stream<String> streamWithFailover(
         return out.close();
       }
       failures.add('$name:${error ?? '没有返回内容'}');
+      // 后面的模型接上了,这条原因就不会显示出来;记进 error.log 好查为什么换了。
+      // ponytail: 只记日志,界面上不提示;要提示时在回复上加一行「X 失败,换成 Y」。
+      debugPrint('换下一个模型:${failures.last}');
     }
     out.addError(
       LlmException(failures.isEmpty ? tr('没有可用的模型') : failures.join('\n')),

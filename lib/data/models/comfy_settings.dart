@@ -34,6 +34,7 @@ class ComfySettings {
     this.flows = const [],
     this.flowId = builtinWorkflowId,
     this.loraPresets = const [],
+    this.loraPreset = '',
     this.imageDir = '',
     this.autoGenerate = true,
   });
@@ -100,6 +101,7 @@ class ComfySettings {
               ]),
             ),
       ]),
+      loraPreset: m['loraPreset'] as String? ?? '',
       imageDir: m['imageDir'] as String? ?? '',
       autoGenerate: m['autoGenerate'] as bool? ?? true,
     );
@@ -116,6 +118,9 @@ class ComfySettings {
   final String flowId;
 
   final List<LoraPreset> loraPresets;
+
+  /// 眼前用的那套 LoRA 配置的名字;空的是没用哪一套。
+  final String loraPreset;
 
   /// 出的图存在哪;空的是「文档\Penna\images」。
   final String imageDir;
@@ -150,6 +155,7 @@ class ComfySettings {
           ],
         },
     ],
+    'loraPreset': loraPreset,
     'imageDir': imageDir,
     'autoGenerate': autoGenerate,
   };
@@ -160,6 +166,7 @@ class ComfySettings {
     List<ComfyFlow>? flows,
     String? flowId,
     List<LoraPreset>? loraPresets,
+    String? loraPreset,
     String? imageDir,
     bool? autoGenerate,
   }) => ComfySettings(
@@ -170,6 +177,7 @@ class ComfySettings {
     loraPresets: loraPresets == null
         ? this.loraPresets
         : List.unmodifiable(loraPresets),
+    loraPreset: loraPreset ?? this.loraPreset,
     imageDir: imageDir ?? this.imageDir,
     autoGenerate: autoGenerate ?? this.autoGenerate,
   );
@@ -225,5 +233,6 @@ class ComfySettings {
       for (final p in loraPresets)
         if (p.name != name) p,
     ],
+    loraPreset: loraPreset == name ? '' : loraPreset,
   );
 }
