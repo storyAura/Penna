@@ -8,6 +8,9 @@ import 'package:flutter/foundation.dart';
 import '../../../core/harness/local/download.dart';
 import '../../../data/services/skill_store.dart' show safeZipPath;
 import '../../../l10n/l10n.dart';
+import 'pose_download.dart';
+
+export 'pose_download.dart' show PoseSource;
 
 /// 一个视角:[angle] 是 front / diag / side / above / below,[path] 是图片的完整路径。
 typedef PoseView = ({String angle, String path});
@@ -23,12 +26,6 @@ typedef Pose = ({
 
 /// 作者标出的「性感 / 双人」系列,默认藏起来(图集说明里的请求)。
 bool isSuggestive(Pose p) => p.tags.contains('sensitive:suggestive_series');
-
-/// 下载图集的地方,按顺序试。
-// ponytail: 还没分发,表是空的,页面上只有「导入」;放上 GitHub、魔搭后各加一行,
-// 带上 SHA256(GitHub 的才走加速前缀)。
-const List<({String name, String url})> posePackSources = [];
-const posePackSha256 = '';
 
 /// 读 poses.json;[root] 是图集所在的文件夹,图片路径照它拼成完整的。
 /// 格式不对时抛 [FormatException]。
@@ -115,34 +112,25 @@ class PoseLibrary extends ChangeNotifier {
     }
   }
 
-  /// 从 [posePackSources] 下载再装上;出错返回给用户看的一句话。
-  Future<String?> download() async {
+  /// 从 [source] 下载再装上(盖掉原来的)。返回给用户看的一句话:
+  /// 出错时说原因;魔搭上有几张下不到时也说,装还是装上。全都好时是 null。
+  Future<String?> download(PoseSource source) async {
     final dir = _dir;
-    if (dir == null || _busy || posePackSources.isEmpty) return null;
+    if (dir == null || _busy) return null;
+    if (source == PoseSource.modelscope) return _downloadLoose(dir);
     final zip = '$dir.zip';
     _set(busy: true);
     try {
-      final file = (
-        url: posePackSources.first.url,
-        path: zip,
-        size: null,
-        sha256: posePackSha256.isEmpty ? null : posePackSha256,
+      const file = (
+        url: poseZipUrl,
+        path: '',
+        size: poseZipSize,
+        sha256: poseZipSha256,
       );
       await downloadFile(
-        file,
-        urls: [
-          for (final s in posePackSources)
-            ...downloadUrls((
-              url: s.url,
-              path: zip,
-              size: file.size,
-              sha256: file.sha256,
-            )),
-        ],
-        onProgress: (got, total) {
-          _progress = total == null || total == 0 ? null : got / total;
-          notifyListeners();
-        },
+        (url: file.url, path: zip, size: file.size, sha256: file.sha256),
+        urls: downloadUrls(file, proxyFirst: source == PoseSource.githubAccel),
+        onProgress: _onProgress,
       );
     } on DownloadException catch (e) {
       _set(busy: false);
@@ -153,6 +141,45 @@ class PoseLibrary extends ChangeNotifier {
     if (problem == null) await File(zip).delete();
     return problem;
   }
+
+  void _onProgress(int got, int? total) {
+    _progress = total == null || total == 0 ? null : got / total;
+    notifyListeners();
+  }
+
+  /// 魔搭上是散的文件:下到临时文件夹,读得通再换掉原来的。
+  Future<String?> _downloadLoose(String dir) async {
+    _set(busy: true);
+    final tmp = Directory('$dir.tmp');
+    try {
+      if (tmp.existsSync()) await tmp.delete(recursive: true);
+      final missing = await fetchLoosePack(
+        looseBase,
+        tmp.path,
+        onProgress: (done, total) => _onProgress(done, total),
+      );
+      final index = File('${tmp.path}${Platform.pathSeparator}poses.json');
+      final json = jsonDecode(await index.readAsString());
+      if (parsePoses(json as Map<String, dynamic>, dir).isEmpty) {
+        return tr('图集里没有能用的姿势');
+      }
+      _swapIn(tmp.path, dir);
+      await load();
+      return missing == 0 ? null : tr('已装好,有 {0} 张图下载不到', [missing]);
+    } on DownloadException catch (e) {
+      return e.message;
+    } on Object catch (e) {
+      debugPrint('pose download: $e');
+      return tr('下载失败({0})', [e.runtimeType]);
+    } finally {
+      if (tmp.existsSync()) await tmp.delete(recursive: true);
+      _set(busy: false);
+    }
+  }
+
+  /// 魔搭的下载地址前缀;测试里换成本机的假服务器。
+  @visibleForTesting
+  String looseBase = poseModelScopeBase;
 
   /// 删掉装好的图集。
   Future<void> remove() async {
@@ -228,8 +255,13 @@ String? _unpack(String zip, String dir) {
     out.parent.createSync(recursive: true);
     out.writeAsBytesSync(f.file.content);
   }
+  _swapIn(tmp.path, dir);
+  return null;
+}
+
+/// 用 [tmp] 换掉 [dir]。
+void _swapIn(String tmp, String dir) {
   final old = Directory(dir);
   if (old.existsSync()) old.deleteSync(recursive: true);
-  tmp.renameSync(dir);
-  return null;
+  Directory(tmp).renameSync(dir);
 }

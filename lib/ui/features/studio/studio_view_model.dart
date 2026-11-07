@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show Random;
 
 import 'package:flutter/foundation.dart';
 
@@ -27,6 +28,7 @@ import '../../../data/services/translate_chain.dart';
 import '../../../data/services/translate_engines.dart';
 import '../layout/layout_board.dart';
 import '../local/local_model.dart';
+import '../poses/pose_library.dart';
 import 'chat_message.dart';
 import 'comfy_runner.dart';
 import 'side_chat.dart';
@@ -44,6 +46,7 @@ part 'studio_history.dart';
 part 'studio_layout_pages.dart';
 part 'studio_meter.dart';
 part 'studio_pages.dart';
+part 'studio_poses.dart';
 part 'studio_rewrite.dart';
 part 'studio_skills.dart';
 part 'studio_storage.dart';
@@ -203,6 +206,10 @@ class StudioViewModel extends ChangeNotifier {
   /// 本地反推页和工作台都建好之后才接上(`main()`、`AppShell`),所以不是 final;
   /// 没有就不提本地反推,也不理这两个标签。
   LocalModel? local;
+
+  /// 姿势图库:装了的话 Agent 问过用户后能写 `<pose-ref>` 附参考图([StudioPoses])。
+  /// 同 [local] 建好之后才接上。
+  PoseLibrary? poses;
 
   /// 区域控制工作台的那场对话(`layoutOnly`)。主工作区的 Agent 写 `<ask-layout>` 时,
   /// 把活转给它,等它把布局放到画板上,再把 JSON 拿回主工作区的新系列。

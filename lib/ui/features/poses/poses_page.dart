@@ -65,6 +65,9 @@ class _PosesPageState extends State<PosesPage> {
   /// 显示作者标出的性感系列(默认藏起来)。
   bool _suggestive = false;
 
+  /// 从哪下载。
+  PoseSource _source = PoseSource.githubAccel;
+
   PoseLibrary get lib => widget.library;
 
   Future<void> _import() async {
@@ -77,7 +80,7 @@ class _PosesPageState extends State<PosesPage> {
     _report(await lib.importZip(picked.path));
   }
 
-  Future<void> _download() async => _report(await lib.download());
+  Future<void> _download() async => _report(await lib.download(_source));
 
   void _report(String? problem) {
     if (!mounted) return;
@@ -160,6 +163,22 @@ class _PosesPageState extends State<PosesPage> {
           style: TextStyle(fontSize: 12, color: PennaColors.slate500),
         ),
         const SizedBox(height: 16),
+        Wrap(
+          spacing: 6,
+          children: [
+            for (final (s, label) in [
+              (PoseSource.githubAccel, tr('GitHub 加速')),
+              (PoseSource.github, 'GitHub'),
+              (PoseSource.modelscope, tr('魔搭 · 不含 NSFW')),
+            ])
+              PennaChip(
+                label: label,
+                selected: _source == s,
+                onTap: lib.busy ? null : () => setState(() => _source = s),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
         if (lib.busy)
           SizedBox(
             width: 220,
@@ -169,16 +188,14 @@ class _PosesPageState extends State<PosesPage> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (posePackSources.isNotEmpty) ...[
-                PennaButton(
-                  label: tr('下载'),
-                  icon: Icons.download_outlined,
-                  background: PennaColors.primary,
-                  foreground: Colors.white,
-                  onPressed: _download,
-                ),
-                const SizedBox(width: 8),
-              ],
+              PennaButton(
+                label: tr('下载'),
+                icon: Icons.download_outlined,
+                background: PennaColors.primary,
+                foreground: Colors.white,
+                onPressed: _download,
+              ),
+              const SizedBox(width: 8),
               PennaButton(
                 label: tr('导入 ZIP'),
                 icon: Icons.file_open_outlined,

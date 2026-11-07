@@ -34,12 +34,15 @@ extension StudioContext on StudioViewModel {
     final loads = layoutOnly
         ? const <String>[]
         : splitToolTag(prose, loadSkillTag).queries.take(_maxQueries).toList();
+    // 要姿势参考图:用户同意后 Agent 才写。
+    final pose = _poseRefs(prose);
     if (queries.isEmpty &&
             names.isEmpty &&
             calls.isEmpty &&
             asks.isEmpty &&
             webs.isEmpty &&
             loads.isEmpty &&
+            pose == null &&
             !peek ||
         _toolRounds >= _maxToolRounds) {
       return false;
@@ -84,7 +87,9 @@ extension StudioContext on StudioViewModel {
             if (skill.text.isNotEmpty) skill.text,
             if (web.isNotEmpty) formatWebResults(web),
             if (ran.isNotEmpty) _localResults(ran),
+            ?pose?.text,
           ].join('\n\n'),
+          attachments: pose?.images ?? const [],
           time: time,
           toolSummary: [
             if (results.isNotEmpty) tr('查了 Danbooru 标签 · {0} 个', [hits.length]),
@@ -93,6 +98,7 @@ extension StudioContext on StudioViewModel {
             if (peek) tr('读了副聊天'),
             // 用了哪些技能不写在这:界面从 text 里读出来,单独显示一块(同联网搜索)。
             for (final r in ran) r.note,
+            ?pose?.note,
           ].join(' · '),
           toolDetails: [
             for (final MapEntry(key: query, value: found) in results.entries)
@@ -395,6 +401,7 @@ extension StudioContext on StudioViewModel {
       _skillPrompt(cfg),
       webSearchGuide,
       _comfyPrompt,
+      _posePrompt,
       // 「画面规划」是默认的第一步,不靠模型自己想起来用。
       _planFirstPrompt,
       _characterPrompt,

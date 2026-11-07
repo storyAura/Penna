@@ -127,6 +127,7 @@ Future<void> main() async {
   await poses.load();
   // Agent 在对话里要用本地模型反推时,交给本地反推页这一份。
   vm.local = local;
+  vm.poses = poses;
   // 主工作区要排布局时,交给区域控制工作台的 Agent。
   vm.layoutAgent = layoutChat;
   // 关窗前先停掉本地反推起的 llama-server:Windows 不会跟着把它关掉。

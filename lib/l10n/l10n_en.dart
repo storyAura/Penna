@@ -1260,4 +1260,11 @@ const en = <String, String>{
   '导入失败({0})': 'Import failed ({0})',
   '压缩包太大': 'The archive is too large',
   '压缩包里没有能用的 poses.json': 'The archive has no usable poses.json',
+  '魔搭 · 不含 NSFW': 'ModelScope · no NSFW',
+  '下载不到图集的索引': 'Couldn\'t download the pack index',
+  '图集的索引读不了': 'Can\'t read the pack index',
+  '已装好,有 {0} 张图下载不到': 'Installed; {0} images could not be downloaded',
+  '下载失败({0})': 'Download failed ({0})',
+  '姿势参考没对上分类': 'Pose reference: no matching category',
+  '附上了姿势参考 · {0} 张': 'Attached pose references · {0}',
 };

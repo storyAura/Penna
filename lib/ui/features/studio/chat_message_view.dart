@@ -234,8 +234,11 @@ class ChatMessageView extends StatelessWidget {
       splitCharacterTags(
         splitTagSearch(
           splitToolTag(
-            splitToolTag(peeked, webSearchTag).prose,
-            loadSkillTag,
+            splitToolTag(
+              splitToolTag(peeked, webSearchTag).prose,
+              loadSkillTag,
+            ).prose,
+            poseRefTag,
           ).prose,
         ).prose,
       ).prose,
@@ -498,6 +501,14 @@ class ChatMessageView extends StatelessWidget {
                       ? found.single.toolSummary ?? tr('查了资料')
                       : tr('查了资料 · {0} 次', [found.length]),
                   details: [for (final l in found) ...l.toolDetails],
+                ),
+                const SizedBox(height: 10),
+              ],
+              // 程序附给模型看的图(姿势参考):用户也要看到附了哪几张。
+              if (lookups.any((l) => l.attachments.isNotEmpty)) ...[
+                AttachmentStrip(
+                  attachments: [for (final l in lookups) ...l.attachments],
+                  onReuse: onReuseAttachment,
                 ),
                 const SizedBox(height: 10),
               ],
