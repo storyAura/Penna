@@ -8,6 +8,7 @@ import '../../../core/harness/characters/character_dict.dart';
 import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
+import '../../../core/harness/local/local_tools.dart';
 import '../../../core/harness/providers/llm_router.dart';
 import '../../../core/harness/tags/tag_search.dart';
 import '../../../l10n/l10n.dart';
@@ -250,6 +251,7 @@ class SideChat extends ChangeNotifier {
     '【工作区】用户眼前的提示词(每段开头的【】是分段标注,〔译〕行是对照译文):\n'
         '${main.workspaceText}',
     main.webSearchGuide,
+    main.localGuide,
     main.lookupGuide,
   ].where((s) => s.isNotEmpty).join('\n\n');
 
@@ -407,6 +409,7 @@ class SideChat extends ChangeNotifier {
     final reply = _messages.last.text;
     if (splitTagSearch(reply).queries.isEmpty &&
         splitCharacterTags(reply).queries.isEmpty &&
+        splitLocalTools(reply).calls.isEmpty &&
         !main.wantsWebSearch(reply)) {
       return false;
     }
@@ -415,7 +418,7 @@ class SideChat extends ChangeNotifier {
     _waiting = true;
     notifyListeners();
     unawaited(() async {
-      final result = await main.lookupFor(reply);
+      final result = await main.lookupFor(reply, image: _lastImage);
       if (_disposed || run != _run) return;
       _waiting = false;
       if (result == null) return notifyListeners();
@@ -423,6 +426,12 @@ class SideChat extends ChangeNotifier {
     }());
     return true;
   }
+
+  /// 用户在副聊天里发过的最新一张图(本地反推、转区域控制用)。
+  Attachment? get _lastImage => _messages.reversed
+      .where((m) => m.fromUser && !m.tool)
+      .expand((m) => m.attachments.reversed.where((a) => a.isImage))
+      .firstOrNull;
 
   /// 回复里写了 `<ask-layout>`:和主聊天一样交给区域控制的 Agent,等它排好再接着写。
   /// 返回是否接手了。
@@ -434,10 +443,7 @@ class SideChat extends ChangeNotifier {
     final run = ++_run;
     _waiting = true;
     notifyListeners();
-    final image = _messages.reversed
-        .where((m) => m.fromUser && !m.tool)
-        .expand((m) => m.attachments.reversed.where((a) => a.isImage))
-        .firstOrNull;
+    final image = _lastImage;
     unawaited(() async {
       final result = await main.askLayoutFor(ask, image);
       if (_disposed || run != _run) return;

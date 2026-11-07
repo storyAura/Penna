@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +11,7 @@ import 'package:penna/data/models/app_config.dart';
 import 'package:penna/ui/core/theme.dart';
 import 'package:penna/ui/core/widgets.dart';
 import 'package:penna/ui/features/layout/layout_board.dart';
+import 'package:penna/ui/features/local/local_model.dart';
 import 'package:penna/ui/features/studio/side_chat.dart';
 import 'package:penna/ui/features/studio/studio_page.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
@@ -61,6 +64,24 @@ void main() {
     expect(splitPeek('<read-main-chat/>', readMainChat).asked, isTrue);
     expect(splitPeek('稍等<read-si', readSideChat), (prose: '稍等', asked: false));
     expect(splitPeek('a < b', readSideChat).prose, 'a < b');
+  });
+
+  test('副聊天写 <reverse-image> 时程序真去跑本地反推,结果交还给它再接着写', () async {
+    final seen = <LlmRequest>[];
+    final (vm, side) = _chats([
+      '<reverse-image kind="tag">[CL] cl_tagger_v2 v2.01a</reverse-image>',
+      '好的',
+    ], seen);
+    final dir = Directory.systemTemp.createTempSync('penna-side-local');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    vm.local = LocalModel(dir: dir, streamChat: (_) => const Stream.empty());
+
+    side.send('用 cl tagger 反推');
+    await pumpEventQueue();
+    expect(seen.first.messages.first['content'], contains('【本地反推】'));
+    expect(seen, hasLength(2));
+    expect(seen.last.messages.last['content'], contains('【本地工具的结果】'));
+    expect(side.messages.last.text, '好的');
   });
 
   test('副聊天用自己指定的模型和穿甲弹开关,读得到工作区;主聊天不受影响', () async {

@@ -157,8 +157,13 @@ extension StudioAutoLookup on StudioViewModel {
 
   /// 副聊天的回复里写了 `<search-tags>` / `<search-character>` / `<web-search>`:
   /// 照主聊天的查法查好,拼成交还给模型的那段话([text])和记在那一步上的一句([note])。
-  /// 没有要查的返回 null。
-  Future<({String text, String note})?> lookupFor(String reply) async {
+  /// 没有要查的返回 null。`<reverse-image>` / `<download-model>` 也在这跑(用户反馈:
+  /// 副聊天不会跑本地反推,DeepSeek 自己编了一串带置信度的标签当成 CL Tagger 的结果)。
+  /// [image] 是副聊天里用户发的最新一张图,没有就用本地反推页上的。
+  Future<({String text, String note})?> lookupFor(
+    String reply, {
+    Attachment? image,
+  }) async {
     final prose = splitNewSkill(reply).prose;
     final queries = tagSearch == null
         ? const <String>[]
@@ -167,15 +172,26 @@ extension StudioAutoLookup on StudioViewModel {
         ? const <String>[]
         : splitCharacterTags(prose).queries.take(_maxQueries).toList();
     final webs = _webQueries(prose);
-    if (queries.isEmpty && names.isEmpty && webs.isEmpty) return null;
+    final calls = local == null || layoutOnly
+        ? const <LocalToolCall>[]
+        : splitLocalTools(prose).calls.take(_maxLocalCalls).toList();
+    if (queries.isEmpty && names.isEmpty && webs.isEmpty && calls.isEmpty) {
+      return null;
+    }
     final (results, web) = await (_findTags(queries), _searchWeb(webs)).wait;
     final people = {for (final name in names) name: findCharacters(name)};
+    // 一个个跑:它们共用本地反推页上的图和选中的模型。
+    final ran = <LocalToolResult>[];
+    for (final call in calls) {
+      ran.add(await local!.runTool(call, image ?? local!.image));
+    }
     return (
       text: [
         if (results.isNotEmpty) formatTagResults(results),
         if (people.isNotEmpty)
           formatCharacterResults(people, formOf: characterDict?.parentOf),
         if (web.isNotEmpty) formatWebResults(web),
+        if (ran.isNotEmpty) _localResults(ran),
       ].join('\n\n'),
       // 联网搜索不写在这:界面从 [text] 里读出来,单独显示一块。
       note: [
@@ -185,7 +201,17 @@ extension StudioAutoLookup on StudioViewModel {
           ]),
         if (people.isNotEmpty)
           tr('查了角色库 · {0} 个', [people.values.expand((h) => h).length]),
+        for (final r in ran) r.note,
       ].join(' · '),
     );
   }
+
+  /// 副聊天的系统提示里讲本地反推怎么用:主工作区、没关掉「本地反推」时才有。
+  String get localGuide =>
+      local == null ||
+          layoutOnly ||
+          config.config.disabledSkills.contains('local-reverse')
+      ? ''
+      : '${builtinSkillList.firstWhere((s) => s.id == 'local-reverse').body}'
+            '\n\n${local!.agentPrompt}';
 }
