@@ -68,18 +68,24 @@ Map<String, Object?> geminiBody(LlmRequest req) {
 
 /// Gemini 2.x 按 token 数给思考预算,更新的模型按档位给;两个字段不能同时给。
 /// 没有「极高」这一档,按最高的算。
+///
+/// 带上 `includeThoughts`:不带时模型默默想完才回第一个字,想得久(看图、长文)时
+/// 一个字节都没有,用户的代理约 47 秒就把连接掐了(2026-11-07 实测);带上后
+/// 边想边发思考摘要,连接一直有数据。摘要由 [parseGeminiLine] 去掉,不进回复。
 Map<String, Object>? _thinkingConfig(LlmRequest req) {
   final effort = req.effort;
   if (effort == null) return null;
-  return req.model.startsWith('gemini-2')
-      ? {
-          'thinkingBudget': switch (effort) {
-            'low' => 1024,
-            'medium' => 8192,
-            _ => 24576,
-          },
-        }
-      : {'thinkingLevel': effort == 'xhigh' ? 'high' : effort};
+  return {
+    if (req.model.startsWith('gemini-2'))
+      'thinkingBudget': switch (effort) {
+        'low' => 1024,
+        'medium' => 8192,
+        _ => 24576,
+      }
+    else
+      'thinkingLevel': effort == 'xhigh' ? 'high' : effort,
+    'includeThoughts': true,
+  };
 }
 
 /// 一行 SSE 里 Google 搜索用到的网页:网址 → 标题。
