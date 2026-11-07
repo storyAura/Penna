@@ -83,6 +83,20 @@ void main() {
       );
     });
 
+    test('繁体、日文的〔譯〕〔訳〕和写在同一行的〔译〕也认成对照', () {
+      final draft = splitDraft(
+        '<draft>\n【主体】a fox. 〔譯〕一隻狐狸\n【场景】snow\n〔訳〕雪原\n'
+        '【光影】soft light 〔译〕柔光\n</draft>',
+      ).draft!;
+
+      expect(draft.sections, [
+        (label: '主体', text: 'a fox.', zh: '一隻狐狸'),
+        (label: '场景', text: 'snow', zh: '雪原'),
+        (label: '光影', text: 'soft light', zh: '柔光'),
+      ]);
+      expect(stripSectionLabels(draft.text), 'a fox.\nsnow\nsoft light');
+    });
+
     test('空的成稿标签不算成稿', () {
       expect(splitDraft('没改。<draft>\n</draft>').draft, isNull);
     });

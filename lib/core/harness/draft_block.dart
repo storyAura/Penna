@@ -46,8 +46,11 @@ const zhMark = '〔译〕';
 /// 成稿里的中文对照行,连同它前面的换行。
 final _zhInBody = RegExp('(?:^|\n)$zhMark[^\n]*');
 
-/// 模型写的中文对照行;「译:」这种写法也认。
-final _zhLine = RegExp(r'^(?:〔译〕|译[::])[ \t]*');
+/// 模型写的中文对照行;繁体、日文的〔譯〕〔訳〕和「译:」这种写法也认。
+final _zhLine = RegExp(r'^(?:〔[译譯訳]〕|[译譯訳][::])[ \t]*');
+
+/// 写在提示词同一行里的〔译〕(模型常这样):拆成单独一行。
+final _zhInline = RegExp(r'[ \t]*(?=〔[译譯訳]〕)');
 
 /// 成稿的开始标签,可以带页码和名字:
 /// `<draft>`、`<draft page="3">`、`<draft page="新" name="远景" series="午后客厅">`。
@@ -590,7 +593,7 @@ AskedOptions splitOptions(String reply) {
 /// 成稿标签里的文字按行拆成几段。
 List<DraftSection> _draftSections(String inner) {
   final sections = <DraftSection>[];
-  for (final raw in inner.split('\n')) {
+  for (final raw in inner.replaceAll(_zhInline, '\n').split('\n')) {
     final line = raw.trim();
     // 有的模型会顺手套一层代码块。
     if (line.isEmpty || line.startsWith('```')) continue;
