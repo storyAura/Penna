@@ -93,6 +93,9 @@ String stripSectionLabels(String text, {bool atLineStart = true}) => text
     .replaceAll(_zhInBody, '')
     .replaceAllMapped(_label, (m) => m.start == 0 && !atLineStart ? m[0]! : '');
 
+/// 只去掉中文对照行,标注留着(给模型看同系列别的页时用:对照占一半字数,模型用不上)。
+String stripGlossLines(String text) => text.replaceAll(_zhInBody, '');
+
 /// 成稿一栏文字里的一段:[start] 是标注的开头,[textStart] 是标注后面正文的开头,
 /// [textEnd] 是提示词正文的末尾,[end] 是这段的末尾(含中文对照,不含和下一段之间的换行)。
 /// [zh] 是中文对照,没有就是空串。

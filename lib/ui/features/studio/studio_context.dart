@@ -578,15 +578,12 @@ extension StudioContext on StudioViewModel {
 
   /// 给副聊天看的工作区:当前系列的每一页(带分段标注),标出眼前是哪一页。
   String get workspaceText {
-    final shown = [
-      for (final (i, p) in pages.indexed)
-        if (p.series == series)
-          '第 ${pageNumber(i)} 页${p.name.isEmpty ? '' : '(${p.name})'}'
-              '${i == _page ? '(用户眼前这页)' : ''}:\n'
-              '${i == _page ? _joined(labels: true) : p.blocks.map((b) => b.text).join().trim()}',
-    ];
-    return '【当前系列】「${seriesName(series)}」,共 $seriesLength 页\n'
-        '${shown.join('\n\n')}';
+    final name = pageName.isEmpty ? '' : '($pageName)';
+    return [
+      '【当前系列】「${seriesName(series)}」,共 $seriesLength 页\n'
+          '第 ${pageNumber(_page)} 页$name(用户眼前这页):\n${_joined(labels: true)}',
+      _siblingPages,
+    ].where((s) => s.isNotEmpty).join('\n\n');
   }
 
   /// 消息的文字,加上它附带的文本文件和用 @ 引用的 Skill 的内容(图片另走

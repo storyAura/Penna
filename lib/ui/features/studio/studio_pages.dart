@@ -542,18 +542,37 @@ extension StudioPages on StudioViewModel {
         '概括画的是什么(用户存进档案库时当名称)。';
   }
 
+  static const _siblingNear = 2;
+
   /// 发给 Agent 看的同系列其他页;只有一页时是空串。
+  /// 前后 [_siblingNear] 页内的给全文(去掉中文对照),再远的只列页码和名字。
+  /// 用户反馈:一个系列 71 页、全文约 28 万字每次都发,新对话也被旧页的角色带偏。
+  /// ponytail: 按页码远近取,不看内容是否相关;要更准再按角色名挑。
   String get _siblingPages {
-    final others = [
-      for (final (i, p) in pages.indexed)
-        if (i != _page && p.series == series)
-          '第 ${pageNumber(i)} 页${p.name.isEmpty ? '' : '(${p.name})'}:\n'
-              '${p.blocks.map((b) => b.text).join().trim()}',
-    ];
-    if (others.isEmpty) return '';
-    return '【分页】成稿区现在有好几页,每页是一条独立的提示词。'
-        '【当前成稿】是第 ${pageNumber(_page)} 页;同一个系列的其他页如下,'
-        '要保持一致的设定(角色、场景、画风)照它们来:\n${others.join('\n\n')}';
+    final here = pageNumber(_page);
+    final near = <String>[];
+    final far = <String>[];
+    for (final (i, p) in pages.indexed) {
+      if (i == _page || p.series != series) continue;
+      final n = pageNumber(i);
+      final title = '第 $n 页${p.name.isEmpty ? '' : '(${p.name})'}';
+      if ((n - here).abs() <= _siblingNear) {
+        near.add(
+          '$title:\n${stripGlossLines(p.blocks.map((b) => b.text).join()).trim()}',
+        );
+      } else {
+        far.add(title);
+      }
+    }
+    if (near.isEmpty && far.isEmpty) return '';
+    return [
+      '【分页】成稿区现在有好几页,每页是一条独立的提示词,各画各的。'
+          '【当前成稿】是第 $here 页。',
+      if (near.isNotEmpty)
+        '相邻的几页如下;用户说要和它们一致(同一角色、场景、画风)时才照着来,'
+            '否则以用户这次说的为准:\n${near.join('\n\n')}',
+      if (far.isNotEmpty) '同系列还有:${far.join('、')}。',
+    ].join('\n');
   }
 
   Map<String, dynamic> _pagesJson() => {

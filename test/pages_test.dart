@@ -203,6 +203,34 @@ void main() {
       expect(mine, isNot(contains('a city street')));
     });
 
+    test('同系列远处的页只列页码,不发全文;对照行不发', () async {
+      final seen = <LlmRequest>[];
+      final vm = _studio(
+        seen: seen,
+        blocks: const [(text: '【主体】page one fox\n〔译〕狐狸', pinned: false)],
+      );
+      for (final t in ['two', 'three', 'four', 'five', 'six']) {
+        vm.addPage();
+        vm.setText(0, 'page $t');
+      }
+
+      vm.send('看看');
+      await pumpEventQueue();
+      final sys = seen.last.messages.first['content']!;
+      expect(sys, contains('page five'));
+      expect(sys, contains('page four'));
+      expect(sys, isNot(contains('page one fox')));
+      expect(sys, contains('第 1 页'));
+
+      vm.openPage(1);
+      vm.send('看看');
+      await pumpEventQueue();
+      final near = seen.last.messages.first['content']!;
+      expect(near, contains('【主体】page one fox'));
+      expect(near, isNot(contains('狐狸')));
+      expect(near, isNot(contains('page six')));
+    });
+
     test('每个系列有自己的对话;删掉整个系列,它的对话收进历史', () async {
       final vm = _studio();
       vm.send('第一个系列');
