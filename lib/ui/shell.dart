@@ -167,15 +167,16 @@ class _AppShellState extends State<AppShell> {
 
   void _go(int page) => setState(() => _page = page);
 
-  /// 漫画分镜交过来的一页:在区域控制另起一个系列放上去,换过去,
-  /// 再请那边的 Agent 照分镜写完(附人偶参考图)。
+  /// 漫画分镜交过来的一个系列:在区域控制另起一个系列、一页一张放上去,换到 [open] 那页,
+  /// 再请那边的 Agent 照分镜写完那一页(附人偶参考图)。
   String? _mangaToLayout(
-    Layout layout,
+    List<Layout> pages,
+    int open,
     String name,
     String request,
     Attachment? image,
   ) {
-    final problem = _layoutChat.receiveLayout(layout, name: name);
+    final problem = _layoutChat.receiveLayouts(pages, name: name, open: open);
     if (problem != null) return problem;
     _go(_layoutPage);
     return _layoutChat.send(request, attachments: [?image]);

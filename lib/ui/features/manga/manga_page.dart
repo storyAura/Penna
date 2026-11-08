@@ -33,10 +33,11 @@ part 'manga_series_strip.dart';
 const _inspectorWidth = 320.0;
 const _chatWidth = 420.0;
 
-/// 交给区域控制:一页换成的布局、页名、请那边 Agent 润色的话、人偶参考图。
-/// 放不上或发不出返回原因。
+/// 交给区域控制:整个系列每页换成的布局、先看第几页、系列名、
+/// 请那边 Agent 润色那一页的话、那一页的人偶参考图。放不上或发不出返回原因。
 typedef MangaToLayout = String? Function(
-  Layout layout,
+  List<Layout> pages,
+  int open,
   String name,
   String request,
   Attachment? image,
@@ -123,13 +124,17 @@ class _MangaWorkbenchState extends State<MangaWorkbench> {
 
   Future<void> _toLayout() async {
     final p = board.project, at = board.pageIndex;
-    final layout = mangaToLayout(p, at, step: widget.config.config.layoutSnap);
+    final step = widget.config.config.layoutSnap;
+    final layouts = [
+      for (var i = 0; i < p.pages.length; i++) mangaToLayout(p, i, step: step),
+    ];
     final image = await _reference();
     if (!mounted) return;
     _report(
       widget.onToLayout(
-        layout,
-        _pageName,
+        layouts,
+        at,
+        p.title.isEmpty ? _pageName : p.title,
         mangaLayoutRequest(p, at, image: image != null),
         image,
       ),

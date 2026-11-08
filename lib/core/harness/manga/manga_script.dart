@@ -326,6 +326,14 @@ String mangaLayoutRequest(MangaProject p, int at, {bool image = false}) => [
     '角色卡(cast)照设定写成英文,整体描述写清画风和这一页讲什么。写完给出完整的 <layout>。',
   ),
   if (image) tr('附图是这页的人偶参考:人物的站位、朝向、景别和气泡位置照它。'),
+  // ponytail: 区域控制一条回复只放一张 <layout>,多页时这次只排眼前这页,
+  // 别的页等用户说了再排;要一口气排完得让那边一条回复能放好几张布局。
+  if (p.pages.length > 1)
+    tr(
+      '这个系列共 {0} 页,已经一页一张放进区域控制的同一个系列里;这次只排第 {1} 页,'
+      '其余几页等用户说了再排(写 <layout page="页码">)。',
+      [p.pages.length, at + 1],
+    ),
   ..._pageFacts(p, at),
 ].join('\n\n');
 

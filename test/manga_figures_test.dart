@@ -159,7 +159,7 @@ void main() {
             chat: chat,
             config: chat.config,
             archive: ArchiveStore(),
-            onToLayout: (_, _, _, _) => null,
+            onToLayout: (_, _, _, _, _) => null,
             onToStudio: (_, _) => null,
             onOpenSettings: () {},
           ),

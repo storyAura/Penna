@@ -138,10 +138,35 @@ void main() {
       height: 1216,
       boxes: [LayoutBox(left: 1, top: 1, right: 400, bottom: 600, name: '第1格')],
     );
-    expect(chat.receiveLayout(l, name: '门口 第 1 页'), isNull);
+    expect(chat.receiveLayouts([l], name: '门口 第 1 页'), isNull);
     expect(chat.seriesName(chat.series), '门口 第 1 页');
     expect(layout.layout.boxes.single.name, '第1格');
     expect(chat.pages.first.blocks.map((b) => b.text).join(), mine);
+  });
+
+  test('交给区域控制:两页放进同一个系列,停在指定的那页', () {
+    final layout = LayoutBoard();
+    final chat = StudioViewModel(
+      config: tempConfig(),
+      streamChat: (_) => const Stream.empty(),
+      layout: layout,
+      layoutOnly: true,
+    );
+    Layout page(String name) => Layout(
+      width: 864,
+      height: 1216,
+      boxes: [LayoutBox(left: 1, top: 1, right: 400, bottom: 600, name: name)],
+    );
+    expect(
+      chat.receiveLayouts([page('一'), page('二')], name: '箱中', open: 1),
+      isNull,
+    );
+    expect(chat.pages.length, 2);
+    expect(chat.pages.map((p) => p.series).toSet().length, 1);
+    expect(chat.seriesName(chat.series), '箱中');
+    expect(chat.pageIndex, 1);
+    expect(layout.layout.boxes.single.name, '二');
+    expect(chat.pages.first.blocks.single.text, contains('"一"'));
   });
 
   testWidgets('分镜工作台能画出来:点一格看本格,抽分格出候选', (tester) async {
@@ -165,7 +190,7 @@ void main() {
             chat: chat,
             config: chat.config,
             archive: ArchiveStore(),
-            onToLayout: (_, _, _, _) => null,
+            onToLayout: (_, _, _, _, _) => null,
             onToStudio: (_, _) => null,
             onOpenSettings: () {},
           ),
