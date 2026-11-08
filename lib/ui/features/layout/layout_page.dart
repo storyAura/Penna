@@ -14,6 +14,7 @@ import '../../core/widgets.dart';
 import '../archive/archive_page.dart';
 import '../settings/settings_sections.dart';
 import '../studio/activity_bar.dart';
+import '../studio/right_bar.dart';
 import '../studio/chat_pane.dart';
 import '../studio/page_strip.dart';
 import '../studio/studio_view_model.dart';
@@ -411,6 +412,7 @@ class _LayoutPageState extends State<LayoutPage> {
                             ),
                           ),
                         ),
+                        const SizedBox(width: RightBar.closedWidth),
                       ],
                     ),
                   ),
@@ -422,6 +424,17 @@ class _LayoutPageState extends State<LayoutPage> {
                     child: ListenableBuilder(
                       listenable: widget.chat,
                       builder: (context, _) => ActivityBar(vm: widget.chat),
+                    ),
+                  ),
+                  // 右边的侧栏:ComfyUI 和工作台共用一份连接、工作流;历史对话是区域控制这场的。
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: RightBar(
+                      vm: widget.chat,
+                      runner: widget.vm.comfy,
+                      config: widget.config,
                     ),
                   ),
                 ],
@@ -506,12 +519,14 @@ class _TopBar extends StatelessWidget {
       context,
       archive.categoriesOf(archiveLayout),
       title: title(),
-      onSave: (entry) => archive.add(
-        text: jsonEncode(board.layout.toJson()),
-        title: entry.title,
-        category: entry.category,
-        kind: archiveLayout,
-      ),
+      onSave: (entry) =>
+          archive.add(
+            text: jsonEncode(board.layout.toJson()),
+            title: entry.title,
+            category: entry.category,
+            kind: archiveLayout,
+          ) !=
+          null,
     );
     if (picked == null) return;
     if (context.mounted) showToast(context, tr('已存进档案库'));

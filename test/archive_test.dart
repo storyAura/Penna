@@ -35,7 +35,7 @@ void main() {
       expect(store.entries.single, original);
       expect(File(original.image).readAsBytesSync(), [1, 2, 3]);
       expect(file.readAsStringSync(), saved);
-      expect(store.add(text: 'cannot save'), isFalse);
+      expect(store.add(text: 'cannot save'), isNull);
       expect(store.entries.single, original);
       final reopened = ArchiveStore(file);
       await reopened.load();
@@ -70,8 +70,9 @@ void main() {
 
     test('存一条带时间和分类;空的不存;分类没填归未分类;能删', () {
       final store = ArchiveStore();
-      store.add(text: '  ');
-      store.add(text: 'a fox', now: DateTime(2026, 10, 9, 8));
+      expect(store.add(text: '  '), isNull);
+      final id = store.add(text: 'a fox', now: DateTime(2026, 10, 9, 8));
+      expect(id, store.entries.single.id);
       store.add(
         text: '【主体】a cat',
         title: '猫',

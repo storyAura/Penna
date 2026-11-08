@@ -675,6 +675,26 @@ void main() {
       expect(loaded.seriesName(loaded.series), '动物');
       expect(loaded.pages[1].name, '乌鸦');
     });
+
+    test('别的系列的页也读得出来;一次删掉好几个系列(归档、批量管理)', () {
+      final vm = three();
+      final first = vm.series;
+      vm.addPage(newSeries: true);
+      vm.setText(0, 'D');
+      final second = vm.series;
+      vm.addPage(newSeries: true);
+      vm.setText(0, 'E');
+      expect(vm.seriesIds, [first, second, vm.series]);
+      // 眼前在第三个系列,读第一个。
+      expect(vm.promptsOf(first).map((p) => p.text), ['A', 'B', 'C']);
+
+      expect(vm.removeSeriesMany({first, second}), isNull);
+      expect(vm.seriesIds, hasLength(1));
+      expect(texts(vm), ['E']);
+      // 全删光:留一张空白页。
+      expect(vm.removeSeriesMany(vm.seriesIds), isNull);
+      expect(texts(vm), ['']);
+    });
   });
 
   group('回复里的小部件', () {

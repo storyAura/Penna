@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/ui/core/theme.dart';
 import 'package:penna/ui/features/studio/chat_pane.dart';
+import 'package:penna/ui/features/studio/right_bar.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 
 import 'fixtures.dart';
@@ -81,16 +82,29 @@ void main() {
           body: Align(
             alignment: Alignment.topLeft,
             child: SizedBox(
-              width: width,
+              width: width + RightBar.closedWidth,
               child: ListenableBuilder(
                 listenable: Listenable.merge([vm, config]),
-                builder: (context, _) => ChatPane(
-                  vm: vm,
-                  config: config,
-                  input: input,
-                  inputFocus: focus,
-                  onQuickAction: (_) {},
-                  onOpenSettings: () => openedSettings++,
+                builder: (context, _) => Stack(
+                  children: [
+                    Positioned.fill(
+                      right: RightBar.closedWidth,
+                      child: ChatPane(
+                        vm: vm,
+                        config: config,
+                        input: input,
+                        inputFocus: focus,
+                        onQuickAction: (_) {},
+                        onOpenSettings: () => openedSettings++,
+                      ),
+                    ),
+                    Positioned(
+                      top: 0,
+                      bottom: 0,
+                      right: 0,
+                      child: RightBar(vm: vm, runner: vm.comfy, config: config),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -124,14 +138,21 @@ void main() {
     expect(vm.messages, isEmpty);
     await tester.tap(find.byTooltip('历史对话'));
     await tester.pumpAndSettle();
-    await tester.tap(item(vm.pastChats.first.id));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(RightBar),
+        matching: find.text('应保留在历史里的会话'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(vm.messages.first.text, '应保留在历史里的会话');
+    await tester.tap(find.byTooltip('历史对话'));
+    await tester.pumpAndSettle();
 
     await show(720);
     await tester.pumpAndSettle();
     expect(find.text('新对话'), findsOneWidget);
-    expect(find.text('历史'), findsOneWidget);
+    expect(find.byTooltip('历史对话'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     config.update(config.config.copyWith(llms: const []));

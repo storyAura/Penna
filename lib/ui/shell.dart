@@ -213,6 +213,7 @@ class _AppShellState extends State<AppShell> {
                               service: widget.config,
                               skills: widget.skills,
                               local: _local,
+                              comfy: widget.vm.comfy,
                             ),
                           ),
                           Positioned(

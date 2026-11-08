@@ -823,10 +823,20 @@ void main() {
       expect(responsesBody(ask('m', 'high'))['reasoning'], {'effort': 'high'});
       expect(google(ask('gemini-3-flash', 'xhigh'))['thinkingConfig'], {
         'thinkingLevel': 'high',
+        'includeThoughts': true,
       });
       expect(google(ask('gemini-2.5-flash', 'low'))['thinkingConfig'], {
         'thinkingBudget': 1024,
+        'includeThoughts': true,
       });
+      // 思考摘要不算回复。
+      expect(
+        parseGeminiLine(
+          'data: {"candidates":[{"content":{"parts":'
+          '[{"text":"想一想","thought":true},{"text":"答"}]}}]}',
+        ),
+        '答',
+      );
       expect(openAiEffort(ask('gpt', 'medium')), 'medium');
       const deepseek = 'https://api.deepseek.com/v1';
       expect(openAiEffort(ask('d', 'medium', base: deepseek)), 'high');

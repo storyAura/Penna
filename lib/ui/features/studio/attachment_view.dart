@@ -80,9 +80,17 @@ class AttachmentChip extends StatelessWidget {
 
 /// 已发出的消息下面的附件:图片显示预览(点了看大图),文件显示标签。
 class AttachmentStrip extends StatelessWidget {
-  const AttachmentStrip({super.key, required this.attachments, this.onReuse});
+  const AttachmentStrip({
+    super.key,
+    required this.attachments,
+    this.onReuse,
+    this.height = _previewHeight,
+  });
 
   final List<Attachment> attachments;
+
+  /// 图片预览的高度(ComfyUI 出的图显示得大一些)。
+  final double height;
 
   /// 大图里点「附到输入框」时把这张图交回去;为 null 时没有这个按钮。
   final ValueChanged<Attachment>? onReuse;
@@ -108,8 +116,8 @@ class AttachmentStrip extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                     child: Image.memory(
                       a.bytes!,
-                      height: _previewHeight,
-                      cacheHeight: 288,
+                      height: height,
+                      cacheHeight: (height * 2).round(),
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => AttachmentChip(attachment: a),
                     ),

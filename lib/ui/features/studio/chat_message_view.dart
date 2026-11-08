@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/characters/character_dict.dart';
 import '../../../core/harness/chat_peek.dart';
+import '../../../core/harness/comfyui.dart' show splitGenerate;
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
@@ -14,6 +15,7 @@ import '../../../data/services/skill_store.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'attachment_view.dart';
+import 'comfy_progress_view.dart';
 import 'layout_card.dart';
 import 'markdown_text.dart';
 import 'mention.dart';
@@ -24,6 +26,9 @@ import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
 
 part 'chat_message_bits.dart';
+
+/// ComfyUI 出的图在回复下面显示多高。
+const _generatedHeight = 280.0;
 
 /// 工具记录里的一行:压成一行,太长的截掉。
 String _preview(String text) {
@@ -70,10 +75,19 @@ class ChatMessageView extends StatelessWidget {
     this.onOption,
     this.onReuseAttachment,
     this.draftSections = const [],
+    this.comfy,
+    this.onGenerate,
   });
 
   /// 当前页成稿的各段(标注 + 提示词开头)。回复问"转哪几段"时直接从这里列。
   final List<PickItem> draftSections;
+
+  /// 出图的进度:这条回复要的图正在出时显示在它下面。
+  final ComfyRunner? comfy;
+
+  /// 点了「出图」:回复下面的(null,用出图标签里的提示词)或成稿卡片上的(那份成稿)。
+  /// 为 null 时没有这些按钮(区域控制的对话)。
+  final void Function(String? prompt)? onGenerate;
 
   /// 用户点了回复里的一个选项;为 null 时选项只是灰的(不是最后一条回复,或正在生成)。
   final ValueChanged<String>? onOption;
@@ -159,12 +173,61 @@ class ChatMessageView extends StatelessWidget {
     );
   }
 
+  /// 这条回复出的图;正在出时是进度条。
+  /// 写了出图标签([asked])的回复下面:没在出图时是「出图」按钮
+  /// (设成手动确认时要点它才出;出过了是「再出一张」)。
+  List<Widget> _images(bool asked) {
+    final runner = comfy;
+    return [
+      if (message.images.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        AttachmentStrip(
+          attachments: [
+            for (final p in message.images) comfyImageAttachment(p),
+          ],
+          onReuse: onReuseAttachment,
+          height: _generatedHeight,
+        ),
+      ],
+      if (runner != null && !streaming)
+        ListenableBuilder(
+          listenable: runner,
+          builder: (context, _) => runner.owner == message.time
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: ComfyProgressRow(runner: runner),
+                )
+              : asked && onGenerate != null
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: PennaButton(
+                      label: message.images.isEmpty ? tr('出图') : tr('再出一张'),
+                      icon: Icons.brush_outlined,
+                      background: PennaColors.primary,
+                      foreground: Colors.white,
+                      onPressed: runner.running
+                          ? null
+                          : () => onGenerate!(null),
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+    ];
+  }
+
   /// Agent 回复的正文:说的话、新成稿卡片,生成完后再加一排操作。
   List<Widget> _reply(BuildContext context) {
     final m = message;
     // 先拆新 Skill:它正文里举例用的成稿标签不能被当成成稿。
+    // 出图标签由程序交给 ComfyUI,聊天里只留进度和出好的图。
+    final generate = splitGenerate(m.text);
+    // 换工作流的标签也由程序做,结果记在回复的记录上。
+    final model = splitToolTag(generate.prose, comfyWorkflowTag);
     final peeked = splitPeek(
-      splitPeek(m.text, readSideChat).prose,
+      splitPeek(model.prose, readSideChat).prose,
       readMainChat,
     ).prose;
     final tools = splitLocalTools(
@@ -199,7 +262,10 @@ class ChatMessageView extends StatelessWidget {
       else
         for (final option in asked.options) (label: option, detail: ''),
     ];
-    final (:prose, :drafts) = splitDrafts(asked.prose);
+    final split = splitDrafts(asked.prose);
+    final drafts = split.drafts;
+    // 有成稿卡片时,正文里照成稿格式抄的那几行是重复的,只在卡片里显示(用户反馈:没在部件里)。
+    final prose = drafts.isEmpty ? split.prose : dropDraftLines(split.prose);
     // 复制出去的是能直接用的:标注和中文对照不带。
     final copyable = [
       prose,
@@ -241,6 +307,8 @@ class ChatMessageView extends StatelessWidget {
           newSkill == null &&
           laid.json == null &&
           picks.isEmpty &&
+          !generate.asked &&
+          model.queries.isEmpty &&
           !m.stopped)
         // 以前只画一个省略号:模型写了程序没接住的标签时,用户看不出发生了什么。
         _RawReply(m.text),
@@ -254,6 +322,9 @@ class ChatMessageView extends StatelessWidget {
             writing: streaming && i == drafts.length - 1,
             status: draftStatus(draft.text),
             onAdopt: () => onAdoptDraft(draft),
+            onGenerate: onGenerate == null
+                ? null
+                : () => onGenerate!(stripSectionLabels(draft.text)),
           ),
         ),
       ],
@@ -284,6 +355,7 @@ class ChatMessageView extends StatelessWidget {
           ),
         ),
       ],
+      ..._images(generate.asked),
       // 给用户点的选项:点一下就当成他的回答发出去。
       // 这条回复已经把成稿写出来了就不显示:没有什么还要他先点头的。
       // 问挑哪几段,当前页却一段都没有:说一声,让用户自己打字回答。
@@ -541,197 +613,6 @@ class _TypingDotsState extends State<TypingDots>
               ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// 回复里另出的新成稿:分段列出,一键放到左侧等用户确认。
-class _DraftCard extends StatefulWidget {
-  const _DraftCard({
-    required this.draft,
-    required this.writing,
-    required this.status,
-    required this.onAdopt,
-  });
-
-  final AgentDraft draft;
-
-  /// 还在生成:先不让放。
-  final bool writing;
-  final DraftStatus status;
-  final VoidCallback onAdopt;
-
-  @override
-  State<_DraftCard> createState() => _DraftCardState();
-}
-
-class _DraftCardState extends State<_DraftCard> {
-  /// 用户自己点过折叠或展开;没点过就按状态来。
-  bool? _open;
-
-  AgentDraft get draft => widget.draft;
-  bool get writing => widget.writing;
-  DraftStatus get status => widget.status;
-  VoidCallback get onAdopt => widget.onAdopt;
-
-  @override
-  Widget build(BuildContext context) {
-    // 已经送到左侧的收起来(内容在左边看),还没送的、正在写的摊开。
-    final open = _open ?? (writing || status == DraftStatus.ready);
-    final (label, icon) = switch (status) {
-      _ when writing => (tr('正在写'), Icons.edit_outlined),
-      // 被打断或出错的半截成稿不让放,免得把残缺的内容盖到成稿上。
-      _ when !draft.complete => (tr('不完整'), Icons.error_outline),
-      DraftStatus.ready => (tr('放到成稿'), Icons.keyboard_double_arrow_left),
-      DraftStatus.pending => (tr('待确认'), Icons.hourglass_empty),
-      DraftStatus.applied => (tr('已在成稿'), Icons.check),
-    };
-    final ready = !writing && draft.complete && status == DraftStatus.ready;
-    return AnimatedContainer(
-      duration: Motion.of(context, Motion.base),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: PennaColors.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: ready ? PennaColors.primaryBorder : PennaColors.border,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              // 点标题这一截折叠或展开。
-              Expanded(
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => setState(() => _open = !open),
-                    child: Row(
-                      children: [
-                        AnimatedRotation(
-                          turns: open ? 0.25 : 0,
-                          duration: Motion.of(context, Motion.base),
-                          child: Icon(
-                            Icons.chevron_right,
-                            size: 16,
-                            color: PennaColors.primary,
-                          ),
-                        ),
-                        const SizedBox(width: 2),
-                        Flexible(
-                          child: Text(
-                            [
-                              switch (draft.page) {
-                                null => tr('新成稿'),
-                                final page when int.tryParse(page) != null =>
-                                  tr('新成稿 · 第 {0} 页', [page]),
-                                _ => tr('新成稿 · 新的一页'),
-                              },
-                              ?draft.name,
-                            ].where((s) => s.isNotEmpty).join(' · '),
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: PennaColors.primary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              AnimatedSwitcher(
-                duration: Motion.of(context, Motion.base),
-                transitionBuilder: (child, animation) => ScaleTransition(
-                  scale: animation,
-                  child: FadeTransition(opacity: animation, child: child),
-                ),
-                child: PennaButton(
-                  key: ValueKey(label),
-                  label: label,
-                  icon: icon,
-                  background: PennaColors.primary,
-                  foreground: Colors.white,
-                  onPressed: ready ? onAdopt : null,
-                ),
-              ),
-            ],
-          ),
-          // 一段一段长出来,卡片跟着平滑变高。
-          AnimatedSize(
-            duration: Motion.of(context, Motion.base),
-            curve: Motion.swift,
-            alignment: Alignment.topCenter,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (!open) const SizedBox(width: double.infinity),
-                // 收起时各段的标注竖着列一行一个,当摘要。
-                if (!open)
-                  for (final l in draft.sections.map((s) => s.label))
-                    if (l.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 18, top: 4),
-                        child: Text(
-                          '·  $l',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: PennaColors.slate500,
-                          ),
-                        ),
-                      ),
-                for (final s
-                    in open ? draft.sections : const <DraftSection>[]) ...[
-                  const SizedBox(height: 8),
-                  PennaCard(
-                    color: PennaColors.slate50,
-                    borderColor: PennaColors.slate100,
-                    radius: 6,
-                    padding: const EdgeInsets.all(8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (s.label.isNotEmpty) ...[
-                          Text(
-                            s.label,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: PennaColors.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                        ],
-                        SelectableText(
-                          contextMenuBuilder: pennaTextMenu,
-                          s.text,
-                          style: monoStyle.copyWith(fontSize: 12),
-                        ),
-                        if (s.zh.isNotEmpty)
-                          Text(
-                            s.zh,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              height: 1.5,
-                              color: PennaColors.slate400,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

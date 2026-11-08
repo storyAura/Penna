@@ -27,6 +27,7 @@ Each page is a separate prompt, and pages can be grouped into series. There can 
 - Pages in the same series share one conversation, and the Agent can refer to the other pages in the series; series are independent of each other.
 - One Agent reply can write several pages at once and starts a new series automatically when the topic changes.
 - Double-click a page tab or series name to rename it. Pages can be reordered or moved out of a series, and a whole series can be saved to the Archive at once.
+- Right-click a series name to **Archive** it: its pages are saved to the Archive and removed from the workspace. **Manage in bulk** selects several series to archive or delete together.
 
 ## Agent chat
 
@@ -128,9 +129,22 @@ A Skill is a writing guide (`SKILL.md`) that decides how the Agent writes prompt
 - One API can hold several models; all models form a fallback chain in order and switch automatically.
 - The Agent and Polish can each have a preferred model.
 
+## ComfyUI generation
+
+Penna uses ComfyUI as its image generation backend, talking to ComfyUI's built-in API with no plugins.
+
+- **Connection**: **Settings → ComfyUI** holds several ComfyUI servers (local or cloud), each with a name, address and key (sent as Bearer); the connection test shows latency. The local one defaults to `http://127.0.0.1:8188`.
+- **Workflow**: until a workflow is imported, a built-in text-to-image workflow is used with the first model in ComfyUI. Several JSON files from ComfyUI's **Export (API)** can be imported and switched at any time: the prompt goes into the positive prompt box (found along the sampler's positive link, through FluxGuidance and BasicGuider); a box containing `{{prompt}}` takes precedence. The seed is randomized on every run.
+- **Generate**: **Generate** on the **Final prompt** card sends the current prompt to ComfyUI; a progress bar shows queueing and generation, and results appear as thumbnails below the card and open full size on click.
+- **Side panel**: the right edge of the Workbench and Region Control has a column of icons for ComfyUI, past chats and the Piercing toggle; panels open semi-transparently over the chat. The ComfyUI panel shows connection status and latency, with dropdowns for the server and the workflow; LoRA loaders in the workflow (the core LoRA loaders, model-only, rgthree Power Lora Loader and LoRA stacks) are read, and LoRAs can be toggled, reweighted, added or removed, with changes saved to the workflow. The current LoRA combination can be saved as a preset and presets switched in one click.
+- **Generate from chat**: **Settings → ComfyUI** chooses between generating right away and confirming first; when confirming, a **Generate** button appears below the reply and starts only on click. Draft cards in chat also have a **Generate** button. Ask the Agent for an image in chat or the side chat (for example "show me one"); it generates from the current page's prompt or the prompt it just wrote, with progress and images shown below that reply. When asked for a different model, the Agent switches to the workflow that uses it, and asks first when none does.
+- **Image folder**: images are saved in `Documents\Penna\images` with names starting `Penna-`. The location can be changed in Settings, and existing images move with it.
+- **Previews**: on saving to the Archive, the newest image generated from that prompt (or the newest image overall) becomes a WebP preview; **Save series** adds previews only to pages that have generated images.
+
 ## Archive, history and rollback
 
 - **Archive**: drafts and Region Control layouts saved by hand, in two sections, with names and categories.
+- **Images**: the Archive's **Images** section reads ComfyUI's generation history directly (including runs started in ComfyUI), shown as thumbnails with the time and the prompt used; click to view the original, right-click to copy the image or the prompt, put the prompt back into the draft, or delete it from ComfyUI's history (the original stays in ComfyUI's output folder).
 - **Notes**: notebooks in the sidebar for quick notes; each notebook holds multiple entries with a name and content, saved as you type.
 - **Prompt history**: recorded automatically on accept, copy and clear, up to 100 entries; each can be expanded or put back into the draft.
 - **Activity**: records structural operations such as pages, pins and accept/reject; the changes from one Agent reply count as one step. Any step can be revisited from before or after, back and forth; after going back, new operations start a branch and the earlier steps stay available on the other branch.
@@ -161,6 +175,7 @@ All data is stored on this PC in `Documents\Penna` (`~/Documents/Penna` on Linux
 | Secrets | `keys.dat` / system keyring | All API keys: encrypted with Windows DPAPI into `keys.dat` on Windows, kept in the system keyring (libsecret) on Linux; only the current user on this PC can read them |
 | Workspace | `workspace.json` | Drafts, conversations, prompt history |
 | Archive | `archive.json` | The Archive |
+| Generation | `images\` | Images generated by ComfyUI (location can be changed in Settings) |
 | Notes | `notebooks.json` | Notebooks and their entries |
 | Characters | `characters.json`, `characters\` | Saved characters and their pictures |
 | Interrogate | `reverse.json`, `reverse.img` | Reference image and interrogation results |

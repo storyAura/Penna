@@ -770,4 +770,13 @@ void main() {
       expect(seen.last, isNot(contains('【还没起名】')));
     });
   });
+
+  test('正文里照成稿格式抄的行去掉(有成稿卡片时用),说的话留着', () {
+    const prose =
+        '这是小葱版本。\n\n【主体】Si, 1girl, green hair\n〔译〕小葱\n'
+        '【服饰】striped bikini\n\n要改哪段告诉我。【主体】那段可以再细。';
+    expect(dropDraftLines(prose), '这是小葱版本。\n\n要改哪段告诉我。【主体】那段可以再细。');
+    // 空的【】和只有标注的行不算成稿。
+    expect(dropDraftLines('【】\n【主体】'), '【】\n【主体】');
+  });
 }

@@ -23,7 +23,12 @@ class ChatMessage {
     this.otherReplies = const [],
     this.replyAt = 0,
     this.cut,
+    this.images = const [],
   });
+
+  /// 这条回复让 ComfyUI 出的图(文件路径,在「设置 → ComfyUI」的图片位置里)。
+  /// 只给用户看,不发给模型。
+  final List<String> images;
 
   /// 这条回复没写完的原因;写完了、接口没说时是 null。
   final LlmCut? cut;
@@ -75,6 +80,7 @@ class ChatMessage {
     List<List<ChatMessage>>? otherReplies,
     int? replyAt,
     LlmCut? cut,
+    List<String>? images,
   }) => ChatMessage(
     fromUser: fromUser,
     text: text ?? this.text,
@@ -92,6 +98,7 @@ class ChatMessage {
     otherReplies: otherReplies ?? this.otherReplies,
     replyAt: replyAt ?? this.replyAt,
     cut: cut ?? this.cut,
+    images: images ?? this.images,
   );
 
   /// 存盘用。给了 [files] 才存附件(另存成文件,这里只记文件名)。
@@ -111,6 +118,7 @@ class ChatMessage {
     if (usage case final u?)
       'usage': {'input': u.input, 'cached': u.cached, 'output': u.output},
     'cut': ?cut?.name,
+    if (images.isNotEmpty) 'images': images,
     if (otherReplies.isNotEmpty) ...{
       'otherReplies': [
         for (final reply in otherReplies)
@@ -158,6 +166,7 @@ class ChatMessage {
     ]),
     replyAt: j['replyAt'] as int? ?? 0,
     cut: LlmCut.values.asNameMap()[j['cut']],
+    images: List.unmodifiable(((j['images'] as List?) ?? const []).cast()),
   );
 }
 

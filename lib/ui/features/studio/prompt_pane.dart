@@ -1,5 +1,9 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
+import '../../../core/harness/attachment.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../data/services/archive_store.dart';
 import '../../core/theme.dart';
@@ -8,11 +12,14 @@ import '../../core/widgets.dart';
 import '../archive/archive_page.dart';
 import '../settings/settings_sections.dart';
 import 'body_card.dart';
+import 'comfy_progress_view.dart';
+import 'image_viewer.dart';
 import 'polish_dialog.dart';
 import 'studio_view_model.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
 
+part 'comfy_strip.dart';
 part 'prompt_summary.dart';
 
 /// 顶栏里的小计数,例如「128 字符」。
@@ -134,22 +141,61 @@ class _DraftSectionState extends State<_DraftSection> {
   /// 把当前成稿存进档案库(带着分段标注,放回来时分段还在)。
   Future<void> _save(BuildContext context) async {
     final text = vm.labeledPrompt;
+    String? id;
     final picked = await showSaveDialog(
       context,
       archive.categoriesOf(archivePrompt),
       title: vm.pageName,
-      onSave: (entry) =>
-          archive.add(text: text, title: entry.title, category: entry.category),
+      onSave: (entry) {
+        id = archive.add(
+          text: text,
+          title: entry.title,
+          category: entry.category,
+        );
+        return id != null;
+      },
     );
     if (picked == null) return;
     if (context.mounted) showToast(context, tr('已存进档案库'));
+    await _preview(id, vm.comfy.latestFor(vm.finalPrompt));
+  }
+
+  /// 用 ComfyUI 出过的图给档案库里这一条做预览图(转成 WebP)。
+  Future<void> _preview(String? id, String? image) async {
+    if (id == null || image == null) return;
+    try {
+      final webp = await toPreviewWebP(await File(image).readAsBytes());
+      if (webp != null) archive.setImage(id, webp);
+    } on FileSystemException catch (e) {
+      debugPrint(tr('预览图没存上:{0}', [e.message]));
+    }
   }
 
   /// 把眼前这个系列的每一页都存进档案库:一页一条,分类就是系列的名字。
   /// 档案库里已经有一字不差的就跳过,只存新的和改过的。
   void _saveSeries(BuildContext context) {
-    final all = vm.seriesPrompts;
-    if (all.isEmpty) return showToast(context, tr('这个系列还是空的'), warn: true);
+    final done = _storeSeries(vm.series);
+    if (done == null) return showToast(context, tr('保存失败'), warn: true);
+    if (done.total == 0) {
+      return showToast(context, tr('这个系列还是空的'), warn: true);
+    }
+    if (done.saved == 0) {
+      return showToast(context, tr('这个系列的页都已经存过了'), warn: true);
+    }
+    final category = vm.seriesName(vm.series);
+    final skipped = done.total - done.saved;
+    showToast(
+      context,
+      skipped == 0
+          ? tr('「{0}」的 {1} 页已存进档案库', [category, done.saved])
+          : tr('「{0}」新存了 {1} 页,{2} 页之前存过', [category, done.saved, skipped]),
+    );
+  }
+
+  /// 把第 [s] 个系列有字的每一页存进档案库,分类是系列名;一字不差存过的跳过,
+  /// 用这一页的提示词出过图的配上预览图。返回有字的页数、新存了几页;存盘失败返回 null。
+  ({int total, int saved})? _storeSeries(int s) {
+    final all = vm.promptsOf(s);
     final saved = {
       for (final e in archive.entries)
         if (e.kind == archivePrompt) e.text,
@@ -158,28 +204,42 @@ class _DraftSectionState extends State<_DraftSection> {
       for (final p in all)
         if (!saved.contains(p.text)) p,
     ];
-    if (prompts.isEmpty) {
-      return showToast(context, tr('这个系列的页都已经存过了'), warn: true);
-    }
-    final category = vm.seriesName(vm.series);
+    final category = vm.seriesName(s);
     final now = DateTime.now();
     // 档案库里新的在前:倒着存,第 1 页才排在最上面。时间各错开一点,编号不会撞。
     for (final (i, p) in prompts.reversed.indexed) {
-      final added = archive.add(
+      final id = archive.add(
         text: p.text,
         title: p.title,
         category: category,
         now: now.add(Duration(microseconds: i)),
       );
-      if (!added) return showToast(context, tr('保存失败'), warn: true);
+      if (id == null) return null;
+      // 只配用这一页的提示词出的图,不拿别的页的凑数。
+      unawaited(
+        _preview(
+          id,
+          vm.comfy.latestFor(stripSectionLabels(p.text), any: false),
+        ),
+      );
     }
-    final skipped = all.length - prompts.length;
-    showToast(
-      context,
-      skipped == 0
-          ? tr('「{0}」的 {1} 页已存进档案库', [category, prompts.length])
-          : tr('「{0}」新存了 {1} 页,{2} 页之前存过', [category, prompts.length, skipped]),
-    );
+    return (total: all.length, saved: prompts.length);
+  }
+
+  /// 归档:几个系列都存进档案库,再从工作区删掉(对话收进历史)。
+  void _archiveSeries(BuildContext context, Set<int> ids) {
+    if (vm.isStreaming) {
+      return showToast(context, tr('正在生成,稍后再试'), warn: true);
+    }
+    var saved = 0;
+    for (final s in ids) {
+      final done = _storeSeries(s);
+      if (done == null) return showToast(context, tr('保存失败'), warn: true);
+      saved += done.saved;
+    }
+    final problem = vm.removeSeriesMany(ids);
+    if (problem != null) return showToast(context, problem, warn: true);
+    showToast(context, tr('已归档 {0} 个系列,新存了 {1} 页', [ids.length, saved]));
   }
 
   Future<void> _pin(BuildContext context) async {
@@ -382,6 +442,7 @@ class _DraftSectionState extends State<_DraftSection> {
                     vm: vm,
                     zhOpen: _zhOpen,
                     onCopied: vm.recordPrompt,
+                    onArchiveSeries: (ids) => _archiveSeries(context, ids),
                     onDiscuss: onDiscuss,
                     // 和顶栏的润色是同一套,只是范围先定在这一段上。
                     onPolish: vm.isPolishing

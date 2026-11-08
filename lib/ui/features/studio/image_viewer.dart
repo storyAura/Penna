@@ -69,6 +69,22 @@ class _ViewerState extends State<_Viewer> {
     _close();
   }
 
+  /// 右键图片:复制、附到输入框;存在磁盘上的还能在文件夹里找到它。
+  Future<void> _menu(Offset at) async {
+    final file = widget.image.file;
+    final copy = tr('复制图片'), reuse = tr('附到输入框'), reveal = tr('在文件夹中显示');
+    final picked = await popMenu(context, at, [
+      copy,
+      if (widget.onReuse != null) reuse,
+      if (file != null && Platform.isWindows) reveal,
+    ]);
+    if (picked == copy) return _copy();
+    if (picked == reuse) return _reuse();
+    if (picked == reveal) {
+      await Process.run('explorer', ['/select,', file!]);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bytes = widget.image.bytes;
@@ -94,6 +110,7 @@ class _ViewerState extends State<_Viewer> {
                   child: Center(
                     child: GestureDetector(
                       onTap: () {},
+                      onSecondaryTapUp: (d) => _menu(d.globalPosition),
                       child: bytes == null || bytes.isEmpty
                           ? _broken()
                           : Image.memory(

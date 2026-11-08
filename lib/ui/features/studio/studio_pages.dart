@@ -354,17 +354,35 @@ extension StudioPages on StudioViewModel {
   String get pageName => _pages[_page].name;
 
   /// 眼前这个系列每一页带标注的成稿(空白页不算),存档案库用。
-  List<({String title, String text})> get seriesPrompts => [
+  List<({String title, String text})> get seriesPrompts => promptsOf(series);
+
+  /// 第 [s] 个系列里有字的每一页:页名和带标注的全文(存档案库、归档用)。
+  List<({String title, String text})> promptsOf(int s) => [
     for (final (i, p) in pages.indexed)
-      if (p.series == series && p.blocks.any((b) => b.text.trim().isNotEmpty))
+      if (p.series == s && p.blocks.any((b) => b.text.trim().isNotEmpty))
         (
           title: tr('第 {0} 页{1}', [
             pageNumber(i),
             p.name.isEmpty ? '' : ' · ${p.name}',
           ]),
-          text: _onPage(i, () => labeledPrompt),
+          text: _joined(labels: true, blocks: p.blocks),
         ),
   ];
+
+  /// 有哪些系列(按页的先后)。
+  List<int> get seriesIds => [
+    for (final (i, p) in pages.indexed)
+      if (i == 0 || pages[i - 1].series != p.series) p.series,
+  ];
+
+  /// 一次删掉好几个系列(批量管理);删不了返回原因。
+  String? removeSeriesMany(Iterable<int> ids) {
+    for (final s in ids.toList()) {
+      final problem = removeSeries(s);
+      if (problem != null) return problem;
+    }
+    return null;
+  }
 
   /// 暂时把第 [i] 页(和眼前这页同系列)摆到眼前做一件事,做完换回来。
   T _onPage<T>(int i, T Function() run) {
