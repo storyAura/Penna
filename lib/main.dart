@@ -108,6 +108,7 @@ Future<void> main() async {
     characterDict: characterDict,
     layout: layout,
     layoutOnly: true,
+    comfy: vm.comfy,
     saveFile: File('${home.path}${sep}layout_chat.json'),
   );
   await layoutChat.load();
@@ -128,6 +129,9 @@ Future<void> main() async {
   // Agent 在对话里要用本地模型反推时,交给本地反推页这一份。
   vm.local = local;
   vm.poses = poses;
+  // 区域控制那场对话同样能本地反推、附姿势参考(两个工作台本是同一类)。
+  layoutChat.local = local;
+  layoutChat.poses = poses;
   // 主工作区要排布局时,交给区域控制工作台的 Agent。
   vm.layoutAgent = layoutChat;
   // 关窗前先停掉本地反推起的 llama-server:Windows 不会跟着把它关掉。

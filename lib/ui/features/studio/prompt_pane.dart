@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../../../core/harness/attachment.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../data/services/archive_store.dart';
 import '../../core/theme.dart';
@@ -153,18 +151,7 @@ class _DraftSectionState extends State<_DraftSection> {
       category: picked.category,
     );
     if (context.mounted) showToast(context, tr('已存进档案库'));
-    await _preview(id, vm.comfy.latestFor(vm.finalPrompt));
-  }
-
-  /// 用 ComfyUI 出过的图给档案库里这一条做预览图(转成 WebP)。
-  Future<void> _preview(String? id, String? image) async {
-    if (id == null || image == null) return;
-    try {
-      final webp = await toPreviewWebP(await File(image).readAsBytes());
-      if (webp != null) archive.setImage(id, webp);
-    } on FileSystemException catch (e) {
-      debugPrint(tr('预览图没存上:{0}', [e.message]));
-    }
+    await archivePreview(archive, id, vm.comfy.latestFor(vm.finalPrompt));
   }
 
   /// 把眼前这个系列的每一页都存进档案库:一页一条,分类就是系列的名字。
@@ -211,7 +198,8 @@ class _DraftSectionState extends State<_DraftSection> {
       );
       // 只配用这一页的提示词出的图,不拿别的页的凑数。
       unawaited(
-        _preview(
+        archivePreview(
+          archive,
           id,
           vm.comfy.latestFor(stripSectionLabels(p.text), any: false),
         ),

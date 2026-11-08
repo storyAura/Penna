@@ -172,7 +172,7 @@ extension StudioAutoLookup on StudioViewModel {
         ? const <String>[]
         : splitCharacterTags(prose).queries.take(_maxQueries).toList();
     final webs = _webQueries(prose);
-    final calls = local == null || layoutOnly
+    final calls = local == null
         ? const <LocalToolCall>[]
         : splitLocalTools(prose).calls.take(_maxLocalCalls).toList();
     if (queries.isEmpty && names.isEmpty && webs.isEmpty && calls.isEmpty) {
@@ -206,11 +206,9 @@ extension StudioAutoLookup on StudioViewModel {
     );
   }
 
-  /// 副聊天的系统提示里讲本地反推怎么用:主工作区、没关掉「本地反推」时才有。
+  /// 副聊天、区域控制的系统提示里讲本地反推怎么用:没关掉「本地反推」时才有。
   String get localGuide =>
-      local == null ||
-          layoutOnly ||
-          config.config.disabledSkills.contains('local-reverse')
+      local == null || config.config.disabledSkills.contains('local-reverse')
       ? ''
       : '${builtinSkillList.firstWhere((s) => s.id == 'local-reverse').body}'
             '\n\n${local!.agentPrompt}';

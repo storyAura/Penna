@@ -282,6 +282,8 @@ extension StudioChat on StudioViewModel {
             _deliverLayers();
             // 放在布局后面:换布局时灯光照旧,这条回复写的灯光才不会被盖回去。
             _deliverLighting();
+            // 区域控制那边:布局放到画板上之后再出图(用的是画板交出去的 JSON)。
+            if (layoutOnly) _deliverComfy();
             unawaited(_deliverSkill());
             // 人物块对不上角色卡:让 Agent 接着改,改完那一条再发排着的消息。
             if (_fixCast()) return;

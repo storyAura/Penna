@@ -96,6 +96,8 @@ class _AppShellState extends State<AppShell> {
     // 测试里没在 main() 接上:Agent 用的就是这一页上的本地反推。
     widget.vm.local ??= _local;
     widget.vm.poses ??= _poses;
+    _layoutChat.local ??= _local;
+    _layoutChat.poses ??= _poses;
     widget.vm.layoutAgent ??= _layoutChat;
     widget.vm.side ??= SideChat(widget.vm);
     _layoutChat.side ??= SideChat(_layoutChat);
@@ -130,6 +132,7 @@ class _AppShellState extends State<AppShell> {
         characterDict: widget.vm.characterDict,
         layout: _layout,
         layoutOnly: true,
+        comfy: widget.vm.comfy,
       );
 
   /// 别的页面要交给 Agent 的话:工作台收到后填进聊天输入框。

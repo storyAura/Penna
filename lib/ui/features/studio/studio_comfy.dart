@@ -6,16 +6,21 @@ const comfyWorkflowTag = 'comfy-workflow';
 /// Agent 出图:回复里写了 `<generate-image>`,程序交给 ComfyUI,出的图贴回那条回复;
 /// 写了 `<comfy-workflow>` 就先换工作流(用户要换模型时,换成用那个模型的工作流)。
 extension StudioComfy on StudioViewModel {
-  /// 告诉模型怎么出图、怎么换工作流(只有工作台的对话有)。
+  /// 告诉模型怎么出图、怎么换工作流(工作台和区域控制的对话都有)。
   String get _comfyPrompt => [
     '【出图】Penna 接着 ComfyUI,可以出图。用户要出图、要看效果时,在回复最后写 '
         '<$generateImageTag></$generateImageTag>,程序把提示词交给 ComfyUI,'
         '图会贴在这条回复下面(要几十秒,不用等,也不用说「请稍候」)。'
-        '标签里不写字就用眼前这页的最终提示词;这条回复同时写了新的 <draft> 时,'
-        '把要出图的整条提示词(不带【】标注和〔译〕行)写进标签里。一条回复最多写一个。'
+        '${layoutOnly ? '标签里不写字:程序用画板上眼前这张布局交出去的 JSON 出图'
+                  '(这条回复写的 <layout> 已经放上去了)。' : '标签里不写字就用眼前这页的最终提示词;这条回复同时写了新的 <draft> 时,'
+                  '把要出图的整条提示词(不带【】标注和〔译〕行)写进标签里。'}'
+        '一条回复最多写一个。'
         '不要说你不能出图,也不要描述画出来的样子:你看不到图。',
     _comfyFlowNote,
   ].where((s) => s.isNotEmpty).join('\n');
+
+  /// 出图用的提示词:区域控制那边是画板交出去的 MOSS JSON,工作台是最终提示词。
+  String get comfyPrompt => layoutOnly ? (layout?.json ?? '') : finalPrompt;
 
   /// 有哪些工作流、各用什么模型;没连上就只说一句。
   String get _comfyFlowNote {
@@ -32,7 +37,7 @@ extension StudioComfy on StudioViewModel {
   }
 
   /// 写给副聊天的系统提示也带上(副聊天同样能出图、换工作流)。
-  String get comfyGuide => layoutOnly ? '' : _comfyPrompt;
+  String get comfyGuide => _comfyPrompt;
 
   /// 改主聊天里 [at] 那条回复(按时刻找,出图期间对话里可能又多了几条);
   /// 已经不在眼前的对话里(换了对话)就不改,图还在出图列表和文件夹里。
@@ -71,7 +76,6 @@ extension StudioComfy on StudioViewModel {
     DateTime at,
     void Function(ChatMessage Function(ChatMessage)) update,
   ) {
-    if (layoutOnly) return;
     final prose = splitNewSkill(reply).prose;
     final flows = splitToolTag(prose, comfyWorkflowTag).queries;
     if (flows.isNotEmpty) {
@@ -101,11 +105,12 @@ extension StudioComfy on StudioViewModel {
     String? prompt,
   }) {
     final asked = splitGenerate(splitNewSkill(reply).prose);
+    // 区域控制那边始终用画板上的布局(标签里写的不算,模型拼不对 JSON)。
     final text =
         prompt ??
-        (asked.prompt.isNotEmpty
+        (asked.prompt.isNotEmpty && !layoutOnly
             ? stripSectionLabels(asked.prompt)
-            : finalPrompt);
+            : comfyPrompt);
     unawaited(() async {
       final done = await comfy.generate(text, owner: at);
       if (_disposed) return;

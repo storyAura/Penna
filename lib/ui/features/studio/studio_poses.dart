@@ -26,9 +26,9 @@ const _poseAngleZh = {
 
 /// 姿势图库接到对话里(2026-11-08 用户要求):用户描述里的姿势对得上图库的某一类时,
 /// Agent 先问要不要附参考图,用户同意了才写 [poseRefTag],程序挑几张附在工具结果里给它看。
-// ponytail: 「先问」只靠系统提示,程序不拦;副聊天、布局对话不接。
+// ponytail: 「先问」只靠系统提示,程序不拦;副聊天不接。
 extension StudioPoses on StudioViewModel {
-  bool get _posesReady => !layoutOnly && (poses?.installed ?? false);
+  bool get _posesReady => poses?.installed ?? false;
 
   /// 系统提示里的【姿势图库】;没装图库时是空串。
   String get _posePrompt {

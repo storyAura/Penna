@@ -234,7 +234,9 @@ class SideChat extends ChangeNotifier {
     '用户要你参考主聊天里说过的话、或问主聊天的 Agent 说了什么时,只输出 <$readMainChat></$readMainChat>,'
         '程序把主聊天最近的记录交给你,你再接着回答。',
     main.layoutGuide,
+    main.comfyGuide,
     main.webSearchGuide,
+    main.localGuide,
     // 放在最后:有的模型读到后面就忘了"先查"。
     main.lookupGuide,
   ].where((s) => s.isNotEmpty).join('\n\n');
@@ -333,8 +335,14 @@ class SideChat extends ChangeNotifier {
     final note = main.placeLayout(_messages.last.text);
     // 新开的页是这场对话做的事,不用从头开始。
     _seen = _workspace;
-    if (note == null || note.isEmpty) return;
-    _update((m) => m.copyWith(toolSummary: [?m.toolSummary, note].join(' · ')));
+    if (note != null && note.isNotEmpty) {
+      _update(
+        (m) => m.copyWith(toolSummary: [?m.toolSummary, note].join(' · ')),
+      );
+    }
+    // 布局放好之后再出图,和主聊天一样。
+    final reply = _messages.last;
+    main.deliverComfy(reply.text, reply.time, _updateAt(reply.time));
   }
 
   /// 以 [history](最后一条是用户消息)为上文开始一条回复。

@@ -9,6 +9,7 @@ import 'package:penna/core/harness/providers/llm_http.dart';
 import 'package:penna/core/harness/comfyui_progress.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/comfy_images.dart';
+import 'package:penna/ui/features/layout/layout_board.dart';
 import 'package:penna/ui/features/studio/side_chat.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 
@@ -410,6 +411,51 @@ void main() {
         'a cat',
       );
       expect(vm.comfy.latestFor('a cat'), reply.images.single);
+    });
+
+    test('区域控制的 Agent 出图:先放布局,用画板交出去的 JSON,和工作台同一条队列', () async {
+      final service = tempConfig();
+      service.update(
+        service.config
+            .putLlm(
+              const LlmProfile(
+                id: 'a',
+                name: 'A',
+                baseUrl: 'http://a',
+                model: 'm',
+              ),
+            )
+            .copyWith(comfy: _at(server.port)),
+      );
+      final main = StudioViewModel(
+        config: service,
+        streamChat: (_) => const Stream.empty(),
+      );
+      final board = LayoutBoard()..setSize(400, 400);
+      final vm = StudioViewModel(
+        config: service,
+        streamChat: (_) => Stream.value(
+          '<layout>{"width": 400, "height": 400, "summary": {"caption": "cat"}, '
+          '"items": [{"name": "猫", "bbox": [0, 0, 200, 200]}], '
+          '"bbox_coord_space": "abs", "bbox_format": "xyxy"}</layout>'
+          // 标签里写的字不算:区域控制始终用画板上的布局。
+          '<generate-image>a dog</generate-image>',
+        ),
+        layout: board,
+        layoutOnly: true,
+        comfy: main.comfy,
+      );
+      expect(vm.send('排一只猫并出图'), isNull);
+      for (var i = 0; i < 100 && vm.messages.last.images.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(vm.messages.last.images, hasLength(1));
+      expect(board.layout.boxes, hasLength(1));
+      expect(
+        ((queued['prompt'] as Map)['6'] as Map)['inputs']['text'],
+        board.json,
+      );
+      expect(identical(vm.comfy, main.comfy), isTrue);
     });
 
     test('正在出图时再要一张:排进队列,前一张出完接着出;撤掉排着的;记录存盘读回', () async {

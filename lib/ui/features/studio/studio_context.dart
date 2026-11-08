@@ -19,8 +19,8 @@ extension StudioContext on StudioViewModel {
     final names = characters == null && characterDict == null
         ? const <String>[]
         : splitCharacterTags(prose).queries.take(_maxQueries).toList();
-    // 本地反推、下载模型:布局页的对话不管这些。
-    final calls = local == null || layoutOnly
+    // 本地反推、下载模型。
+    final calls = local == null
         ? const <LocalToolCall>[]
         : splitLocalTools(prose).calls.take(_maxLocalCalls).toList();
     // 排布局的活转给区域控制的 Agent:一轮只转一件。
@@ -444,6 +444,10 @@ extension StudioContext on StudioViewModel {
     _characterPrompt,
     _layoutPagesPrompt,
     webSearchGuide,
+    _comfyPrompt,
+    _posePrompt,
+    // 区域控制不加载 Skill,本地反推的写法整段带上(同副聊天)。
+    localGuide,
     if (side?.messages.isNotEmpty ?? false) sideNoteForMain,
     _namingNote('layout'),
     _layoutPrompt,

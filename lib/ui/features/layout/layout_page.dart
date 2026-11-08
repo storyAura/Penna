@@ -281,6 +281,7 @@ class _LayoutPageState extends State<LayoutPage> {
             _TopBar(
               board: board,
               archive: widget.archive,
+              comfy: widget.vm.comfy,
               title: () => widget.chat.pageName,
               snap: () => widget.config.config.layoutSnap,
               onToggle3D: _toggle3D,
@@ -494,6 +495,7 @@ class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.board,
     required this.archive,
+    required this.comfy,
     required this.title,
     required this.snap,
     required this.onToggle3D,
@@ -501,6 +503,9 @@ class _TopBar extends StatelessWidget {
 
   final LayoutBoard board;
   final ArchiveStore archive;
+
+  /// 「出图」交给它(和工作台同一条出图队列),存档案库时配它出过的图。
+  final ComfyRunner comfy;
 
   /// 眼前这页的名字,存档案库时先填进名称。
   final String Function() title;
@@ -517,13 +522,14 @@ class _TopBar extends StatelessWidget {
       title: title(),
     );
     if (picked == null) return;
-    archive.add(
+    final id = archive.add(
       text: jsonEncode(board.layout.toJson()),
       title: picked.title,
       category: picked.category,
       kind: archiveLayout,
     );
     if (context.mounted) showToast(context, tr('已存进档案库'));
+    await archivePreview(archive, id, comfy.latestFor(board.json));
   }
 
   @override
@@ -601,6 +607,16 @@ class _TopBar extends StatelessWidget {
           ),
         ),
         const Spacer(),
+        const SizedBox(width: 6),
+        // 同工作台「最终提示词」上的出图:交出去的布局 JSON 排进出图队列,进度在左边的队列里。
+        PennaButton(
+          label: tr('出图'),
+          icon: Icons.brush_outlined,
+          tooltip: tr('用 ComfyUI 出图'),
+          background: PennaColors.primary,
+          foreground: Colors.white,
+          onPressed: l.isEmpty ? null : () => comfy.generate(board.json),
+        ),
         const SizedBox(width: 6),
         PennaButton(
           label: tr('保存'),

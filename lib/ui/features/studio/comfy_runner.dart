@@ -9,6 +9,7 @@ import '../../../core/harness/attachment.dart';
 import '../../../core/harness/comfy_workflow.dart';
 import '../../../core/harness/comfyui.dart';
 import '../../../data/models/app_config.dart';
+import '../../../data/services/archive_store.dart';
 import '../../../data/services/comfy_images.dart';
 import '../../../data/services/config_service.dart';
 import '../../../l10n/l10n.dart';
@@ -32,6 +33,21 @@ Attachment comfyImageAttachment(String path) =>
       file: path,
       mime: _mimeOf(path),
     );
+
+/// 用 ComfyUI 出过的图给档案库里 [id] 那一条做预览图(转成 WebP)。
+Future<void> archivePreview(
+  ArchiveStore archive,
+  String? id,
+  String? image,
+) async {
+  if (id == null || image == null) return;
+  try {
+    final webp = await toPreviewWebP(await File(image).readAsBytes());
+    if (webp != null) archive.setImage(id, webp);
+  } on FileSystemException catch (e) {
+    debugPrint(tr('预览图没存上:{0}', [e.message]));
+  }
+}
 
 /// 出过的一张图:存在哪,用的哪条提示词。
 typedef GeneratedImage = ({String path, String prompt, DateTime time});

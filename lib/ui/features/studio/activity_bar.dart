@@ -35,9 +35,6 @@ class _ActivityBarState extends State<ActivityBar> {
 
   bool get _open => _panel != null;
 
-  /// 出图队列只在主工作区有(区域控制的对话不出图)。
-  bool get _hasQueue => !widget.vm.layoutOnly;
-
   void _toggle(_Panel p) => setState(() => _panel = _panel == p ? null : p);
 
   /// 一个切换按钮:展开的那块高亮;排着队时队列图标上带个数。
@@ -79,7 +76,7 @@ class _ActivityBarState extends State<ActivityBar> {
   @override
   Widget build(BuildContext context) {
     final actions = widget.vm.actions;
-    final panels = [_Panel.actions, if (_hasQueue) _Panel.queue];
+    const panels = _Panel.values;
     return AnimatedContainer(
       duration: Motion.base,
       curve: Motion.swift,

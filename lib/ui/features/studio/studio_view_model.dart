@@ -175,7 +175,9 @@ class StudioViewModel extends ChangeNotifier {
     this.characterDict,
     this.layout,
     this.layoutOnly = false,
-  }) : _blocks = List.unmodifiable(blocks),
+    ComfyRunner? comfy,
+  }) : comfy = comfy ?? ComfyRunner(config),
+       _blocks = List.unmodifiable(blocks),
        _messages = List.unmodifiable(messages) {
     if (saveFile != null) addListener(_scheduleSave);
     if (layoutOnly) layout?.addListener(_boardListener);
@@ -221,7 +223,8 @@ class StudioViewModel extends ChangeNotifier {
   SideChat? side;
 
   /// 用 ComfyUI 出图(最终提示词卡片上的「出图」),出过的图存档案库时做预览图。
-  late final comfy = ComfyRunner(config);
+  /// 区域控制那场对话用工作台的这一个:一条出图队列,`comfy_queue.json` 只有一个人写。
+  final ComfyRunner comfy;
 
   /// 读回的副聊天(眼前那场 + 历史,新的在前);[side] 建好时从这里拿,
   /// 之后存盘问 [side] 要最新的。

@@ -57,7 +57,10 @@ class _RightBarState extends State<RightBar> {
   @override
   void initState() {
     super.initState();
-    unawaited(runner.check());
+    // 等这一帧建完再测:测连接会马上通知,两个页面共用一个 runner,别的页面正在建。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(runner.check());
+    });
     _poll = Timer.periodic(_pollEvery, (_) => runner.check());
   }
 
