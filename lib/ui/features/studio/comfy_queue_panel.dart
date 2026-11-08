@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -16,6 +17,23 @@ String _when(DateTime t) {
   final clock = '${_two(t.hour)}:${_two(t.minute)}:${_two(t.second)}';
   final today = t.year == now.year && t.month == now.month && t.day == now.day;
   return today ? clock : '${_two(t.month)}-${_two(t.day)} $clock';
+}
+
+/// 列表里显示的提示词:区域控制交的是多行的布局 JSON,取它的整体描述;
+/// 别的把换行和连着的空白并成一个空格。
+String _promptText(String prompt) {
+  final text = prompt.trim();
+  if (text.startsWith('{')) {
+    try {
+      final j = jsonDecode(text);
+      final summary = j is Map ? j['summary'] : null;
+      final caption = summary is Map ? summary['caption'] : null;
+      if (caption is String && caption.trim().isNotEmpty) return caption.trim();
+    } on FormatException {
+      // 不是 JSON,照普通文字显示。
+    }
+  }
+  return text.replaceAll(RegExp(r'\s+'), ' ');
 }
 
 String _took(Duration d) => d.inSeconds < 60
@@ -128,11 +146,11 @@ class _JobTile extends StatelessWidget {
                 ),
                 if (took != null) Text(_took(took), style: small),
                 Tooltip(
-                  message: job.error ?? job.prompt,
+                  message: job.error ?? _promptText(job.prompt),
                   waitDuration: const Duration(milliseconds: 500),
                   child: Text(
-                    job.error ?? job.prompt,
-                    maxLines: 1,
+                    job.error ?? _promptText(job.prompt),
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 11,

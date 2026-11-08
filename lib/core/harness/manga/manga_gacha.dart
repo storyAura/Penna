@@ -12,9 +12,10 @@ import 'package:crypto/crypto.dart';
 import '../../../l10n/l10n.dart';
 import 'manga.dart';
 import 'manga_geometry.dart';
+import 'manga_styles.dart';
 
 /// 生成规则的版本:改了抽法就换,旧种子的结果不冒充一样。
-const mangaGeneratorVersion = 'rect-v1';
+const mangaGeneratorVersion = 'tiers-v2';
 
 /// 一路随机数。[scope] 是这次作用在哪(页 id),[category] 区分分格、镜头,
 /// 改镜头不会动到分格的随机数。
@@ -101,32 +102,40 @@ const _ratioSteps = [
   700000,
 ];
 
-/// 在 [page] 的版心里抽 [count] 张不同的分格,格数在 [minPanels]..[maxPanels]。
+/// 在 [page] 的版心里抽 [count] 张不同的分格。按版式 [style] 一排一排地长;
+/// [minPanels]..[maxPanels] 给了就只要这么多格(只给版式不给格数时格数由版式定)。
 /// [emphasis] 是按阅读顺序每格的分量(0–100),有的话分量大的格该大;
-/// 长度和格数对不上就不看它。最多试 [attempts] 次;抽不满就少给,
-/// 一张都没有时 [MangaDraw.problem] 说为什么,不放宽条件。
+/// 长度和格数对不上就不看它。最多试 [attempts] 次;版式凑不出要的格数时
+/// 退回一刀一刀随机切。抽不满就少给,一张都没有时 [MangaDraw.problem] 说为什么,不放宽条件。
 MangaDraw drawLayouts(
   MangaPage page, {
   required String seed,
-  required int minPanels,
-  required int maxPanels,
+  MangaStyle? style,
+  int? minPanels,
+  int? maxPanels,
   int count = 8,
   List<int> emphasis = const [],
-  int attempts = 200,
+  int attempts = 300,
 }) {
-  final lo = minPanels.clamp(1, mangaMaxPanels);
-  final hi = maxPanels.clamp(lo, mangaMaxPanels);
+  final fixed = minPanels != null || maxPanels != null;
+  final lo = (minPanels ?? 1).clamp(1, mangaMaxPanels);
+  final hi = (maxPanels ?? mangaMaxPanels).clamp(lo, mangaMaxPanels);
   final found = <MangaCandidate>[];
   final keys = <String>{};
   var noRoom = 0;
   for (var attempt = 0; attempt < attempts && found.length < count; attempt++) {
     final s = MangaStream(seed, page.id, attempt, 'layout');
-    final n = lo + s.below(hi - lo + 1);
-    final root = _grow(page, n, s);
+    final want = fixed ? lo + s.below(hi - lo + 1) : null;
+    // 版式凑不出格数时,后一半的次数一刀一刀随机切。
+    final root = style != null && attempt < attempts * 2 ~/ 3
+        ? growTiers(page, style, s, panels: want)
+        : _grow(page, want ?? lo + s.below(hi - lo + 1), s);
     if (root == null) {
       noRoom++;
       continue;
     }
+    final n = leafIds(root).length;
+    if (n < lo || n > hi) continue;
     final probe = page.copyWith(
       root: root,
       panels: {for (final id in leafIds(root)) id: MangaPanel(id: id)},
@@ -208,31 +217,32 @@ MangaNode? _grow(MangaPage page, int n, MangaStream s) {
 
 /// 去重的键:按阅读顺序各格的矩形,量到 0.1 mm(只用来比较,不改几何)。
 String _keyOf(MangaPage page) {
-  final rects = panelRects(page);
+  final quads = panelQuads(page, bleed: true);
   return [
     for (final id in readingOrder(page))
-      if (rects[id] case final r?)
-        '${r.x ~/ 100},${r.y ~/ 100},${r.w ~/ 100},${r.h ~/ 100}',
+      if (quads[id] case final q?)
+        q.map((p) => '${p.x ~/ 100},${p.y ~/ 100}').join(' '),
   ].join('|');
 }
 
 /// 打分(整数):不要细长条、大小要有起伏、分量大的格要大、一排一排地读。
 /// 这是经验规则,不保证叙事好坏;主要扣分原因写进 notes。
 ({int score, List<String> notes}) _score(MangaPage page, List<int> emphasis) {
-  final rects = panelRects(page);
+  final quads = panelQuads(page);
   final order = readingOrder(page);
   final notes = <String>[];
   // 最细长的那格:长边是短边的三倍以内满分,再长就扣。
   var worst = 100;
-  for (final r in rects.values) {
+  for (final q in quads.values) {
+    final r = spanOf(q);
     final long = r.w > r.h ? r.w : r.h, short = r.w > r.h ? r.h : r.w;
-    final ratio = long * 100 ~/ short;
+    final ratio = long * 100 ~/ (short < 1 ? 1 : short);
     if (ratio > worst) worst = ratio;
   }
   final thin = worst <= 300 ? 1000 : (1000 - (worst - 300) * 4).clamp(0, 1000);
   if (thin < 1000) notes.add(tr('有细长的格'));
   // 大小起伏:最大格是最小格的 1.8 到 6 倍最好;太平均像表格。
-  final areas = [for (final r in rects.values) r.w ~/ 1000 * (r.h ~/ 1000)];
+  final areas = [for (final q in quads.values) areaMm(q)];
   final big = areas.reduce((a, b) => a > b ? a : b);
   final small = areas.reduce((a, b) => a < b ? a : b);
   final spread = small == 0 ? 1000 : big * 100 ~/ small;
@@ -251,8 +261,7 @@ String _keyOf(MangaPage page) {
   var weight = 1000;
   if (emphasis.length == order.length && order.length > 1) {
     final top = emphasis.indexOf(emphasis.reduce((a, b) => a > b ? a : b));
-    final mine = rects[order[top]]!;
-    final area = mine.w ~/ 1000 * (mine.h ~/ 1000);
+    final area = areaMm(quads[order[top]]!);
     final bigger = areas.where((a) => a > area).length;
     weight = 1000 - bigger * 1000 ~/ (order.length - 1);
     if (bigger > 0) notes.add(tr('重点格不够大'));
@@ -260,7 +269,10 @@ String _keyOf(MangaPage page) {
   // 一排一排:第一刀是横切的好读。
   final root = page.root;
   final tiers = root is MangaSplit && root.axis == MangaAxis.x ? 600 : 1000;
-  return (score: thin * 3 + rhythm * 2 + weight * 2 + tiers, notes: notes);
+  return (
+    score: (thin * 3 + rhythm * 2 + weight * 2 + tiers) ~/ 80,
+    notes: notes,
+  );
 }
 
 /// 用候选 [root](叶子是临时 id)换掉 [page] 的分格:按阅读顺序把原来的格接到新格上,
@@ -291,7 +303,10 @@ String _keyOf(MangaPage page) {
     for (final (i, id) in readingOrder(probe).indexed) id: kept[i].id,
   };
   MangaNode renamed(MangaNode n) => switch (n) {
-    MangaLeaf(:final panel) => MangaLeaf(rename[panel]!),
+    MangaLeaf(:final panel, :final bleed) => MangaLeaf(
+      rename[panel]!,
+      bleed: bleed,
+    ),
     MangaSplit() => n.copyWith(
       first: renamed(n.first),
       second: renamed(n.second),

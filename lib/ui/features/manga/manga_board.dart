@@ -10,15 +10,23 @@ import '../../../core/harness/manga/manga.dart';
 import '../../../core/harness/manga/manga_gacha.dart';
 import '../../../core/harness/manga/manga_geometry.dart';
 import '../../../core/harness/manga/manga_script.dart';
+import '../../../core/harness/manga/manga_styles.dart';
 import '../../../l10n/l10n.dart';
 
 /// 撤销最多记几步。
 const _maxUndo = 100;
 
+/// 最多几个系列(同工作台)。
+const mangaMaxSeries = 20;
+
 /// 打字时连着改同一样东西,这么久之内算同一步撤销。
 const _typingGap = Duration(seconds: 1);
 
-/// 漫画分镜工作台的状态:作品、眼前第几页、选中哪一格、撤销重做、抽到的卡。
+/// 撤销记的一份:全部系列和眼前是哪一个。
+typedef _Snapshot = ({List<MangaProject> shelf, int series});
+
+/// 漫画分镜工作台的状态:几个系列(每个系列是一部作品:设定、角色、几页)、
+/// 眼前第几个系列第几页、选中哪一格、撤销重做、抽到的卡和抽卡的设置。
 /// 存在「文档\Penna\manga.json」。
 class MangaBoard extends ChangeNotifier {
   MangaBoard({this.dir});
@@ -26,10 +34,11 @@ class MangaBoard extends ChangeNotifier {
   /// 存盘的文件夹;null 时不存(测试用)。
   final Directory? dir;
 
-  MangaProject _project = MangaProject.blank();
+  List<MangaProject> _shelf = [MangaProject.blank()];
+  int _series = 0;
   int _page = 0;
   String? _selected;
-  List<MangaProject> _undo = const [], _redo = const [];
+  List<_Snapshot> _undo = const [], _redo = const [];
   String? _typing;
   DateTime _typedAt = DateTime(0);
 
@@ -40,12 +49,24 @@ class MangaBoard extends ChangeNotifier {
   MangaDraw? _draw;
   int? _previewing;
   String _seed = _newSeed();
-  int minPanels = 3, maxPanels = 6;
   int _shotRolls = 0;
 
-  MangaProject get project => _project;
+  /// 抽分格的设置:版式(选了现成的就记着名字,调过参数后名字是空的)、
+  /// 要不要指定格数、一次抽几张。
+  String styleName = '标准';
+  MangaStyle style = mangaStyles['标准']!;
+  bool fixedCount = false;
+  int minPanels = 4, maxPanels = 7;
+  int drawCount = 8;
+
+  /// 格里画人偶草图(关了写字)、画阅读动线。
+  bool showFigures = true, showFlow = false;
+
+  List<MangaProject> get shelf => List.unmodifiable(_shelf);
+  int get seriesIndex => _series;
+  MangaProject get project => _shelf[_series];
   int get pageIndex => _page;
-  MangaPage get page => _project.pages[_page];
+  MangaPage get page => project.pages[_page];
   String? get selected => _selected;
   MangaPanel? get selectedPanel =>
       _selected == null ? null : page.panels[_selected];
@@ -55,23 +76,36 @@ class MangaBoard extends ChangeNotifier {
   MangaDraw? get draw => _draw;
   int? get previewing => _previewing;
   String get seed => _seed;
+  bool get seriesFull => _shelf.length >= mangaMaxSeries;
 
-  /// 画布上画的那一页:看着候选时是候选套上去的样子(不进作品)。
-  MangaPage get shown {
-    final c = _previewing == null ? null : _draw?.found[_previewing!];
-    if (c == null) return page;
+  /// 系列的名字:作品名,没起名是「系列 N」。
+  String seriesName(int i) => _shelf[i].title.trim().isEmpty
+      ? tr('系列 {0}', [i + 1])
+      : _shelf[i].title.trim();
+
+  /// 第 [i] 张候选套到眼前这页上的样子(内容按阅读顺序接上,不进作品)。
+  MangaPage candidatePage(int i) {
+    final c = _draw!.found[i];
     return applyLayout(page, c.root, [
-          for (var i = 0; i < c.count; i++) '~$i',
+          for (var k = 0; k < c.count; k++) '~$k',
         ])?.page ??
-        page;
+        page.copyWith(
+          root: c.root,
+          panels: {for (final id in leafIds(c.root)) id: MangaPanel(id: id)},
+        );
   }
+
+  /// 画布上画的那一页:看着候选时是候选套上去的样子。
+  MangaPage get shown =>
+      _previewing == null || _draw == null ? page : candidatePage(_previewing!);
 
   static String _newSeed() =>
       Random().nextInt(0x7fffffff).toRadixString(36).padLeft(6, '0');
 
+  _Snapshot get _now => (shelf: _shelf, series: _series);
+
   /// 改一步:旧的进撤销栈。[typing] 是打字时改的哪一样,连着打的字合成一步。
-  void _commit(MangaProject next, {String? typing}) {
-    if (identical(next, _project)) return;
+  void _commitShelf(List<MangaProject> next, {String? typing}) {
     final now = DateTime.now();
     final merge =
         typing != null &&
@@ -79,19 +113,29 @@ class MangaBoard extends ChangeNotifier {
         now.difference(_typedAt) < _typingGap;
     if (!merge) {
       _undo = List.unmodifiable(
-        [..._undo, _project].skip(_undo.length + 1 > _maxUndo ? 1 : 0),
+        [..._undo, _now].skip(_undo.length + 1 > _maxUndo ? 1 : 0),
       );
     }
     _typing = typing;
     _typedAt = now;
     _redo = const [];
-    _project = next;
+    _shelf = List.unmodifiable(next);
     if (typing == null) _revision++;
     _afterChange();
   }
 
+  void _commit(MangaProject next, {String? typing}) {
+    if (identical(next, project)) return;
+    _commitShelf([
+      ..._shelf.take(_series),
+      next,
+      ..._shelf.skip(_series + 1),
+    ], typing: typing);
+  }
+
   void _afterChange() {
-    if (_page >= _project.pages.length) _page = _project.pages.length - 1;
+    _series = _series.clamp(0, _shelf.length - 1);
+    _page = _page.clamp(0, project.pages.length - 1);
     if (_selected != null && !page.panels.containsKey(_selected)) {
       _selected = null;
     }
@@ -99,33 +143,68 @@ class MangaBoard extends ChangeNotifier {
     notifyListeners();
   }
 
-  void undo() {
-    if (_undo.isEmpty) return;
-    _redo = List.unmodifiable([..._redo, _project]);
-    _project = _undo.last;
-    _undo = List.unmodifiable(_undo.take(_undo.length - 1));
+  void _restore(_Snapshot s) {
+    _shelf = s.shelf;
+    if (s.series != _series) {
+      _series = s.series;
+      _page = 0;
+    }
     _typing = null;
     _revision++;
+    _clearDraw();
     _afterChange();
+  }
+
+  void undo() {
+    if (_undo.isEmpty) return;
+    _redo = List.unmodifiable([..._redo, _now]);
+    final last = _undo.last;
+    _undo = List.unmodifiable(_undo.take(_undo.length - 1));
+    _restore(last);
   }
 
   void redo() {
     if (_redo.isEmpty) return;
-    _undo = List.unmodifiable([..._undo, _project]);
-    _project = _redo.last;
+    _undo = List.unmodifiable([..._undo, _now]);
+    final last = _redo.last;
     _redo = List.unmodifiable(_redo.take(_redo.length - 1));
-    _typing = null;
+    _restore(last);
+  }
+
+  void _setPage(MangaPage p, {String? typing}) =>
+      _commit(project.withPage(_page, p), typing: typing);
+
+  // ── 系列和页 ──
+
+  void showSeries(int i) {
+    if (i < 0 || i >= _shelf.length || i == _series) return;
+    _series = i;
+    _page = 0;
+    _selected = null;
+    _clearDraw();
     _revision++;
     _afterChange();
   }
 
-  void _setPage(MangaPage p, {String? typing}) =>
-      _commit(_project.withPage(_page, p), typing: typing);
+  /// 加一个系列([project] 不给就是空白的)并换过去;满了返回原因。
+  String? addSeries([MangaProject? from]) {
+    if (seriesFull) return tr('最多 {0} 个系列,先删掉不用的', [mangaMaxSeries]);
+    _commitShelf([..._shelf, from ?? MangaProject.blank()]);
+    showSeries(_shelf.length - 1);
+    return null;
+  }
 
-  // ── 页 ──
+  /// 删掉第 [i] 个系列;只剩一个时换成空白的。
+  void removeSeries(int i) {
+    final rest = [..._shelf]..removeAt(i);
+    if (_series >= i && _series > 0) _series--;
+    _page = 0;
+    _clearDraw();
+    _commitShelf(rest.isEmpty ? [MangaProject.blank()] : rest);
+  }
 
   void showPage(int i) {
-    if (i < 0 || i >= _project.pages.length || i == _page) return;
+    if (i < 0 || i >= project.pages.length || i == _page) return;
     _page = i;
     _selected = null;
     _clearDraw();
@@ -134,7 +213,7 @@ class MangaBoard extends ChangeNotifier {
 
   /// 在眼前这页后面加一张空白页(纸张、方向照眼前这页)并换过去。
   void addPage() {
-    final (ids, p) = _project.newIds('page', 2);
+    final (ids, p) = project.newIds('page', 2);
     final pages = [...p.pages]
       ..insert(_page + 1, blankMangaPage(ids[0], ids[1], like: page));
     _commit(p.copyWith(pages: pages));
@@ -143,11 +222,11 @@ class MangaBoard extends ChangeNotifier {
 
   /// 删掉第 [i] 页;只剩一页时不删。
   void removePage(int i) {
-    if (_project.pages.length <= 1) return;
-    final pages = [..._project.pages]..removeAt(i);
+    if (project.pages.length <= 1) return;
+    final pages = [...project.pages]..removeAt(i);
     if (_page >= i && _page > 0) _page--;
     _clearDraw();
-    _commit(_project.copyWith(pages: pages));
+    _commit(project.copyWith(pages: pages));
   }
 
   void select(String? panel) {
@@ -159,19 +238,22 @@ class MangaBoard extends ChangeNotifier {
   // ── 设定 ──
 
   void setTitle(String v) =>
-      _commit(_project.copyWith(title: v), typing: 'title');
+      _commit(project.copyWith(title: v), typing: 'title');
   void setSetting(String v) =>
-      _commit(_project.copyWith(setting: v), typing: 'setting');
+      _commit(project.copyWith(setting: v), typing: 'setting');
 
-  void setCharacter(int i, MangaCharacter c) {
-    final list = [..._project.characters];
+  void setCharacter(int i, MangaCharacter c, {bool typing = true}) {
+    final list = [...project.characters];
     i < list.length ? list[i] = c : list.add(c);
-    _commit(_project.copyWith(characters: list), typing: 'character-$i');
+    _commit(
+      project.copyWith(characters: list),
+      typing: typing ? 'character-$i' : null,
+    );
   }
 
   void removeCharacter(int i) {
-    final list = [..._project.characters]..removeAt(i);
-    _commit(_project.copyWith(characters: list));
+    final list = [...project.characters]..removeAt(i);
+    _commit(project.copyWith(characters: list));
   }
 
   // ── 纸张 ──
@@ -185,13 +267,18 @@ class MangaBoard extends ChangeNotifier {
 
   void setRtl(bool rtl) => _setPage(page.copyWith(rtl: rtl));
 
+  void setBorder(int um) => _setPage(page.copyWith(border: um));
+
   // ── 格 ──
 
-  /// 改选中那格的内容;[typing] 见 [_commit]。
+  /// 改选中那格的内容;[typing] 见 [_commitShelf]。
   void updatePanel(MangaPanel p, {String? typing}) => _setPage(
     page.withPanel(p),
     typing: typing == null ? null : '${p.id}/$typing',
   );
+
+  void setPanelBleed(String id, bool bleed) =>
+      _setPage(setBleed(page, id, bleed));
 
   /// 拖格线时的样子:先只画,不进作品;松手时 [endDrag] 才算一步。
   MangaPage? _dragging;
@@ -219,7 +306,7 @@ class MangaBoard extends ChangeNotifier {
   String? splitSelected(MangaAxis axis) {
     final id = _selected;
     if (id == null) return null;
-    final (ids, p) = _project.newIds('panel', 1);
+    final (ids, p) = project.newIds('panel', 1);
     final next = splitPanel(page, id, axis, ids.first);
     if (next == null) return tr('这一格太小,拆不开');
     _commit(p.withPage(_page, next));
@@ -251,16 +338,50 @@ class MangaBoard extends ChangeNotifier {
     _previewing = null;
   }
 
-  /// 抽一组分格(换个新种子);格数不少于有内容的格。
+  /// 换一组现成的版式。
+  void useStyle(String name) {
+    styleName = name;
+    style = mangaStyles[name]!;
+    _clearDraw();
+    notifyListeners();
+  }
+
+  /// 自己调版式参数:调过之后不再算哪一种现成的。
+  void tuneStyle(MangaStyle next) {
+    style = next;
+    styleName =
+        mangaStyles.entries.where((e) => e.value == next).firstOrNull?.key ??
+        '';
+    notifyListeners();
+  }
+
+  void setDrawOptions({bool? fixed, int? min, int? max, int? count}) {
+    fixedCount = fixed ?? fixedCount;
+    minPanels = (min ?? minPanels).clamp(1, mangaMaxPanels);
+    maxPanels = (max ?? maxPanels).clamp(minPanels, mangaMaxPanels);
+    drawCount = count ?? drawCount;
+    notifyListeners();
+  }
+
+  void setView({bool? figures, bool? flow}) {
+    showFigures = figures ?? showFigures;
+    showFlow = flow ?? showFlow;
+    notifyListeners();
+  }
+
+  /// 抽一组分格(换个新种子)。格数至少是有内容的格数,内容不会丢。
   void drawLayout({bool reroll = true}) {
     if (reroll) _seed = _newSeed();
     final filled = page.panels.values.where((p) => !p.isBlank).length;
     final order = readingOrder(page);
+    int? atLeast(int? v) => v == null || v >= filled ? v : filled;
     _draw = drawLayouts(
       page,
       seed: _seed,
-      minPanels: minPanels > filled ? minPanels : filled,
-      maxPanels: maxPanels > filled ? maxPanels : filled,
+      style: style,
+      minPanels: fixedCount ? atLeast(minPanels) : (filled > 0 ? filled : null),
+      maxPanels: fixedCount ? atLeast(maxPanels) : null,
+      count: drawCount,
       emphasis: [for (final id in order) page.panels[id]!.emphasis],
     );
     _previewing = _draw!.found.isEmpty ? null : 0;
@@ -276,13 +397,13 @@ class MangaBoard extends ChangeNotifier {
   void applyPreview() {
     final c = _previewing == null ? null : _draw?.found[_previewing!];
     if (c == null) return;
-    final (ids, p) = _project.newIds('panel', c.count);
+    final (ids, p) = project.newIds('panel', c.count);
     final applied = applyLayout(page, c.root, ids);
     if (applied == null) return;
     _clearDraw();
     _commit(
       p
-          .copyWith(nextId: _project.nextId + applied.used)
+          .copyWith(nextId: project.nextId + applied.used)
           .withPage(_page, applied.page),
     );
   }
@@ -298,8 +419,8 @@ class MangaBoard extends ChangeNotifier {
 
   // ── Agent ──
 
-  /// 给 Agent 看的作品。
-  String get agentView => mangaAgentView(_project, _page);
+  /// 给 Agent 看的作品(眼前这个系列)。
+  String get agentView => mangaAgentView(project, _page);
 
   /// 回复里完整的 `<storyboard>` 放进作品,返回记在回复上的一句;没写是 null。
   String? applyReply(String reply) {
@@ -307,7 +428,7 @@ class MangaBoard extends ChangeNotifier {
     if (specs.isEmpty) return null;
     final board = parseStoryboard(specs.last);
     if (board == null) return tr('分镜读不了,没放上');
-    final r = applyStoryboard(_project, board, current: _page, seed: _seed);
+    final r = applyStoryboard(project, board, current: _page, seed: _seed);
     _clearDraw();
     _commit(r.project);
     return [...r.done, ...r.problems].join(' · ');
@@ -334,7 +455,11 @@ class MangaBoard extends ChangeNotifier {
       file.parent.createSync(recursive: true);
       File('${file.path}.tmp')
         ..writeAsStringSync(
-          jsonEncode({'project': _project.toJson(), 'page': _page}),
+          jsonEncode({
+            'shelf': [for (final p in _shelf) p.toJson()],
+            'series': _series,
+            'page': _page,
+          }),
           flush: true,
         )
         ..renameSync(file.path);
@@ -343,14 +468,30 @@ class MangaBoard extends ChangeNotifier {
     }
   }
 
+  /// 读回;旧版只有一部作品(`project`),读成一个系列。
+  static List<MangaProject>? _read(Map<String, dynamic> j) {
+    if (j['shelf'] case final List list) {
+      final out = <MangaProject>[];
+      for (final p in list.take(mangaMaxSeries)) {
+        final read = MangaProject.fromJson(p);
+        if (read == null) return null;
+        out.add(read);
+      }
+      return out.isEmpty ? null : out;
+    }
+    final one = MangaProject.fromJson(j['project']);
+    return one == null ? null : [one];
+  }
+
   Future<void> load() async {
     final file = _file;
     if (file == null || !file.existsSync()) return;
-    MangaProject? read;
-    var at = 0;
+    List<MangaProject>? read;
+    var series = 0, at = 0;
     try {
       final j = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      read = MangaProject.fromJson(j['project']);
+      read = _read(j);
+      series = j['series'] is int ? j['series'] as int : 0;
       at = j['page'] is int ? j['page'] as int : 0;
     } on Object {
       read = null;
@@ -366,8 +507,9 @@ class MangaBoard extends ChangeNotifier {
       }
       return;
     }
-    _project = read;
-    _page = at.clamp(0, read.pages.length - 1);
+    _shelf = List.unmodifiable(read);
+    _series = series.clamp(0, read.length - 1);
+    _page = at.clamp(0, project.pages.length - 1);
     _revision++;
     notifyListeners();
   }

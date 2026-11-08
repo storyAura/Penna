@@ -8,6 +8,7 @@ import '../../core/smooth_scroll.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'manga_board.dart';
+import 'manga_figures.dart';
 
 /// 分量的三档:小格、普通、重点。
 const _weights = [30, 50, 80];
@@ -104,16 +105,38 @@ class _MangaInspectorState extends State<MangaInspector> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
+                    // 人偶的颜色。
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6, bottom: 12),
+                      child: CircleAvatar(
+                        radius: 6,
+                        backgroundColor: figureColor(p.characters, c.name),
+                      ),
+                    ),
                     Expanded(
                       child: PennaField(
                         key: _key('name-$i'),
                         label: tr('名字'),
                         value: c.name,
-                        onChanged: (v) => board.setCharacter(
-                          i,
-                          MangaCharacter(name: v, look: c.look),
-                        ),
+                        onChanged: (v) =>
+                            board.setCharacter(i, c.copyWith(name: v)),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    SizedBox(
+                      width: 64,
+                      child: PennaField(
+                        key: _key('height-$i'),
+                        label: tr('身高 cm'),
+                        value: '${c.height}',
+                        onChanged: (v) {
+                          final cm = int.tryParse(v.trim());
+                          if (cm != null && cm >= 60 && cm <= 260) {
+                            board.setCharacter(i, c.copyWith(height: cm));
+                          }
+                        },
                       ),
                     ),
                     IconButton(
@@ -131,10 +154,7 @@ class _MangaInspectorState extends State<MangaInspector> {
                   value: c.look,
                   maxLines: 3,
                   hint: tr('发型发色、瞳色、服装、标志物'),
-                  onChanged: (v) => board.setCharacter(
-                    i,
-                    MangaCharacter(name: c.name, look: v),
-                  ),
+                  onChanged: (v) => board.setCharacter(i, c.copyWith(look: v)),
                 ),
               ],
             ),
@@ -339,6 +359,19 @@ class _MangaInspectorState extends State<MangaInspector> {
             locked ? null : board.clearSelected,
           ),
         ],
+      ),
+      const SizedBox(height: 8),
+      Tooltip(
+        message: tr('贴着版心边的那几边铺到纸边外'),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: PennaChip(
+            label: tr('出血'),
+            selected: isBleed(board.page, panel.id),
+            onTap: () =>
+                board.setPanelBleed(panel.id, !isBleed(board.page, panel.id)),
+          ),
+        ),
       ),
     ];
   }

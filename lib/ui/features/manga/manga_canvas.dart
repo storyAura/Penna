@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import '../../../core/harness/manga/manga.dart';
 import '../../../core/harness/manga/manga_geometry.dart';
 import '../../core/theme.dart';
 import 'manga_board.dart';
+import 'manga_figures.dart';
 
 /// 格里字的高度(mm),跟着纸张缩放。
 const _fontMm = 3.2;
@@ -14,17 +16,19 @@ const _fontMm = 3.2;
 /// 左上角阅读顺序号的高度(像素);格里的字从它下面开始。
 const _badgeHeight = 17.0;
 
-/// 格线手柄在屏幕上至少这么宽(像素),缩小了也抓得住。
-const _handlePx = 10.0;
+/// 格线手柄离鼠标多近算抓到(像素),缩小了也抓得住。
+const _handlePx = 6.0;
 
 /// 页面 → 画面的换算:每微米几像素,和纸张左上角在画面上的位置。
 class _View {
   _View(Size size, MangaPage page, double pad)
-    : scale = [
-        (size.width - 2 * pad) / page.width,
-        (size.height - 2 * pad) / page.height,
-      ].reduce((a, b) => a < b ? a : b).clamp(1e-9, double.infinity),
-      origin = Offset.zero {
+    : scale = math.max(
+        1e-9,
+        math.min(
+          (size.width - 2 * pad) / page.width,
+          (size.height - 2 * pad) / page.height,
+        ),
+      ) {
     origin = Offset(
       (size.width - page.width * scale) / 2,
       (size.height - page.height * scale) / 2,
@@ -32,13 +36,20 @@ class _View {
   }
 
   final double scale;
-  Offset origin;
+  late final Offset origin;
 
-  Rect rect(MangaRect r) => Rect.fromLTWH(
-    origin.dx + r.x * scale,
-    origin.dy + r.y * scale,
-    r.w * scale,
-    r.h * scale,
+  Offset point(MangaPoint p) =>
+      Offset(origin.dx + p.x * scale, origin.dy + p.y * scale);
+
+  Path path(MangaQuad q) =>
+      Path()..addPolygon([for (final p in q) point(p)], true);
+
+  /// 格里面那块正的矩形(不压到斜边)。
+  Rect inner(MangaQuad q) => Rect.fromLTRB(
+    point((x: math.max(q[0].x, q[3].x), y: 0)).dx,
+    point((x: 0, y: math.max(q[0].y, q[1].y))).dy,
+    point((x: math.min(q[1].x, q[2].x), y: 0)).dx,
+    point((x: 0, y: math.min(q[3].y, q[2].y))).dy,
   );
 
   /// 画面上的点 → 页面坐标(微米)。
@@ -48,28 +59,37 @@ class _View {
   );
 }
 
-/// 画一页分镜:纸、格框、格里的景别和台词;[overlays] 时再画选中框和阅读顺序
-/// (导出、缩略图不画)。纸总是白的,深色模式下也一样。
+/// 画一页分镜:纸、格框,格里是人偶草图([figures])或文字;[overlays] 时再画
+/// 选中框和阅读顺序,[flow] 时画阅读动线(导出、缩略图不画这些)。纸总是白的。
 class MangaPainter extends CustomPainter {
   MangaPainter({
     required this.page,
+    this.characters = const [],
     this.selected,
     this.overlays = true,
+    this.figures = true,
     this.text = true,
+    this.flow = false,
     this.pad = 16,
     this.hoverHandle,
   });
 
   final MangaPage page;
+  final List<MangaCharacter> characters;
   final String? selected;
-  final bool overlays, text;
+  final bool overlays, figures, text, flow;
   final double pad;
   final String? hoverHandle;
 
   @override
   void paint(Canvas canvas, Size size) {
     final view = _View(size, page, pad);
-    final paper = view.rect((x: 0, y: 0, w: page.width, h: page.height));
+    final paper = Rect.fromLTWH(
+      view.origin.dx,
+      view.origin.dy,
+      page.width * view.scale,
+      page.height * view.scale,
+    );
     if (pad > 0) {
       canvas.drawRect(
         paper.shift(const Offset(0, 2)),
@@ -78,23 +98,50 @@ class MangaPainter extends CustomPainter {
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
       );
     }
-    canvas.drawRect(paper, Paint()..color = Colors.white);
-    final rects = panelRects(page);
+    canvas
+      ..drawRect(paper, Paint()..color = Colors.white)
+      ..save()
+      ..clipRect(paper);
+    final quads = panelQuads(page);
+    final outer = panelQuads(page, bleed: true);
     final order = readingOrder(page);
+    final mm = 1000 * view.scale;
     final border = Paint()
       ..color = Colors.black
       ..style = PaintingStyle.stroke
-      ..strokeWidth = (500 * view.scale).clamp(0.6, 3);
-    for (final (i, id) in order.indexed) {
-      final r = view.rect(rects[id]!);
+      ..strokeJoin = StrokeJoin.miter
+      ..strokeWidth = math.max(0.6, page.border * view.scale);
+    for (final id in order) {
+      final shape = view.path(outer[id]!);
+      final box = view.inner(quads[id]!);
       final panel = page.panels[id]!;
-      if (text) _content(canvas, r, panel, view.scale);
-      canvas.drawRect(r, border);
-      if (!overlays) continue;
-      _badge(canvas, r, i + 1, panel.locked);
+      if (text && !panel.isBlank) {
+        canvas
+          ..save()
+          ..clipPath(shape);
+        figures
+            ? paintPanelArt(
+                canvas,
+                box,
+                panel,
+                characters,
+                mm: mm,
+                // 让开左上角的阅读顺序号。
+                inset: overlays ? _badgeHeight + 4 : 0,
+              )
+            : _content(canvas, box, panel, view.scale);
+        canvas.restore();
+      }
+      canvas.drawPath(shape, border);
+    }
+    canvas.restore();
+    if (flow) _flow(canvas, view, quads, order);
+    if (!overlays) return;
+    for (final (i, id) in order.indexed) {
+      _badge(canvas, view.inner(quads[id]!), i + 1, page.panels[id]!.locked);
       if (id == selected) {
-        canvas.drawRect(
-          r.deflate(1.5),
+        canvas.drawPath(
+          view.path(quads[id]!),
           Paint()
             ..color = PennaColors.primary
             ..style = PaintingStyle.stroke
@@ -102,20 +149,60 @@ class MangaPainter extends CustomPainter {
         );
       }
     }
-    if (overlays && hoverHandle != null) {
-      for (final h in handlesOf(page)) {
-        if (h.path != hoverHandle) continue;
-        canvas.drawRect(
-          view.rect(h.gutter).inflate(1),
-          Paint()..color = PennaColors.primary.withValues(alpha: 0.35),
-        );
-      }
+    for (final h in handlesOf(page)) {
+      if (h.path != hoverHandle) continue;
+      canvas.drawLine(
+        view.point(h.a),
+        view.point(h.b),
+        Paint()
+          ..color = PennaColors.primary.withValues(alpha: 0.45)
+          ..strokeWidth = math.max(4, page.gap * view.scale)
+          ..strokeCap = StrokeCap.round,
+      );
     }
   }
 
-  /// 格里的字:景别·角度、出场、动作、台词,放不下的裁掉。
+  /// 阅读动线:按顺序连起各格的中心,虚线带箭头。
+  void _flow(
+    Canvas canvas,
+    _View view,
+    Map<String, MangaQuad> quads,
+    List<String> order,
+  ) {
+    if (order.length < 2) return;
+    final points = [
+      for (final id in order)
+        quads[id]!.map(view.point).reduce((a, b) => a + b) / 4,
+    ];
+    final line = Paint()
+      ..color = const Color(0xFFF08A4B)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    for (var i = 0; i + 1 < points.length; i++) {
+      final a = points[i], b = points[i + 1];
+      final d = b - a;
+      final length = d.distance;
+      if (length < 1) continue;
+      final unit = d / length;
+      for (var t = 0.0; t < length - 10; t += 10) {
+        canvas.drawLine(a + unit * t, a + unit * math.min(t + 6, length), line);
+      }
+      final tip = b - unit * 14;
+      final side = Offset(-unit.dy, unit.dx) * 5;
+      canvas.drawPath(
+        Path()
+          ..moveTo(tip.dx + unit.dx * 8, tip.dy + unit.dy * 8)
+          ..lineTo(tip.dx + side.dx, tip.dy + side.dy)
+          ..lineTo(tip.dx - side.dx, tip.dy - side.dy)
+          ..close(),
+        Paint()..color = line.color,
+      );
+      canvas.drawCircle(a, 3.5, Paint()..color = line.color);
+    }
+  }
+
+  /// 文字模式:景别·角度、出场、动作、台词,放不下的裁掉。
   void _content(Canvas canvas, Rect r, MangaPanel p, double scale) {
-    if (p.isBlank) return;
     final size = _fontMm * 1000 * scale;
     TextSpan line(
       String s, {
@@ -144,10 +231,9 @@ class MangaPainter extends CustomPainter {
         ],
       ),
       textDirection: TextDirection.ltr,
-    )..layout(maxWidth: (r.width - size * 1.2).clamp(1, double.infinity));
+    )..layout(maxWidth: math.max(1, r.width - size * 1.2));
     canvas
       ..save()
-      ..clipRect(r.deflate(1))
       ..translate(
         r.left + size * 0.6,
         r.top + size * 0.5 + (overlays ? _badgeHeight + 2 : 0),
@@ -191,9 +277,21 @@ class MangaPainter extends CustomPainter {
   @override
   bool shouldRepaint(MangaPainter old) =>
       old.page != page ||
+      old.characters != characters ||
       old.selected != selected ||
       old.hoverHandle != hoverHandle ||
-      old.overlays != overlays;
+      old.overlays != overlays ||
+      old.figures != figures ||
+      old.flow != flow;
+}
+
+/// 点到线段的距离。
+double _distance(Offset p, Offset a, Offset b) {
+  final d = b - a;
+  final l2 = d.dx * d.dx + d.dy * d.dy;
+  if (l2 == 0) return (p - a).distance;
+  final t = (((p - a).dx * d.dx + (p - a).dy * d.dy) / l2).clamp(0.0, 1.0);
+  return (p - (a + d * t)).distance;
 }
 
 /// 画布:点格选中,按住格线拖着改大小(松手才算一步,Esc 取消)。
@@ -218,32 +316,21 @@ class _MangaCanvasState extends State<MangaCanvas> {
     super.dispose();
   }
 
-  /// [p] 落在哪条格线的手柄上。
+  /// [p] 落在哪条格线的手柄上(离沟带中线够近)。
   String? _handleAt(_View view, MangaPage page, Offset p) {
+    final reach = math.max(_handlePx, page.gap * view.scale / 2 + 2);
     for (final h in handlesOf(page)) {
-      var r = view.rect(h.gutter);
-      if (h.axis == MangaAxis.x && r.width < _handlePx) {
-        r = Rect.fromCenter(
-          center: r.center,
-          width: _handlePx,
-          height: r.height,
-        );
+      if (_distance(p, view.point(h.a), view.point(h.b)) <= reach) {
+        return h.path;
       }
-      if (h.axis == MangaAxis.y && r.height < _handlePx) {
-        r = Rect.fromCenter(
-          center: r.center,
-          width: r.width,
-          height: _handlePx,
-        );
-      }
-      if (r.contains(p)) return h.path;
     }
     return null;
   }
 
   String? _panelAt(_View view, MangaPage page, Offset p) {
-    for (final MapEntry(key: id, value: r) in panelRects(page).entries) {
-      if (view.rect(r).contains(p)) return id;
+    final (x, y) = view.toPage(p);
+    for (final MapEntry(key: id, value: q) in panelQuads(page).entries) {
+      if (quadContains(q, x, y)) return id;
     }
     return null;
   }
@@ -320,8 +407,11 @@ class _MangaCanvasState extends State<MangaCanvas> {
                 size: box.biggest,
                 painter: MangaPainter(
                   page: page,
+                  characters: board.project.characters,
                   selected: browsing ? null : board.selected,
                   hoverHandle: _dragging ?? _hover,
+                  figures: board.showFigures,
+                  flow: board.showFlow,
                 ),
               ),
             ),
@@ -333,12 +423,20 @@ class _MangaCanvasState extends State<MangaCanvas> {
 }
 
 /// 一页导出成 PNG:按 [dpi] 换算成品尺寸的像素,不带选中框和阅读顺序号。
-Future<Uint8List?> mangaPng(MangaPage page, {int dpi = 300}) async {
+/// [figures] 时格里画人偶草图,不然写字。
+Future<Uint8List?> mangaPng(
+  MangaPage page, {
+  List<MangaCharacter> characters = const [],
+  bool figures = true,
+  int dpi = 300,
+}) async {
   final w = (page.width * dpi / 25400).round();
   final h = (page.height * dpi / 25400).round();
   final recorder = ui.PictureRecorder();
   MangaPainter(
     page: page,
+    characters: characters,
+    figures: figures,
     overlays: false,
     pad: 0,
   ).paint(Canvas(recorder), Size(w.toDouble(), h.toDouble()));

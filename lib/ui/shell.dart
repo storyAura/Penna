@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/harness/attachment.dart';
+import '../core/harness/layout.dart';
 import '../data/services/archive_store.dart';
 import '../data/services/character_store.dart';
 import '../data/services/config_service.dart';
@@ -165,6 +167,29 @@ class _AppShellState extends State<AppShell> {
 
   void _go(int page) => setState(() => _page = page);
 
+  /// 漫画分镜交过来的一页:在区域控制另起一个系列放上去,换过去,
+  /// 再请那边的 Agent 照分镜写完(附人偶参考图)。
+  String? _mangaToLayout(
+    Layout layout,
+    String name,
+    String request,
+    Attachment? image,
+  ) {
+    final problem = _layoutChat.receiveLayout(layout, name: name);
+    if (problem != null) return problem;
+    _go(_layoutPage);
+    return _layoutChat.send(request, attachments: [?image]);
+  }
+
+  /// 漫画分镜交给工作台:请工作台的 Agent 逐格写提示词。发不出时把话和图
+  /// 留在输入框里,用户接好模型再发。
+  String? _mangaToStudio(String brief, Attachment? image) {
+    _go(_studio);
+    final problem = widget.vm.send(brief, attachments: [?image]);
+    if (problem != null) _toChat.value = (text: brief, image: image);
+    return problem;
+  }
+
   @override
   void dispose() {
     _toChat.dispose();
@@ -211,6 +236,13 @@ class _AppShellState extends State<AppShell> {
                             board: _layout,
                             onOpenStudio: () => _go(_studio),
                             onOpenLayout: () => _go(_layoutPage),
+                            onOpenManga: (project) {
+                              final problem = _mangaChat.manga!.addSeries(
+                                project,
+                              );
+                              if (problem == null) _go(_mangaPage);
+                              return problem;
+                            },
                           ),
                         ),
                         _Page(
@@ -262,18 +294,9 @@ class _AppShellState extends State<AppShell> {
                             chat: _mangaChat,
                             config: widget.config,
                             onOpenSettings: () => _go(_settings),
-                            onToLayout: (layout, name) {
-                              final problem = _layoutChat.receiveLayout(
-                                layout,
-                                name: name,
-                              );
-                              if (problem == null) _go(_layoutPage);
-                              return problem;
-                            },
-                            onToStudio: (text) {
-                              _go(_studio);
-                              _toChat.value = (text: text, image: null);
-                            },
+                            archive: _archive,
+                            onToLayout: _mangaToLayout,
+                            onToStudio: _mangaToStudio,
                           ),
                         ),
                         _Page(

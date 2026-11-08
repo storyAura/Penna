@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
+import '../../../core/harness/manga/manga.dart';
+import '../../../core/harness/manga/manga_script.dart';
 import '../../../data/services/archive_store.dart';
 import '../../core/gallery.dart';
 import '../../core/smooth_scroll.dart';
@@ -104,6 +106,7 @@ class ArchivePage extends StatefulWidget {
     required this.board,
     required this.onOpenStudio,
     required this.onOpenLayout,
+    this.onOpenManga,
   });
 
   final ArchiveStore archive;
@@ -117,6 +120,9 @@ class ArchivePage extends StatefulWidget {
 
   /// 布局放回之后去区域控制工作台。
   final VoidCallback onOpenLayout;
+
+  /// 漫画作品放回漫画分镜工作台(另起一个系列);放不了返回原因。
+  final String? Function(MangaProject project)? onOpenManga;
 
   @override
   State<ArchivePage> createState() => _ArchivePageState();
@@ -133,6 +139,13 @@ class _ArchivePageState extends State<ArchivePage> {
   var _grid = false;
 
   void _restore(ArchiveEntry entry) {
+    if (entry.kind == archiveManga) {
+      final project = _mangaOf(entry);
+      if (project == null) return showToast(context, tr('分镜读不了'), warn: true);
+      final problem = widget.onOpenManga?.call(project);
+      if (problem != null) showToast(context, problem, warn: true);
+      return;
+    }
     if (entry.kind == archiveLayout) {
       final layout = _layoutOf(entry);
       if (layout == null) return showToast(context, tr('布局读不了'), warn: true);
@@ -234,6 +247,7 @@ class _ArchivePageState extends State<ArchivePage> {
                   for (final (kind, label) in [
                     (archivePrompt, tr('提示词')),
                     (archiveLayout, tr('区域控制')),
+                    (archiveManga, tr('漫画')),
                     (_imagesKind, tr('图片')),
                   ]) ...[
                     PennaChip(
@@ -274,9 +288,11 @@ class _ArchivePageState extends State<ArchivePage> {
                 Expanded(
                   child: Center(
                     child: Text(
-                      _kind == archiveLayout
-                          ? tr('还没有存档 · 在区域控制工作台点「保存」')
-                          : tr('还没有存档 · 在工作区点「保存」'),
+                      switch (_kind) {
+                        archiveLayout => tr('还没有存档 · 在区域控制工作台点「保存」'),
+                        archiveManga => tr('还没有存档 · 在漫画分镜工作台点「保存」'),
+                        _ => tr('还没有存档 · 在工作区点「保存」'),
+                      },
                       style: TextStyle(
                         fontSize: 12,
                         color: PennaColors.slate400,
@@ -340,6 +356,18 @@ typedef _Actions = ({
 /// 提示词用干净的(放回成稿时才带分段标注);布局复制的是交出去的 MOSS JSON,
 /// 预览是尺寸、框数和整体描述。
 ({String clean, String preview}) _texts(ArchiveEntry entry, _Actions actions) {
+  if (entry.kind == archiveManga) {
+    final p = _mangaOf(entry);
+    if (p == null) return (clean: '', preview: '');
+    final outline = mangaOutline(p);
+    return (
+      clean: outline,
+      preview: [
+        tr('{0} 页 · {1} 个角色', [p.pages.length, p.characters.length]),
+        if (p.setting.trim().isNotEmpty) p.setting.trim(),
+      ].join('\n'),
+    );
+  }
   final layout = entry.kind == archiveLayout ? _layoutOf(entry) : null;
   final clean = entry.kind == archiveLayout
       ? layout == null
@@ -359,9 +387,21 @@ typedef _Actions = ({
   return (clean: clean, preview: preview);
 }
 
-/// 「放回成稿」或「放到区域控制工作台」。
-String _restoreLabel(ArchiveEntry entry) =>
-    entry.kind == archiveLayout ? tr('放到区域控制工作台') : tr('放回成稿');
+/// 「放回成稿」「放到区域控制工作台」或「放到漫画分镜工作台」。
+String _restoreLabel(ArchiveEntry entry) => switch (entry.kind) {
+  archiveLayout => tr('放到区域控制工作台'),
+  archiveManga => tr('放到漫画分镜工作台'),
+  _ => tr('放回成稿'),
+};
+
+/// 漫画存档里的作品;读不了是 null。
+MangaProject? _mangaOf(ArchiveEntry entry) {
+  try {
+    return MangaProject.fromJson(jsonDecode(entry.text));
+  } on FormatException {
+    return null;
+  }
+}
 
 /// 分类的小药丸。
 class _CategoryPill extends StatelessWidget {

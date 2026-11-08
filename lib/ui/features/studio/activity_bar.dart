@@ -56,17 +56,47 @@ class _ActivityBarState extends State<ActivityBar> {
           ),
           child: ListenableBuilder(
             listenable: runner,
-            builder: (context, _) => Badge(
-              isLabelVisible: queue && (runner.running || runner.waiting > 0),
-              label: Text('${runner.waiting + (runner.running ? 1 : 0)}'),
-              backgroundColor: PennaColors.primary,
-              textStyle: const TextStyle(fontSize: 9),
-              child: Icon(
-                queue ? Icons.burst_mode_outlined : Icons.history,
-                size: 16,
-                color: selected ? PennaColors.primary : PennaColors.slate500,
-              ),
-            ),
+            builder: (context, _) {
+              final count = runner.waiting + (runner.running ? 1 : 0);
+              // 个数画在按钮自己的右上角里面,不压到旁边的按钮和标题。
+              return Stack(
+                children: [
+                  Center(
+                    child: Icon(
+                      queue ? Icons.burst_mode_outlined : Icons.history,
+                      size: 16,
+                      color: selected
+                          ? PennaColors.primary
+                          : PennaColors.slate500,
+                    ),
+                  ),
+                  if (queue && count > 0)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 11),
+                        height: 11,
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: PennaColors.primary,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '$count',
+                          style: const TextStyle(
+                            fontSize: 8,
+                            height: 1,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         ),
       ),

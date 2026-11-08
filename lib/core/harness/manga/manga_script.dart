@@ -8,6 +8,7 @@ import '../layout.dart';
 import 'manga.dart';
 import 'manga_gacha.dart';
 import 'manga_geometry.dart';
+import 'manga_styles.dart';
 
 /// Agent 写分镜用的标签。
 const storyboardTag = 'storyboard';
@@ -175,6 +176,7 @@ applyStoryboard(
     final draw = drawLayouts(
       page,
       seed: '$seed/${page.id}',
+      style: mangaStyles['标准'],
       minPanels: want,
       maxPanels: want,
       count: 1,
@@ -212,6 +214,20 @@ applyStoryboard(
   return (project: p.withPage(at, page), problem: null);
 }
 
+/// 整部作品的分镜文字(档案库复制用):设定、角色、每页每格。
+String mangaOutline(MangaProject p) => [
+  if (p.title.isNotEmpty) p.title,
+  if (p.setting.isNotEmpty) p.setting,
+  if (p.characters.isNotEmpty)
+    p.characters.map((c) => '${c.name}:${c.look}').join('\n'),
+  for (final (i, page) in p.pages.indexed)
+    [
+      '第 ${i + 1} 页${page.note.isEmpty ? '' : ':${page.note}'}',
+      for (final (n, id) in readingOrder(page).indexed)
+        '${n + 1}. ${panelLine(page.panels[id]!)}',
+    ].join('\n'),
+].join('\n\n');
+
 /// 一格写成一行字:景别·角度|出场|动作|台词。
 String panelLine(MangaPanel p) => [
   [p.framing, p.angle].where((s) => s.isNotEmpty).join('·'),
@@ -247,30 +263,52 @@ String mangaAgentView(MangaProject p, int current) {
   return out.toString().trimRight();
 }
 
-/// 交给主工作台的话:按这页分镜逐格写提示词,一格一页放进一个新系列。
-String mangaBrief(MangaProject p, int at) {
+/// 这一页的分镜:设定、角色(带身高)、这一页讲什么、按阅读顺序每一格。
+List<String> _pageFacts(MangaProject p, int at) {
   final page = p.pages[at];
-  final order = readingOrder(page);
-  final name = [
-    if (p.title.isNotEmpty) p.title,
-    tr('第 {0} 页', [at + 1]),
-  ].join(' ');
   return [
-    tr(
-      '按这页漫画分镜写提示词:每一格写成一页,放进新系列「{0}」。'
-      '每格都带上出场角色的外貌,用词前后一致;景别和角度照分镜。',
-      [name],
-    ),
     if (p.setting.isNotEmpty) '【设定】${p.setting}',
     if (p.characters.isNotEmpty)
-      '【角色】\n${p.characters.map((c) => '${c.name}:${c.look}').join('\n')}',
+      '【角色】\n${p.characters.map((c) => '${c.name}(${c.height} cm):${c.look}').join('\n')}',
     if (page.note.isNotEmpty) '【这一页】${page.note}',
     [
-      for (final (n, id) in order.indexed)
+      for (final (n, id) in readingOrder(page).indexed)
         '第 ${n + 1} 格:${panelLine(page.panels[id]!)}',
     ].join('\n'),
-  ].join('\n\n');
+  ];
 }
+
+/// 一页的名字:作品名加第几页。
+String mangaPageName(MangaProject p, int at) => [
+  if (p.title.isNotEmpty) p.title,
+  tr('第 {0} 页', [at + 1]),
+].join(' ');
+
+/// 交给主工作台的话:按这页分镜逐格写提示词,一格一页放进一个新系列。
+/// [image] 时附了这页的人偶参考图。
+String mangaBrief(MangaProject p, int at, {bool image = false}) => [
+  tr(
+    '按这页漫画分镜写提示词:每一格写成一页,放进新系列「{0}」。'
+    '每格都带上出场角色的外貌,用词前后一致;景别和角度照分镜。',
+    [mangaPageName(p, at)],
+  ),
+  if (image) tr('附图是这页的人偶参考,人物的站位、朝向和取景照它写。'),
+  ..._pageFacts(p, at),
+].join('\n\n');
+
+/// 交给区域控制之后请那边的 Agent 润色的话:格框照旧,人物和气泡摆合理,
+/// 描述写成英文,补角色卡和整体描述。[image] 时附了人偶参考图。
+String mangaLayoutRequest(MangaProject p, int at, {bool image = false}) => [
+  tr(
+    '这页漫画分镜从漫画分镜工作台交过来,画板上已经按分镜摆好:每格一个框(back,名字「第N格」),'
+    '格里的人物(middle,「名字·格号」)和台词(text,front)各一块。照「漫画分格」技能把这页排好、写完整:'
+    '格框的位置和形状不动,不增删格;人物、气泡照分镜摆合理(人物不跨格,气泡贴着说话的人、不挡脸);'
+    '每块的描述改写成英文,格框写景别、场景、背景和光线,人物写表情、动作和视线;'
+    '角色卡(cast)照设定写成英文,整体描述写清画风和这一页讲什么。写完给出完整的 <layout>。',
+  ),
+  if (image) tr('附图是这页的人偶参考:人物的站位、朝向、景别和气泡位置照它。'),
+  ..._pageFacts(p, at),
+].join('\n\n');
 
 const _framingEn = {
   '远景': 'extreme wide shot',
@@ -310,9 +348,10 @@ Layout mangaToLayout(
     tall ? longSide : longSide * page.height ~/ page.width,
     step,
   );
-  int px(int um) => um * w ~/ page.width;
-  int py(int um) => um * h ~/ page.height;
-  final rects = panelRects(page);
+  int px(int um) => (um * w ~/ page.width).clamp(0, w);
+  int py(int um) => (um * h ~/ page.height).clamp(0, h);
+  final quads = panelQuads(page);
+  final outer = panelQuads(page, bleed: true);
   final order = readingOrder(page);
   final frames = <LayoutBox>[];
   final talk = <LayoutBox>[];
@@ -320,18 +359,36 @@ Layout mangaToLayout(
   for (final (i, id) in order.indexed) {
     final n = i + 1;
     final panel = page.panels[id]!;
-    final r = rects[id]!;
-    final (l, t, rr, b) = (px(r.x), py(r.y), px(r.x + r.w), py(r.y + r.h));
+    // 格框:出血格铺到画布边;斜的格写成多边形。
+    final frame = [for (final q in outer[id]!) (x: px(q.x), y: py(q.y))];
+    final fb = boundsOf(frame);
+    final slanted =
+        frame[0].x != frame[3].x ||
+        frame[1].x != frame[2].x ||
+        frame[0].y != frame[1].y ||
+        frame[3].y != frame[2].y;
+    // 人物和台词放在格里面那块正的矩形里,不压到斜边。
+    final q = quads[id]!;
+    final l = px(q[0].x > q[3].x ? q[0].x : q[3].x);
+    final rr = px(q[1].x < q[2].x ? q[1].x : q[2].x);
+    final t = py(q[0].y > q[1].y ? q[0].y : q[1].y);
+    final b = py(q[3].y < q[2].y ? q[3].y : q[2].y);
     final shot = [
       _framingEn[panel.framing] ?? panel.framing,
       _angleEn[panel.angle] ?? panel.angle,
     ].where((s) => s.isNotEmpty).join(', ');
     frames.add(
       LayoutBox(
-        left: l,
-        top: t,
-        right: rr,
-        bottom: b,
+        left: fb.x,
+        top: fb.y,
+        right: fb.x + fb.w,
+        bottom: fb.y + fb.h,
+        shape: slanted && fb.w > 0 && fb.h > 0
+            ? LayoutShape.polygon([
+                for (final v in frame)
+                  ((v.x - fb.x) / fb.w, (v.y - fb.y) / fb.h),
+              ])
+            : null,
         name: '第$n格',
         layer: 'back',
         caption: [

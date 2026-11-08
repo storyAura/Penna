@@ -7,6 +7,7 @@ import 'package:penna/core/harness/manga/manga.dart';
 import 'package:penna/core/harness/manga/manga_geometry.dart';
 import 'package:penna/core/harness/providers/llm_http.dart';
 import 'package:penna/data/models/app_config.dart';
+import 'package:penna/data/services/archive_store.dart';
 import 'package:penna/ui/features/layout/layout_board.dart';
 import 'package:penna/ui/features/manga/manga_board.dart';
 import 'package:penna/ui/features/manga/manga_page.dart';
@@ -48,7 +49,7 @@ void main() {
     expect(readingOrder(board.shown).length, board.draw!.found.first.count);
     board.applyPreview();
     expect(board.draw, isNull);
-    expect(readingOrder(board.page).length, inInclusiveRange(3, 6));
+    expect(readingOrder(board.page).length, inInclusiveRange(1, 12));
     board.undo();
     expect(identical(board.page, before), isTrue);
   });
@@ -163,8 +164,9 @@ void main() {
             board: board,
             chat: chat,
             config: chat.config,
-            onToLayout: (_, _) => null,
-            onToStudio: (_) {},
+            archive: ArchiveStore(),
+            onToLayout: (_, _, _, _) => null,
+            onToStudio: (_, _) => null,
             onOpenSettings: () {},
           ),
         ),

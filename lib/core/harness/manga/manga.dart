@@ -35,7 +35,7 @@ sealed class MangaNode {
   static MangaNode? fromJson(Object? j, [int depth = 0]) {
     if (j is! Map || depth > 40) return null;
     if (j['panel'] case final String id when id.isNotEmpty) {
-      return MangaLeaf(id);
+      return MangaLeaf(id, bleed: j['bleed'] == true);
     }
     final axis = switch (j['axis']) {
       'x' => MangaAxis.x,
@@ -43,28 +43,43 @@ sealed class MangaNode {
       _ => null,
     };
     final ratio = j['ratio'];
+    final slant = j['slant'] is int ? j['slant'] as int : 0;
     final first = fromJson(j['first'], depth + 1);
     final second = fromJson(j['second'], depth + 1);
     if (axis == null ||
         ratio is! int ||
         ratio < 1 ||
         ratio > 999999 ||
+        slant.abs() > mangaMaxSlant ||
+        ratio + slant < 1 ||
+        ratio + slant > 999999 ||
         first == null ||
         second == null) {
       return null;
     }
-    return MangaSplit(axis: axis, ratio: ratio, first: first, second: second);
+    return MangaSplit(
+      axis: axis,
+      ratio: ratio,
+      slant: slant,
+      first: first,
+      second: second,
+    );
   }
 }
 
+/// 一格。[bleed] 是出血格:贴着版心边的那几边一直铺到纸边外。
 final class MangaLeaf extends MangaNode {
-  const MangaLeaf(this.panel);
+  const MangaLeaf(this.panel, {this.bleed = false});
 
   final String panel;
+  final bool bleed;
 
   @override
-  Map<String, Object?> toJson() => {'panel': panel};
+  Map<String, Object?> toJson() => {'panel': panel, if (bleed) 'bleed': true};
 }
+
+/// 格线最多斜多少(百万分比):线两头的位置最多差这么多。
+const mangaMaxSlant = 300000;
 
 final class MangaSplit extends MangaNode {
   const MangaSplit({
@@ -72,26 +87,37 @@ final class MangaSplit extends MangaNode {
     required this.ratio,
     required this.first,
     required this.second,
+    this.slant = 0,
   });
 
   final MangaAxis axis;
 
-  /// 第一块占可用长度的百万分之几(1..999999)。
+  /// 第一块占可用长度的百万分之几(1..999999),量的是线的起头那一边
+  /// (横线量左边,竖线量上边)。
   final int ratio;
+
+  /// 斜线:线的另一头比起头多(正)或少(负)这么多百万分比;0 是直的。
+  final int slant;
   final MangaNode first, second;
 
-  MangaSplit copyWith({int? ratio, MangaNode? first, MangaNode? second}) =>
-      MangaSplit(
-        axis: axis,
-        ratio: ratio ?? this.ratio,
-        first: first ?? this.first,
-        second: second ?? this.second,
-      );
+  MangaSplit copyWith({
+    int? ratio,
+    int? slant,
+    MangaNode? first,
+    MangaNode? second,
+  }) => MangaSplit(
+    axis: axis,
+    ratio: ratio ?? this.ratio,
+    slant: slant ?? this.slant,
+    first: first ?? this.first,
+    second: second ?? this.second,
+  );
 
   @override
   Map<String, Object?> toJson() => {
     'axis': axis.name,
     'ratio': ratio,
+    if (slant != 0) 'slant': slant,
     'first': first.toJson(),
     'second': second.toJson(),
   };
@@ -199,12 +225,16 @@ class MangaPage {
     this.height = 210000,
     this.margin = 10000,
     this.gap = 4000,
+    this.border = 500,
     this.rtl = true,
     this.note = '',
   });
 
   final String id;
   final int width, height, margin, gap;
+
+  /// 格框线的粗细。
+  final int border;
 
   /// 日式从右往左读;false 是从左往右。
   final bool rtl;
@@ -222,6 +252,7 @@ class MangaPage {
     int? width,
     int? height,
     int? gap,
+    int? border,
     bool? rtl,
     MangaNode? root,
     Map<String, MangaPanel>? panels,
@@ -232,6 +263,7 @@ class MangaPage {
     height: height ?? this.height,
     margin: margin,
     gap: gap ?? this.gap,
+    border: border ?? this.border,
     rtl: rtl ?? this.rtl,
     root: root ?? this.root,
     panels: Map.unmodifiable(panels ?? this.panels),
@@ -247,6 +279,7 @@ class MangaPage {
     'height': height,
     'margin': margin,
     'gap': gap,
+    'border': border,
     'rtl': rtl,
     if (note.isNotEmpty) 'note': note,
     'root': root.toJson(),
@@ -278,6 +311,7 @@ class MangaPage {
       height: side('height', 50000, 600000, 210000),
       margin: side('margin', 0, 40000, 10000),
       gap: side('gap', 0, 20000, 4000),
+      border: side('border', 100, 3000, 500),
       rtl: j['rtl'] != false,
       note: j['note'] is String ? j['note'] as String : '',
     );
@@ -296,11 +330,25 @@ List<String> leafIds(MangaNode n) => switch (n) {
 
 /// 设定里的一个角色:名字和外貌(发型发色、瞳色、服装、标志物)。
 class MangaCharacter {
-  const MangaCharacter({required this.name, this.look = ''});
+  const MangaCharacter({required this.name, this.look = '', this.height = 165});
 
   final String name, look;
 
-  Map<String, Object?> toJson() => {'name': name, 'look': look};
+  /// 身高(cm),人偶按它排高矮。
+  final int height;
+
+  MangaCharacter copyWith({String? name, String? look, int? height}) =>
+      MangaCharacter(
+        name: name ?? this.name,
+        look: look ?? this.look,
+        height: (height ?? this.height).clamp(60, 260),
+      );
+
+  Map<String, Object?> toJson() => {
+    'name': name,
+    'look': look,
+    'height': height,
+  };
 }
 
 /// 一部作品:名字、世界观与画风、角色、各页。[nextId] 单调递增,删掉的 id 不再用。
@@ -375,7 +423,7 @@ class MangaProject {
             MangaCharacter(
               name: c['name'] as String,
               look: c['look'] is String ? c['look'] as String : '',
-            ),
+            ).copyWith(height: c['height'] is int ? c['height'] as int : 165),
       ]),
       nextId: j['nextId'] is int ? j['nextId'] as int : 1,
     );
@@ -391,5 +439,6 @@ MangaPage blankMangaPage(String id, String panelId, {MangaPage? like}) =>
       width: like?.width ?? 148000,
       height: like?.height ?? 210000,
       gap: like?.gap ?? 4000,
+      border: like?.border ?? 500,
       rtl: like?.rtl ?? true,
     );

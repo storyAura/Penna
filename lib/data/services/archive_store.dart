@@ -18,8 +18,10 @@ typedef ArchiveEntry = ({
   String image,
 });
 
-/// 档案库的两个分区。
-const archivePrompt = 'prompt', archiveLayout = 'layout';
+/// 档案库的分区:成稿、区域控制的布局、漫画分镜(一整部作品,`MangaProject.toJson` 的 JSON)。
+const archivePrompt = 'prompt',
+    archiveLayout = 'layout',
+    archiveManga = 'manga';
 
 /// 没填分类时归到这里。
 const uncategorized = '未分类';
