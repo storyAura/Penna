@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/manga/manga.dart';
 import 'package:penna/core/harness/manga/manga_gacha.dart';
 import 'package:penna/core/harness/manga/manga_geometry.dart';
+import 'package:penna/core/harness/manga/manga_poses.dart';
 import 'package:penna/core/harness/manga/manga_script.dart';
 import 'package:penna/core/harness/manga/manga_styles.dart';
 import 'package:penna/data/services/archive_store.dart';
@@ -133,10 +134,10 @@ void main() {
   });
 
   test('人偶:认得几种姿势;各种景别、角度、人数都画得出来', () {
-    expect(poseOf('坐在长椅上'), MangaPose.sit);
-    expect(poseOf('抬手指向门口'), MangaPose.point);
-    expect(poseOf('拔腿就跑'), MangaPose.run);
-    expect(poseOf('点头'), MangaPose.stand);
+    expect(poseFromAction('坐在长椅上').name, '坐椅子');
+    expect(poseFromAction('抬手指向门口').name, '指向');
+    expect(poseFromAction('拔腿就跑').name, '奔跑');
+    expect(poseFromAction('点头').name, '站立');
     const characters = [
       MangaCharacter(name: '阿禾', height: 174),
       MangaCharacter(name: '小岚', height: 137),

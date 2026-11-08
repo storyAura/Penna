@@ -72,6 +72,7 @@ class MangaPainter extends CustomPainter {
     this.flow = false,
     this.pad = 16,
     this.hoverHandle,
+    this.selectedFigure,
   });
 
   final MangaPage page;
@@ -80,6 +81,9 @@ class MangaPainter extends CustomPainter {
   final bool overlays, figures, text, flow;
   final double pad;
   final String? hoverHandle;
+
+  /// 选中的人偶(描虚框)。
+  final ({String panel, String name})? selectedFigure;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -128,6 +132,9 @@ class MangaPainter extends CustomPainter {
                 mm: mm,
                 // 让开左上角的阅读顺序号。
                 inset: overlays ? _badgeHeight + 4 : 0,
+                selected: selectedFigure?.panel == id
+                    ? selectedFigure!.name
+                    : null,
               )
             : _content(canvas, box, panel, view.scale);
         canvas.restore();
@@ -282,7 +289,8 @@ class MangaPainter extends CustomPainter {
       old.hoverHandle != hoverHandle ||
       old.overlays != overlays ||
       old.figures != figures ||
-      old.flow != flow;
+      old.flow != flow ||
+      old.selectedFigure != selectedFigure;
 }
 
 /// 点到线段的距离。
@@ -304,9 +312,20 @@ class MangaCanvas extends StatefulWidget {
   State<MangaCanvas> createState() => _MangaCanvasState();
 }
 
+/// 抓着的人偶:哪一格、谁、开始时脚底(或头顶)在哪、鼠标在哪、格里那块正的矩形。
+typedef _Grab = ({
+  String panel,
+  String name,
+  Offset anchor,
+  Offset from,
+  Rect box,
+});
+
 class _MangaCanvasState extends State<MangaCanvas> {
   final _focus = FocusNode();
   String? _hover, _dragging;
+  bool _overFigure = false;
+  _Grab? _grab;
 
   MangaBoard get board => widget.board;
 
@@ -331,6 +350,22 @@ class _MangaCanvasState extends State<MangaCanvas> {
     final (x, y) = view.toPage(p);
     for (final MapEntry(key: id, value: q) in panelQuads(page).entries) {
       if (quadContains(q, x, y)) return id;
+    }
+    return null;
+  }
+
+  /// [p] 点在哪个人偶上(只看它所在那一格里的部分);人偶关着时没有。
+  _Grab? _figureAt(_View view, MangaPage page, Offset p) {
+    if (!board.showFigures) return null;
+    final id = _panelAt(view, page, p);
+    final panel = id == null ? null : page.panels[id];
+    if (panel == null) return null;
+    final box = view.inner(panelQuads(page)[id]!);
+    final placed = layoutFigures(box, panel, board.project.characters);
+    for (final f in placed.reversed) {
+      if (f.pose.bounds.contains(p)) {
+        return (panel: id!, name: f.name, anchor: f.anchor, from: p, box: box);
+      }
     }
     return null;
   }
@@ -363,32 +398,65 @@ class _MangaCanvasState extends State<MangaCanvas> {
             cursor: switch (axis) {
               MangaAxis.x => SystemMouseCursors.resizeColumn,
               MangaAxis.y => SystemMouseCursors.resizeRow,
+              null when _grab != null => SystemMouseCursors.grabbing,
+              null when _overFigure => SystemMouseCursors.grab,
               null => SystemMouseCursors.basic,
             },
             onHover: browsing
                 ? null
                 : (e) {
                     final h = _handleAt(view, page, e.localPosition);
-                    if (h != _hover) setState(() => _hover = h);
+                    final over =
+                        h == null &&
+                        _figureAt(view, page, e.localPosition) != null;
+                    if (h != _hover || over != _overFigure) {
+                      setState(() {
+                        _hover = h;
+                        _overFigure = over;
+                      });
+                    }
                   },
-            onExit: (_) => setState(() => _hover = null),
+            onExit: (_) => setState(() {
+              _hover = null;
+              _overFigure = false;
+            }),
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTapDown: browsing
                   ? null
                   : (d) {
                       _focus.requestFocus();
-                      if (_handleAt(view, page, d.localPosition) == null) {
-                        board.select(_panelAt(view, page, d.localPosition));
+                      if (_handleAt(view, page, d.localPosition) != null) {
+                        return;
                       }
+                      final f = _figureAt(view, page, d.localPosition);
+                      f == null
+                          ? board.select(_panelAt(view, page, d.localPosition))
+                          : board.selectFigure(f.panel, f.name);
                     },
               onPanStart: browsing
                   ? null
                   : (d) {
                       _focus.requestFocus();
                       _dragging = _handleAt(view, page, d.localPosition);
+                      if (_dragging != null) return;
+                      final f = _figureAt(view, page, d.localPosition);
+                      if (f == null) return;
+                      setState(() => _grab = f);
+                      board.selectFigure(f.panel, f.name);
                     },
               onPanUpdate: (d) {
+                final grab = _grab;
+                if (grab != null) {
+                  final at = grab.anchor + (d.localPosition - grab.from);
+                  board.moveFigure(
+                    grab.panel,
+                    grab.name,
+                    ((at.dx - grab.box.left) / grab.box.width * 1000).round(),
+                    ((at.dy - grab.box.top) / grab.box.height * 1000).round(),
+                  );
+                  return;
+                }
                 final path = _dragging;
                 if (path == null) return;
                 final h = handlesOf(page)
@@ -399,6 +467,11 @@ class _MangaCanvasState extends State<MangaCanvas> {
                 board.dragTo(path, h.axis == MangaAxis.x ? x : y);
               },
               onPanEnd: (_) {
+                if (_grab != null) {
+                  setState(() => _grab = null);
+                  board.endFigureDrag();
+                  return;
+                }
                 if (_dragging == null) return;
                 _dragging = null;
                 board.endDrag();
@@ -409,6 +482,7 @@ class _MangaCanvasState extends State<MangaCanvas> {
                   page: page,
                   characters: board.project.characters,
                   selected: browsing ? null : board.selected,
+                  selectedFigure: browsing ? null : board.selectedFigure,
                   hoverHandle: _dragging ?? _hover,
                   figures: board.showFigures,
                   flow: board.showFlow,

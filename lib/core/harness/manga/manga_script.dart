@@ -8,6 +8,7 @@ import '../layout.dart';
 import 'manga.dart';
 import 'manga_gacha.dart';
 import 'manga_geometry.dart';
+import 'manga_poses.dart';
 import 'manga_styles.dart';
 
 /// Agent 写分镜用的标签。
@@ -21,6 +22,7 @@ typedef StoryPanel = ({
   String action,
   List<MangaLine> lines,
   int? emphasis,
+  Map<String, String> poses,
 });
 
 /// Agent 写的一页:[page] 是第几页(从 1 数),没写是 null。
@@ -81,6 +83,15 @@ Storyboard? parseStoryboard(String raw) {
             emphasis: c['emphasis'] is num
                 ? (c['emphasis'] as num).round().clamp(0, 100)
                 : null,
+            // 只收认得的姿势名。
+            poses: {
+              if (c['poses'] case final Map m)
+                for (final MapEntry(:key, :value) in m.entries)
+                  if (key is String &&
+                      value is String &&
+                      poseNamed(value) != null)
+                    key: value,
+            },
           ),
     ];
     if (panels.isEmpty) return null;
@@ -207,6 +218,11 @@ applyStoryboard(
         action: s.action,
         lines: s.lines,
         emphasis: s.emphasis,
+        figures: {
+          ...old.figures,
+          for (final MapEntry(:key, :value) in s.poses.entries)
+            key: old.figureOf(key).copyWith(pose: value),
+        },
       ),
     };
   }
@@ -233,6 +249,9 @@ String panelLine(MangaPanel p) => [
   [p.framing, p.angle].where((s) => s.isNotEmpty).join('·'),
   if (p.cast.isNotEmpty) '出场:${p.cast.join('、')}',
   if (p.action.isNotEmpty) '动作:${p.action}',
+  if (p.figures.entries.where((e) => e.value.pose.isNotEmpty) case final set
+      when set.isNotEmpty)
+    '姿势:${set.map((e) => '${e.key}=${e.value.pose}').join('、')}',
   for (final l in p.lines)
     l.speaker.isEmpty ? '「${l.text}」' : '${l.speaker}「${l.text}」',
 ].where((s) => s.isNotEmpty).join(';');
@@ -426,7 +445,11 @@ Layout mangaToLayout(
     final cast = panel.framing == '特写' ? const <String>[] : panel.cast;
     for (final (k, name) in cast.indexed) {
       final cw = pw * 88 ~/ 100 ~/ cast.length;
-      final x0 = l + pw * 6 ~/ 100 + k * cw;
+      // 用户拖过人偶就照拖到的地方(人偶的脚底或头顶在格宽的千分之几)。
+      final dragged = panel.figureOf(name).x;
+      final x0 = dragged == null
+          ? l + pw * 6 ~/ 100 + k * cw
+          : (l + pw * dragged ~/ 1000 - cw ~/ 2).clamp(l, rr - cw);
       people.add(
         LayoutBox(
           left: x0 + cw * 6 ~/ 100,

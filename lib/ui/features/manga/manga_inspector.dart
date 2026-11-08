@@ -8,6 +8,7 @@ import '../../core/smooth_scroll.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'manga_board.dart';
+import 'manga_figure_editor.dart';
 import 'manga_figures.dart';
 
 /// 分量的三档:小格、普通、重点。
@@ -156,6 +157,24 @@ class _MangaInspectorState extends State<MangaInspector> {
                   hint: tr('发型发色、瞳色、服装、标志物'),
                   onChanged: (v) => board.setCharacter(i, c.copyWith(look: v)),
                 ),
+                const SizedBox(height: 6),
+                // 人偶的体型。
+                Row(
+                  children: [
+                    for (final b in const ['女', '男']) ...[
+                      PennaChip(
+                        label: tr(b),
+                        selected: c.build == b,
+                        onTap: () => board.setCharacter(
+                          i,
+                          c.copyWith(build: c.build == b ? '' : b),
+                          typing: false,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
@@ -250,6 +269,8 @@ class _MangaInspectorState extends State<MangaInspector> {
                 ),
               ),
       ),
+      _Heading(tr('人偶')),
+      MangaFigureEditor(board: board, panel: panel),
       const SizedBox(height: 10),
       PennaField(
         key: _key('action-${panel.id}'),

@@ -5,6 +5,10 @@
 // [MangaSplit.ratio](百万分比)切成左右(x)或上下(y)两块,中间扣一次沟宽。
 // 各格的矩形由树算出来(manga_geometry.dart),不另存一份。
 
+import 'manga_figure.dart';
+
+export 'manga_figure.dart';
+
 /// 文件结构版本;读到更高的版本只读、不覆写。
 const mangaSchema = 1;
 
@@ -138,6 +142,7 @@ class MangaPanel {
     this.lines = const [],
     this.emphasis = 50,
     this.locked = false,
+    this.figures = const {},
   });
 
   final String id;
@@ -146,6 +151,12 @@ class MangaPanel {
   final List<MangaLine> lines;
   final int emphasis;
   final bool locked;
+
+  /// 出场角色的人偶设定(按名字);没有的是自动的。
+  final Map<String, MangaFigure> figures;
+
+  /// [name] 的人偶设定;没设过是自动的。
+  MangaFigure figureOf(String name) => figures[name] ?? const MangaFigure();
 
   bool get isBlank =>
       framing.isEmpty &&
@@ -162,6 +173,7 @@ class MangaPanel {
     List<MangaLine>? lines,
     int? emphasis,
     bool? locked,
+    Map<String, MangaFigure>? figures,
   }) => MangaPanel(
     id: id,
     framing: framing ?? this.framing,
@@ -171,7 +183,16 @@ class MangaPanel {
     lines: List.unmodifiable(lines ?? this.lines),
     emphasis: (emphasis ?? this.emphasis).clamp(0, 100),
     locked: locked ?? this.locked,
+    // 不在出场名单里的人偶设定不留。
+    figures: Map.unmodifiable({
+      for (final MapEntry(:key, :value) in (figures ?? this.figures).entries)
+        if ((cast ?? this.cast).contains(key) && !value.isAuto) key: value,
+    }),
   );
+
+  /// 换掉 [name] 的人偶设定。
+  MangaPanel withFigure(String name, MangaFigure f) =>
+      copyWith(figures: {...figures, name: f});
 
   /// 清空成留白(锁照旧)。
   MangaPanel cleared() => MangaPanel(id: id, locked: locked);
@@ -188,6 +209,11 @@ class MangaPanel {
       ],
     'emphasis': emphasis,
     if (locked) 'locked': true,
+    if (figures.isNotEmpty)
+      'figures': {
+        for (final MapEntry(:key, :value) in figures.entries)
+          key: value.toJson(),
+      },
   };
 
   static MangaPanel? fromJson(Object? j) {
@@ -211,6 +237,11 @@ class MangaPanel {
       ],
       emphasis: j['emphasis'] is int ? j['emphasis'] as int : 50,
       locked: j['locked'] == true,
+      figures: {
+        if (j['figures'] case final Map f)
+          for (final MapEntry(:key, :value) in f.entries)
+            if (key is String) key: MangaFigure.fromJson(value),
+      },
     );
   }
 }
@@ -330,24 +361,38 @@ List<String> leafIds(MangaNode n) => switch (n) {
 
 /// 设定里的一个角色:名字和外貌(发型发色、瞳色、服装、标志物)。
 class MangaCharacter {
-  const MangaCharacter({required this.name, this.look = '', this.height = 165});
+  const MangaCharacter({
+    required this.name,
+    this.look = '',
+    this.height = 165,
+    this.build = '',
+  });
 
   final String name, look;
+
+  /// 人偶的体型:「女」「男」,空串是中性(存中文原文,显示时翻译)。
+  final String build;
 
   /// 身高(cm),人偶按它排高矮。
   final int height;
 
-  MangaCharacter copyWith({String? name, String? look, int? height}) =>
-      MangaCharacter(
-        name: name ?? this.name,
-        look: look ?? this.look,
-        height: (height ?? this.height).clamp(60, 260),
-      );
+  MangaCharacter copyWith({
+    String? name,
+    String? look,
+    int? height,
+    String? build,
+  }) => MangaCharacter(
+    name: name ?? this.name,
+    look: look ?? this.look,
+    height: (height ?? this.height).clamp(60, 260),
+    build: build ?? this.build,
+  );
 
   Map<String, Object?> toJson() => {
     'name': name,
     'look': look,
     'height': height,
+    if (build.isNotEmpty) 'build': build,
   };
 }
 
@@ -423,7 +468,12 @@ class MangaProject {
             MangaCharacter(
               name: c['name'] as String,
               look: c['look'] is String ? c['look'] as String : '',
-            ).copyWith(height: c['height'] is int ? c['height'] as int : 165),
+            ).copyWith(
+              height: c['height'] is int ? c['height'] as int : 165,
+              build: c['build'] == '女' || c['build'] == '男'
+                  ? c['build'] as String
+                  : '',
+            ),
       ]),
       nextId: j['nextId'] is int ? j['nextId'] as int : 1,
     );

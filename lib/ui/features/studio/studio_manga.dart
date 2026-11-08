@@ -34,6 +34,8 @@ extension StudioManga on StudioViewModel {
       '- page 是第几页(从 1 数),写到还没有的页会自动加页;一页的 panels 按阅读顺序写全。只写要改的页。\n'
       '- 格数和那页现在不一样时程序按 emphasis 重新分格;一样时只换内容。标着 locked 的格不会被改,照抄原样。\n'
       '- framing 用:${mangaFramings.join('、')};angle 用:${mangaAngles.join('、')}。\n'
+      '- 格里画着出场角色的人偶参考。要指定谁摆什么姿势,在那一格写 "poses": {"阿禾": "叉腰"};'
+      '姿势只能用这些:${mangaPoses.map((p) => p.name).join('、')}。不写就按 action 里的字自动认。\n'
       '- 正文只用一两句说做了什么,不要把分镜在正文里再抄一遍。分镜本身不出图:'
       '用户要出图时,告诉他点顶栏的「交给区域控制」(整页一张图,带格子的框)或「交给工作台」(每格写一条提示词)。';
 

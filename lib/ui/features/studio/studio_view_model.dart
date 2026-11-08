@@ -15,6 +15,7 @@ import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
 import '../../../core/harness/manga/manga_gacha.dart';
+import '../../../core/harness/manga/manga_poses.dart';
 import '../../../core/harness/manga/manga_script.dart';
 import '../../../core/harness/providers/grok_auth.dart';
 import '../../../core/harness/providers/llm_router.dart';

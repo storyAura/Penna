@@ -139,6 +139,12 @@ class MangaBoard extends ChangeNotifier {
     if (_selected != null && !page.panels.containsKey(_selected)) {
       _selected = null;
     }
+    final f = _figure;
+    if (f != null &&
+        (f.panel != _selected ||
+            !(page.panels[f.panel]?.cast.contains(f.name) ?? false))) {
+      _figure = null;
+    }
     _scheduleSave();
     notifyListeners();
   }
@@ -230,9 +236,48 @@ class MangaBoard extends ChangeNotifier {
   }
 
   void select(String? panel) {
-    if (_selected == panel) return;
+    if (_selected == panel && _figure == null) return;
     _selected = panel;
+    _figure = null;
     notifyListeners();
+  }
+
+  // ── 人偶 ──
+
+  /// 选中的人偶:哪一格的哪个角色。
+  ({String panel, String name})? _figure;
+  ({String panel, String name})? get selectedFigure => _figure;
+
+  void selectFigure(String panel, String name) {
+    _selected = panel;
+    _figure = (panel: panel, name: name);
+    notifyListeners();
+  }
+
+  /// 拖人偶时的样子:只画,松手 [endFigureDrag] 才算一步。[x]、[y] 是千分比。
+  MangaPage? _figureDrag;
+
+  void moveFigure(String panel, String name, int x, int y) {
+    final base = _figureDrag ?? page;
+    final p = base.panels[panel];
+    if (p == null || p.locked) return;
+    _figureDrag = base.withPanel(
+      p.withFigure(name, p.figureOf(name).copyWith(x: x, y: y)),
+    );
+    notifyListeners();
+  }
+
+  void endFigureDrag() {
+    final moved = _figureDrag;
+    _figureDrag = null;
+    if (moved != null) _setPage(moved);
+  }
+
+  /// 换掉一个人偶的设定(锁着的格不改)。
+  void setFigure(String panel, String name, MangaFigure figure) {
+    final p = page.panels[panel];
+    if (p == null || p.locked) return;
+    _setPage(page.withPanel(p.withFigure(name, figure)));
   }
 
   // ── 设定 ──
@@ -282,7 +327,7 @@ class MangaBoard extends ChangeNotifier {
 
   /// 拖格线时的样子:先只画,不进作品;松手时 [endDrag] 才算一步。
   MangaPage? _dragging;
-  MangaPage get canvasPage => _dragging ?? shown;
+  MangaPage get canvasPage => _dragging ?? _figureDrag ?? shown;
 
   void dragTo(String path, int pos) {
     final moved = dragSplit(_dragging ?? page, path, pos);
