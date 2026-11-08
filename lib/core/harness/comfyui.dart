@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -219,13 +220,22 @@ String positivePromptOf(Map<String, Object?> workflow) {
   return '${box?['text'] ?? box?['text_g'] ?? ''}'.trim();
 }
 
-/// ComfyUI 出过的一张图:哪一单、文件(给 /view 用)、当时的正面提示词、出完的时刻。
+/// ComfyUI 出过的一张图:哪一单(历史里没有的是空串)、文件(给 /view 用)、
+/// 当时的正面提示词、出完的时刻,和本机硬盘上的路径(读的是输出文件夹时才有)。
 typedef ComfyShot = ({
   String id,
   Map<String, Object?> file,
   String prompt,
   DateTime? time,
+  String? path,
 });
+
+/// 一张图在输出文件夹里的哪一层:`''` 是 output 最外层,子文件夹用 `/` 隔开。
+String shotFolder(ComfyShot s) =>
+    '${s.file['subfolder'] ?? ''}'.replaceAll('\\', '/');
+
+String _shotKey(ComfyShot s) =>
+    '${s.file['type'] ?? 'output'}/${shotFolder(s)}/${s.file['filename']}';
 
 /// 读 `/history` 的结果:每一单出的图,新的在前。
 /// 一单是 `{prompt: [序号, id, 工作流, …], outputs: {…}, status: {messages: [[事件, {timestamp}]…]}}`。
@@ -250,7 +260,7 @@ List<ComfyShot> parseHistory(Object? json) {
       }
     }
     for (final f in pickOutputImages(entry['outputs'])) {
-      shots.add((id: '$id', file: f, prompt: prompt, time: time));
+      shots.add((id: '$id', file: f, prompt: prompt, time: time, path: null));
     }
   }
   final epoch = DateTime.fromMillisecondsSinceEpoch(0);
@@ -277,20 +287,102 @@ List<Map<String, Object?>> parseOutputFiles(Object? json) => [
           {'filename': name, 'subfolder': '', 'type': 'output'},
 ];
 
-/// 历史里的图加上输出文件夹里历史没记着的(ComfyUI 重启前出的,没有提示词和时刻,排在最后)。
-List<ComfyShot> withOutputFiles(
-  List<ComfyShot> history,
-  List<Map<String, Object?>> files,
-) {
-  String keyOf(Map<String, Object?> f) =>
-      '${f['type'] ?? 'output'}/${f['subfolder'] ?? ''}/${f['filename']}';
-  final known = {for (final s in history) keyOf(s.file)};
-  return [
-    ...history,
+/// 输出文件夹里的图(本机硬盘上读的,或 `/internal/files/output` 列的)配上出图历史:
+/// 历史里有的补上路径(时刻没有时用文件的),历史没记着的接上(没有提示词);
+/// 再按时刻排,新的在前,没有时刻的排在最后。
+List<ComfyShot> mergeShots(List<ComfyShot> history, List<ComfyShot> files) {
+  final byKey = {for (final f in files) _shotKey(f): f};
+  final seen = <String>{};
+  final all = [
+    for (final h in history)
+      if (byKey[_shotKey(h)] case final f?)
+        (
+          id: h.id,
+          file: h.file,
+          prompt: h.prompt,
+          time: h.time ?? f.time,
+          path: f.path,
+        )
+      else
+        h,
     for (final f in files)
-      if (!known.contains(keyOf(f))) (id: '', file: f, prompt: '', time: null),
+      if (!history.any((h) => _shotKey(h) == _shotKey(f)) &&
+          seen.add(_shotKey(f)))
+        f,
   ];
+  final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+  final ordered = all.indexed.toList()
+    ..sort((a, b) {
+      final ta = a.$2.time, tb = b.$2.time;
+      if ((ta == null) != (tb == null)) return ta == null ? 1 : -1;
+      final byTime = (tb ?? epoch).compareTo(ta ?? epoch);
+      return byTime != 0 ? byTime : a.$1.compareTo(b.$1);
+    });
+  return [for (final (_, s) in ordered) s];
 }
+
+/// `/internal/files/output` 列出的文件换成图(没有时刻和路径)。
+List<ComfyShot> shotsOfFiles(List<Map<String, Object?>> files) => [
+  for (final f in files) (id: '', file: f, prompt: '', time: null, path: null),
+];
+
+/// 本机 ComfyUI 的输出文件夹:照 `/system_stats` 里的启动参数找
+/// (`--output-directory`,或 `--base-directory` / main.py 所在文件夹下的 output);
+/// 找不出绝对路径(便携版用相对路径启动)时是 null。
+String? localOutputDir(Object? stats) {
+  final system = stats is Map ? stats['system'] : null;
+  final argv = system is Map ? system['argv'] : null;
+  if (argv is! List || argv.isEmpty) return null;
+  final args = [for (final a in argv) '$a'];
+  String? after(String flag) {
+    final i = args.indexOf(flag);
+    return i >= 0 && i + 1 < args.length ? args[i + 1] : null;
+  }
+
+  final out = after('--output-directory');
+  if (out != null) return File(out).isAbsolute ? out : null;
+  final base = after('--base-directory') ?? File(args.first).parent.path;
+  if (!File(base).isAbsolute) return null;
+  return '$base${Platform.pathSeparator}output';
+}
+
+/// 一次最多从硬盘上列多少张(新改的在前)。
+const _maxDiskShots = 20000;
+
+/// 列出输出文件夹(连子文件夹)里的图,新改的在前;在 isolate 里读,不卡界面。
+/// 文件夹不在了返回空的。
+Future<List<ComfyShot>> listOutputFolder(String dir) => Isolate.run(() {
+  // 去掉末尾的斜杠,下面按长度切出相对路径。
+  final root = Directory(dir.replaceFirst(RegExp(r'[\\/]+$'), ''));
+  if (!root.existsSync()) return const <ComfyShot>[];
+  final found = <(File, DateTime)>[];
+  for (final e in root.listSync(recursive: true, followLinks: false)) {
+    if (e is! File) continue;
+    final name = e.uri.pathSegments.last;
+    final ext = name.substring(name.lastIndexOf('.') + 1).toLowerCase();
+    if (!imageMimes.containsKey(ext)) continue;
+    found.add((e, e.statSync().modified));
+  }
+  found.sort((a, b) => b.$2.compareTo(a.$2));
+  final prefix = root.path.length + 1;
+  return [
+    for (final (f, at) in found.take(_maxDiskShots))
+      if (f.path.substring(prefix).replaceAll('\\', '/') case final rel)
+        (
+          id: '',
+          file: <String, Object?>{
+            'filename': rel.substring(rel.lastIndexOf('/') + 1),
+            'subfolder': rel.contains('/')
+                ? rel.substring(0, rel.lastIndexOf('/'))
+                : '',
+            'type': 'output',
+          },
+          prompt: '',
+          time: at,
+          path: f.path,
+        ),
+  ];
+});
 
 /// 一次运行的结果里要下载的图:有存下来的(SaveImage,type 是 output)就只要它们,
 /// 没有才要预览图(PreviewImage,type 是 temp)。
@@ -418,6 +510,10 @@ class ComfyClient {
   /// 最近 [max] 单出过的图(ComfyUI 重启后它的历史就清空了)。
   Future<List<ComfyShot>> history({int max = 300}) async =>
       parseHistory(await _json('GET', '/history?max_items=$max'));
+
+  /// 本机 ComfyUI 的输出文件夹(照启动参数找,见 [localOutputDir])。
+  Future<String?> outputDir() async =>
+      localOutputDir(await _json('GET', '/system_stats'));
 
   /// 输出文件夹最外层的图(新改的在前);老版本的 ComfyUI 没有这个接口,会抛 [ComfyException]。
   Future<List<Map<String, Object?>>> outputFiles() async =>

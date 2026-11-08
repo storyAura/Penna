@@ -780,12 +780,63 @@ void main() {
         file: {'filename': 'b.png', 'subfolder': '', 'type': 'output'},
         prompt: 'cat',
         time: DateTime(2026),
+        path: null,
       ),
     ];
-    final all = withOutputFiles(history, files);
+    final all = mergeShots(history, shotsOfFiles(files));
     expect(all.length, 2);
     expect(all.first.prompt, 'cat');
     expect(all.last.file['filename'], 'a.webp');
     expect(all.last.id, isEmpty);
+  });
+
+  test('硬盘上的输出文件夹:连子文件夹列出图片,配上历史的提示词', () async {
+    final dir = Directory.systemTemp.createTempSync('penna-out');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final sep = Platform.pathSeparator;
+    Directory('${dir.path}${sep}a${sep}b').createSync(recursive: true);
+    File('${dir.path}${sep}root.png').writeAsBytesSync([1]);
+    File('${dir.path}${sep}a${sep}b${sep}deep.png').writeAsBytesSync([1]);
+    File('${dir.path}${sep}a${sep}note.txt').writeAsStringSync('x');
+    final disk = await listOutputFolder(dir.path);
+    expect(
+      {for (final s in disk) shotFolder(s): s.file['filename']},
+      {'': 'root.png', 'a/b': 'deep.png'},
+    );
+    expect(disk.every((s) => s.path != null && s.time != null), isTrue);
+    final history = <ComfyShot>[
+      (
+        id: '9',
+        // ComfyUI 的历史里子文件夹可能是反斜杠。
+        file: {'filename': 'deep.png', 'subfolder': r'a\b', 'type': 'output'},
+        prompt: 'dog',
+        time: null,
+        path: null,
+      ),
+    ];
+    final all = mergeShots(history, disk);
+    expect(all.length, 2);
+    final deep = all.firstWhere((s) => s.file['filename'] == 'deep.png');
+    expect(deep.prompt, 'dog');
+    expect(deep.path, isNotNull);
+    expect(deep.time, isNotNull);
+    expect(await listOutputFolder('${dir.path}${sep}missing'), isEmpty);
+  });
+
+  test('本机 ComfyUI 的输出文件夹照启动参数找', () {
+    Map<String, Object?> stats(List<String> argv) => {
+      'system': {'argv': argv},
+    };
+    final sep = Platform.pathSeparator;
+    final main = Platform.isWindows
+        ? r'D:\ComfyUI\main.py'
+        : '/opt/ComfyUI/main.py';
+    final base = File(main).parent.path;
+    expect(localOutputDir(stats([main])), '$base${sep}output');
+    final out = Platform.isWindows ? r'E:\out' : '/data/out';
+    expect(localOutputDir(stats([main, '--output-directory', out])), out);
+    // 便携版用相对路径启动:找不出来。
+    expect(localOutputDir(stats(['ComfyUI/main.py'])), isNull);
+    expect(localOutputDir(null), isNull);
   });
 }

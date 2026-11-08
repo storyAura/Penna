@@ -37,6 +37,7 @@ class ComfySettings {
     this.loraPreset = '',
     this.imageDir = '',
     this.autoGenerate = true,
+    this.outputDirs = const {},
   });
 
   /// 读设置。旧版只有一个地址(`url`)和一个工作流(`workflow`、`workflowName`),照样读成列表。
@@ -104,6 +105,12 @@ class ComfySettings {
       loraPreset: m['loraPreset'] as String? ?? '',
       imageDir: m['imageDir'] as String? ?? '',
       autoGenerate: m['autoGenerate'] as bool? ?? true,
+      outputDirs: Map.unmodifiable({
+        if (m['outputDirs'] case final Map dirs)
+          for (final MapEntry(:key, :value) in dirs.entries)
+            if (key is String && value is String && value.isNotEmpty)
+              key: value,
+      }),
     );
   }
 
@@ -127,6 +134,10 @@ class ComfySettings {
 
   /// Agent 写了出图标签就直接出;关掉时回复下面出一个「出图」按钮,用户点了才出。
   final bool autoGenerate;
+
+  /// 各台 ComfyUI 的输出文件夹(按服务器 id;档案库「图片」分区读它)。
+  /// 没填的本机 ComfyUI 照它的启动参数自己找。
+  final Map<String, String> outputDirs;
 
   /// 眼前那一台(id 对不上时用第一台)。
   ComfyServer get server =>
@@ -158,6 +169,7 @@ class ComfySettings {
     'loraPreset': loraPreset,
     'imageDir': imageDir,
     'autoGenerate': autoGenerate,
+    if (outputDirs.isNotEmpty) 'outputDirs': outputDirs,
   };
 
   ComfySettings copyWith({
@@ -169,6 +181,7 @@ class ComfySettings {
     String? loraPreset,
     String? imageDir,
     bool? autoGenerate,
+    Map<String, String>? outputDirs,
   }) => ComfySettings(
     servers: servers == null ? this.servers : List.unmodifiable(servers),
     serverId: serverId ?? this.serverId,
@@ -180,6 +193,9 @@ class ComfySettings {
     loraPreset: loraPreset ?? this.loraPreset,
     imageDir: imageDir ?? this.imageDir,
     autoGenerate: autoGenerate ?? this.autoGenerate,
+    outputDirs: outputDirs == null
+        ? this.outputDirs
+        : Map.unmodifiable(outputDirs),
   );
 
   /// 新增或替换一台(按 id)。
