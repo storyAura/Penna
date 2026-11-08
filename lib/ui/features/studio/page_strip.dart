@@ -397,7 +397,7 @@ class _SeriesFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: Motion.base,
+      duration: Motion.of(context, Motion.base),
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: tint.bg,
@@ -490,10 +490,10 @@ class _PageChip extends StatelessWidget {
   final VoidCallback onRename;
   final ValueChanged<int> onDrop;
 
-  Widget _face({required bool hovered}) {
+  Widget _face(BuildContext context, {required bool hovered}) {
     final label = name.isEmpty ? '$number' : '$number $name';
     return AnimatedContainer(
-      duration: Motion.base,
+      duration: Motion.of(context, Motion.base),
       height: 22,
       constraints: const BoxConstraints(minWidth: 26, maxWidth: 110),
       padding: const EdgeInsets.symmetric(horizontal: 7),
@@ -536,9 +536,12 @@ class _PageChip extends StatelessWidget {
           color: Colors.transparent,
           elevation: 6,
           borderRadius: BorderRadius.circular(5),
-          child: _face(hovered: false),
+          child: _face(context, hovered: false),
         ),
-        childWhenDragging: Opacity(opacity: 0.35, child: _face(hovered: false)),
+        childWhenDragging: Opacity(
+          opacity: 0.35,
+          child: _face(context, hovered: false),
+        ),
         child: Tooltip(
           message: [
             tr('第 {0} 页', [number]),
@@ -556,7 +559,7 @@ class _PageChip extends StatelessWidget {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  _face(hovered: incoming.isNotEmpty),
+                  _face(context, hovered: incoming.isNotEmpty),
                   if (waiting)
                     Positioned(
                       top: -2,

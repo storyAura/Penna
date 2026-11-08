@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
@@ -15,6 +14,7 @@ import '../../core/widgets.dart';
 import '../settings/settings_sections.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
+import '../../core/native_drop.dart';
 
 part 'character_cards.dart';
 part 'character_dialog.dart';
@@ -133,7 +133,9 @@ class _CharactersPageState extends State<CharactersPage> {
   /// 换图:[source] 是选的或拖上来的图转成的 WebP。
   Future<void> _setImage(CharacterCard card, Future<Uint8List?> source) async {
     final webp = await source;
-    if (webp != null && mounted) widget.store.setImage(card.id, webp);
+    if (webp != null && mounted && !widget.store.setImage(card.id, webp)) {
+      showToast(context, tr('预览图没存上'), warn: true);
+    }
   }
 
   Widget _mine(CharacterCard card) {
@@ -170,7 +172,7 @@ class _CharactersPageState extends State<CharactersPage> {
   );
 
   Future<void> _edit([CharacterCard? card, CharacterHit? from]) async {
-    final draft = await showDialog<_Draft>(
+    final saved = await showDialog<bool>(
       context: context,
       builder: (_) => _CharacterDialog(
         name: card?.name ?? from?.name ?? '',
@@ -180,25 +182,29 @@ class _CharactersPageState extends State<CharactersPage> {
         outfits: card?.outfits ?? const [],
         image: card?.image ?? '',
         editing: card != null,
+        onSave: (draft) => _saveCharacter(card?.id, draft),
       ),
     );
-    if (draft == null || !mounted) return;
+    if (saved == true && mounted) showToast(context, tr('已存进角色库'));
+  }
+
+  Future<bool> _saveCharacter(String? id, _Draft draft) async {
     // 新选的图转成 WebP 存;转不了就原样存。
     final picked = draft.image;
     final webp = picked == null
         ? null
         : await toPreviewWebP(Uint8List.fromList(picked.bytes));
-    if (!mounted) return;
-    final saved = widget.store.put(
-      id: card?.id,
-      name: draft.name,
-      alias: draft.alias,
-      intro: draft.intro,
-      prompt: draft.prompt,
-      outfits: draft.outfits,
-      image: webp == null ? picked : (bytes: webp, ext: 'webp'),
-    );
-    if (saved != null) showToast(context, tr('已存进角色库'));
+    if (!mounted) return false;
+    return widget.store.put(
+          id: id,
+          name: draft.name,
+          alias: draft.alias,
+          intro: draft.intro,
+          prompt: draft.prompt,
+          outfits: draft.outfits,
+          image: webp == null ? picked : (bytes: webp, ext: 'webp'),
+        ) !=
+        null;
   }
 
   Future<void> _delete(CharacterCard card) async {
@@ -207,7 +213,9 @@ class _CharactersPageState extends State<CharactersPage> {
       tr('删除角色「{0}」?', [card.name]),
       tr('删掉后找不回来。'),
     )) {
-      widget.store.remove(card.id);
+      if (!widget.store.remove(card.id) && mounted) {
+        showToast(context, tr('保存失败'), warn: true);
+      }
     }
   }
 
@@ -294,11 +302,11 @@ class _CharactersPageState extends State<CharactersPage> {
   /// 内置那一页的三种样子:查名字的结果、各个系列、某个系列里的角色。
   /// 换的时候旧的淡出、新的滑进来,高度跟着顺过去。
   Widget _builtinAnimated(CharacterDict dict, String q) => AnimatedSize(
-    duration: Motion.sheet,
+    duration: Motion.of(context, Motion.sheet),
     curve: Motion.swift,
     alignment: Alignment.topCenter,
     child: AnimatedSwitcher(
-      duration: Motion.sheet,
+      duration: Motion.of(context, Motion.sheet),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       layoutBuilder: (current, previous) => Stack(

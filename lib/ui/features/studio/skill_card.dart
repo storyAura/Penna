@@ -55,7 +55,7 @@ class NewSkillCard extends StatelessWidget {
       _ => (tr('替换同名 Skill'), Icons.sync, true),
     };
     return AnimatedContainer(
-      duration: Motion.base,
+      duration: Motion.of(context, Motion.base),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: PennaColors.card,

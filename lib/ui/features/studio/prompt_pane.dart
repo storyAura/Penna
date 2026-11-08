@@ -141,17 +141,21 @@ class _DraftSectionState extends State<_DraftSection> {
   /// 把当前成稿存进档案库(带着分段标注,放回来时分段还在)。
   Future<void> _save(BuildContext context) async {
     final text = vm.labeledPrompt;
+    String? id;
     final picked = await showSaveDialog(
       context,
       archive.categoriesOf(archivePrompt),
       title: vm.pageName,
+      onSave: (entry) {
+        id = archive.add(
+          text: text,
+          title: entry.title,
+          category: entry.category,
+        );
+        return id != null;
+      },
     );
     if (picked == null) return;
-    final id = archive.add(
-      text: text,
-      title: picked.title,
-      category: picked.category,
-    );
     if (context.mounted) showToast(context, tr('已存进档案库'));
     await _preview(id, vm.comfy.latestFor(vm.finalPrompt));
   }
@@ -171,6 +175,7 @@ class _DraftSectionState extends State<_DraftSection> {
   /// 档案库里已经有一字不差的就跳过,只存新的和改过的。
   void _saveSeries(BuildContext context) {
     final done = _storeSeries(vm.series);
+    if (done == null) return showToast(context, tr('保存失败'), warn: true);
     if (done.total == 0) {
       return showToast(context, tr('这个系列还是空的'), warn: true);
     }
@@ -188,8 +193,8 @@ class _DraftSectionState extends State<_DraftSection> {
   }
 
   /// 把第 [s] 个系列有字的每一页存进档案库,分类是系列名;一字不差存过的跳过,
-  /// 用这一页的提示词出过图的配上预览图。返回有字的页数、新存了几页。
-  ({int total, int saved}) _storeSeries(int s) {
+  /// 用这一页的提示词出过图的配上预览图。返回有字的页数、新存了几页;存盘失败返回 null。
+  ({int total, int saved})? _storeSeries(int s) {
     final all = vm.promptsOf(s);
     final saved = {
       for (final e in archive.entries)
@@ -209,6 +214,7 @@ class _DraftSectionState extends State<_DraftSection> {
         category: category,
         now: now.add(Duration(microseconds: i)),
       );
+      if (id == null) return null;
       // 只配用这一页的提示词出的图,不拿别的页的凑数。
       unawaited(
         _preview(
@@ -227,7 +233,9 @@ class _DraftSectionState extends State<_DraftSection> {
     }
     var saved = 0;
     for (final s in ids) {
-      saved += _storeSeries(s).saved;
+      final done = _storeSeries(s);
+      if (done == null) return showToast(context, tr('保存失败'), warn: true);
+      saved += done.saved;
     }
     final problem = vm.removeSeriesMany(ids);
     if (problem != null) return showToast(context, problem, warn: true);
@@ -314,7 +322,7 @@ class _DraftSectionState extends State<_DraftSection> {
         ),
         // 这个系列不止一页时滑出来:把整个系列一起存。
         AnimatedSize(
-          duration: Motion.base,
+          duration: Motion.of(context, Motion.base),
           curve: Motion.swift,
           alignment: Alignment.centerLeft,
           child: series

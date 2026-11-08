@@ -137,91 +137,100 @@ class _AppShellState extends State<AppShell> {
             Expanded(
               child: Row(
                 children: [
-                  _NavRail(page: _page, onSelect: _go),
+                  SizedBox(
+                    width: 48,
+                    child: _DesktopViewport(
+                      minimum: const Size(48, 340),
+                      child: _NavRail(page: _page, onSelect: _go),
+                    ),
+                  ),
                   Expanded(
                     // 几页都一直留着,切去设置时工作台的输入和滚动位置不丢。
-                    child: Stack(
-                      children: [
-                        _Page(
-                          active: _page == _studio,
-                          child: StudioPage(
-                            vm: widget.vm,
-                            config: widget.config,
-                            archive: _archive,
-                            onOpenSettings: () => _go(_settings),
-                            onOpenLayout: () => _go(_layoutPage),
-                            inbox: _toChat,
+                    child: _DesktopViewport(
+                      key: const ValueKey('desktop-content'),
+                      child: Stack(
+                        children: [
+                          _Page(
+                            active: _page == _studio,
+                            child: StudioPage(
+                              vm: widget.vm,
+                              config: widget.config,
+                              archive: _archive,
+                              onOpenSettings: () => _go(_settings),
+                              onOpenLayout: () => _go(_layoutPage),
+                              inbox: _toChat,
+                            ),
                           ),
-                        ),
-                        _Page(
-                          active: _page == _archivePage,
-                          child: ArchivePage(
-                            archive: _archive,
-                            vm: widget.vm,
-                            board: _layout,
-                            onOpenStudio: () => _go(_studio),
-                            onOpenLayout: () => _go(_layoutPage),
+                          _Page(
+                            active: _page == _archivePage,
+                            child: ArchivePage(
+                              archive: _archive,
+                              vm: widget.vm,
+                              board: _layout,
+                              onOpenStudio: () => _go(_studio),
+                              onOpenLayout: () => _go(_layoutPage),
+                            ),
                           ),
-                        ),
-                        _Page(
-                          active: _page == _charactersPage,
-                          child: CharactersPage(
-                            store: _characters,
-                            dict: widget.vm.characterDict,
+                          _Page(
+                            active: _page == _charactersPage,
+                            child: CharactersPage(
+                              store: _characters,
+                              dict: widget.vm.characterDict,
+                            ),
                           ),
-                        ),
-                        _Page(
-                          active: _page == _localPage,
-                          child: LocalPage(
-                            model: _local,
-                            config: widget.config,
-                            vm: widget.vm,
-                            onOpenStudio: () => _go(_studio),
-                            onSendToAgent: (text) {
-                              _go(_studio);
-                              _toChat.value = text;
-                            },
+                          _Page(
+                            active: _page == _localPage,
+                            child: LocalPage(
+                              model: _local,
+                              config: widget.config,
+                              vm: widget.vm,
+                              onOpenStudio: () => _go(_studio),
+                              onSendToAgent: (text) {
+                                _go(_studio);
+                                _toChat.value = text;
+                              },
+                            ),
                           ),
-                        ),
-                        _Page(
-                          active: _page == _layoutPage,
-                          child: LayoutPage(
-                            board: _layout,
-                            vm: widget.vm,
-                            chat: _layoutChat,
-                            archive: _archive,
-                            config: widget.config,
-                            onOpenStudio: () => _go(_studio),
-                            onOpenSettings: () => _go(_settings),
+                          _Page(
+                            active: _page == _layoutPage,
+                            child: LayoutPage(
+                              board: _layout,
+                              vm: widget.vm,
+                              chat: _layoutChat,
+                              archive: _archive,
+                              config: widget.config,
+                              onOpenStudio: () => _go(_studio),
+                              onOpenSettings: () => _go(_settings),
+                            ),
                           ),
-                        ),
-                        _Page(
-                          active: _page == _notebookPage,
-                          child: NotebookPage(store: _notebooks),
-                        ),
-                        _Page(
-                          active: _page == _settings,
-                          child: SettingsPage(
-                            service: widget.config,
-                            skills: widget.skills,
-                            local: _local,
-                            comfy: widget.vm.comfy,
+                          _Page(
+                            active: _page == _notebookPage,
+                            child: NotebookPage(store: _notebooks),
                           ),
-                        ),
-                        Positioned(
-                          right: 8,
-                          bottom: 3,
-                          child: IgnorePointer(
-                            child: Text(
-                              'v$appVersion',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: PennaColors.slate400,
+                          _Page(
+                            active: _page == _settings,
+                            child: SettingsPage(
+                              service: widget.config,
+                              skills: widget.skills,
+                              local: _local,
+                              comfy: widget.vm.comfy,
+                            ),
+                          ),
+                          Positioned(
+                            right: 8,
+                            bottom: 3,
+                            child: IgnorePointer(
+                              child: Text(
+                                'v$appVersion',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: PennaColors.slate400,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -232,6 +241,87 @@ class _AppShellState extends State<AppShell> {
       ),
     );
   }
+}
+
+/// 放大界面后逻辑窗口可能小于桌面布局;只滚动内容,标题栏和导航仍可用。
+class _DesktopViewport extends StatefulWidget {
+  const _DesktopViewport({
+    super.key,
+    required this.child,
+    this.minimum = const Size(1052, 668),
+  });
+
+  final Widget child;
+  final Size minimum;
+
+  @override
+  State<_DesktopViewport> createState() => _DesktopViewportState();
+}
+
+class _DesktopViewportState extends State<_DesktopViewport> {
+  final _horizontal = ScrollController();
+  final _vertical = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontal.dispose();
+    _vertical.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final horizontal = box.maxWidth < widget.minimum.width;
+      final vertical = box.maxHeight < widget.minimum.height;
+      final behavior = ScrollConfiguration.of(context);
+      return RawScrollbar(
+        key: const ValueKey('desktop-horizontal'),
+        fadeDuration: Motion.of(context, Motion.base),
+        thumbColor: PennaColors.slate400,
+        radius: const Radius.circular(3),
+        thickness: 6,
+        controller: _horizontal,
+        thumbVisibility: horizontal,
+        trackVisibility: horizontal,
+        scrollbarOrientation: ScrollbarOrientation.bottom,
+        notificationPredicate: (n) =>
+            n.depth == 0 && n.metrics.axis == Axis.horizontal,
+        child: RawScrollbar(
+          key: const ValueKey('desktop-vertical'),
+          fadeDuration: Motion.of(context, Motion.base),
+          thumbColor: PennaColors.slate400,
+          radius: const Radius.circular(3),
+          thickness: 6,
+          controller: _vertical,
+          thumbVisibility: vertical,
+          trackVisibility: vertical,
+          notificationPredicate: (n) =>
+              n.depth == 1 && n.metrics.axis == Axis.vertical,
+          child: ScrollConfiguration(
+            behavior: behavior.copyWith(scrollbars: false),
+            child: SingleChildScrollView(
+              controller: _horizontal,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: horizontal ? widget.minimum.width : box.maxWidth,
+                child: SingleChildScrollView(
+                  controller: _vertical,
+                  child: SizedBox(
+                    height: vertical ? widget.minimum.height : box.maxHeight,
+                    child: ScrollConfiguration(
+                      behavior: behavior,
+                      child: widget.child,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 /// 一页内容:切入时淡入并轻轻弹上来,切出后不可见也不响应点击。

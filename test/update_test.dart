@@ -156,6 +156,39 @@ void main() {
     timeout: const Timeout(Duration(minutes: 1)),
   );
 
+  test(
+    '更新复制失败时保留安装包,不启动不完整的新版本',
+    () async {
+      final root = Directory.systemTemp.createTempSync('penna_update_failure_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      final from = Directory('${root.path}/new')..createSync();
+      final cleanup = Directory('${root.path}/temp')..createSync();
+      final to = File('${root.path}/not_a_directory')
+        ..writeAsStringSync('keep');
+      final launched = File('${root.path}/launched');
+      File('${from.path}/penna.exe').writeAsStringSync('new exe');
+      final script = await writeUpdateScript(
+        'function Start-Process { Set-Content -LiteralPath '
+        "'${launched.path.replaceAll("'", "''")}' -Value started }\r\n"
+        '${updateScript(pid: 999999, from: from.path, to: to.path, cleanup: cleanup.path)}',
+        root.path,
+      );
+      final run = await Process.run('powershell.exe', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        script.path,
+      ]);
+      expect(run.exitCode, greaterThanOrEqualTo(8));
+      expect(cleanup.existsSync(), isTrue);
+      expect(launched.existsSync(), isFalse);
+      expect(to.readAsStringSync(), 'keep');
+    },
+    skip: Platform.isWindows ? null : '更新脚本只在 Windows 上运行',
+    timeout: const Timeout(Duration(minutes: 1)),
+  );
+
   group('检查更新的弹窗', () {
     Future<void> pump(WidgetTester tester, Future<Release?> Function() fetch) =>
         tester.pumpWidget(

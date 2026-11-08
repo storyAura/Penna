@@ -2,7 +2,7 @@
 typedef TagHit = ({String tag, String zh});
 
 final _weight = RegExp(r':\s*[\d.]+\s*$');
-final _separators = RegExp(r'[,,、;;\n]+');
+final _separators = RegExp(r'[,，、;；\n]+');
 final _ascii = RegExp(r'^[\x00-\x7f]+$');
 
 /// 把提示词里的一个标签还原成 Danbooru 的标准写法:

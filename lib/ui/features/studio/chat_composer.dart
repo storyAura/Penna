@@ -79,7 +79,7 @@ class _Composer extends StatelessWidget {
         children: [
           // 排队的条目增减时,高度顺着伸缩。
           AnimatedSize(
-            duration: Motion.base,
+            duration: Motion.of(context, Motion.base),
             curve: Motion.swift,
             alignment: Alignment.bottomCenter,
             child: Column(
@@ -200,7 +200,7 @@ class _Composer extends StatelessWidget {
                         onPressed: onStop ?? onSend,
                         tooltip: onStop == null ? tr('发送') : tr('停止生成(Esc)'),
                         icon: AnimatedSwitcher(
-                          duration: Motion.base,
+                          duration: Motion.of(context, Motion.base),
                           transitionBuilder: (child, animation) =>
                               ScaleTransition(scale: animation, child: child),
                           child: Icon(

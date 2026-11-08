@@ -779,15 +779,17 @@ class LayoutBoard extends ChangeNotifier {
 
 /// 只读图片的宽高,不解出整张图。读不了返回 null。
 Future<({int width, int height})?> _imageSize(Uint8List bytes) async {
+  ui.ImmutableBuffer? buffer;
+  ui.ImageDescriptor? descriptor;
   try {
-    final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-    final d = await ui.ImageDescriptor.encoded(buffer);
-    final size = (width: d.width, height: d.height);
-    d.dispose();
-    buffer.dispose();
-    return size;
+    buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+    descriptor = await ui.ImageDescriptor.encoded(buffer);
+    return (width: descriptor.width, height: descriptor.height);
   } on Object {
     return null;
+  } finally {
+    descriptor?.dispose();
+    buffer?.dispose();
   }
 }
 

@@ -143,7 +143,7 @@ class PennaChip extends StatelessWidget {
         child: GestureDetector(
           onTap: onTap,
           child: AnimatedContainer(
-            duration: Motion.base,
+            duration: Motion.of(context, Motion.base),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
               color: selected ? PennaColors.primaryBg : PennaColors.card,

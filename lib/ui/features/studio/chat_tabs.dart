@@ -32,7 +32,11 @@ class _ChatTabsState extends State<ChatTabs> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final at = _current.currentContext;
       if (at != null && at.mounted) {
-        Scrollable.ensureVisible(at, alignment: 0.5, duration: Motion.base);
+        Scrollable.ensureVisible(
+          at,
+          alignment: 0.5,
+          duration: Motion.of(context, Motion.base),
+        );
       }
     });
   }
@@ -114,7 +118,7 @@ class _Tab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: Motion.base,
+      duration: Motion.of(context, Motion.base),
       height: 26,
       padding: const EdgeInsets.only(left: 9, right: 3),
       decoration: BoxDecoration(

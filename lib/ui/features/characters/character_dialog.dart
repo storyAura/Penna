@@ -7,6 +7,7 @@ class _CharacterDialog extends StatefulWidget {
     required this.prompt,
     required this.image,
     required this.editing,
+    required this.onSave,
     this.alias = '',
     this.intro = '',
     this.outfits = const [],
@@ -21,6 +22,7 @@ class _CharacterDialog extends StatefulWidget {
   /// 现在的图(文件路径),没有就是空串。
   final String image;
   final bool editing;
+  final Future<bool> Function(_Draft) onSave;
 
   @override
   State<_CharacterDialog> createState() => _CharacterDialogState();
@@ -31,6 +33,33 @@ class _CharacterDialogState extends State<_CharacterDialog> {
   late var _alias = widget.alias;
   late var _intro = widget.intro;
   late var _prompt = widget.prompt;
+  bool _saving = false;
+  bool _failed = false;
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _failed = false;
+    });
+    try {
+      final saved = await widget.onSave((
+        name: _name,
+        alias: _alias,
+        intro: _intro,
+        prompt: _prompt,
+        outfits: [for (final o in _outfits) (name: o.name, prompt: o.prompt)],
+        image: _image,
+      ));
+      if (!mounted) return;
+      if (saved) {
+        Navigator.pop(context, true);
+      } else {
+        setState(() => _failed = true);
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   /// 几套服装;[key] 让删掉中间一套时下面的输入框不串位。
   late var _outfits = [
@@ -132,7 +161,8 @@ class _CharacterDialogState extends State<_CharacterDialog> {
   @override
   Widget build(BuildContext context) {
     final ready = _name.trim().isNotEmpty && _prompt.trim().isNotEmpty;
-    return DropTarget(
+    final dialog = PennaDropTarget(
+      enabled: !_saving,
       onDragEntered: (_) => setState(() => _over = true),
       onDragExited: (_) => setState(() => _over = false),
       onDragDone: (d) {
@@ -155,7 +185,7 @@ class _CharacterDialogState extends State<_CharacterDialog> {
                   onTap: _pick,
                   borderRadius: BorderRadius.circular(8),
                   child: AnimatedContainer(
-                    duration: Motion.snap,
+                    duration: Motion.of(context, Motion.snap),
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: _over
@@ -221,6 +251,11 @@ class _CharacterDialogState extends State<_CharacterDialog> {
                     label: Text(tr('新增服装')),
                   ),
                 ),
+                if (_failed)
+                  Text(
+                    tr('保存失败'),
+                    style: TextStyle(color: PennaColors.diffDelText),
+                  ),
               ],
             ),
           ),
@@ -231,22 +266,17 @@ class _CharacterDialogState extends State<_CharacterDialog> {
             child: Text(tr('取消')),
           ),
           TextButton(
-            onPressed: ready
-                ? () => Navigator.pop<_Draft>(context, (
-                    name: _name,
-                    alias: _alias,
-                    intro: _intro,
-                    prompt: _prompt,
-                    outfits: [
-                      for (final o in _outfits)
-                        (name: o.name, prompt: o.prompt),
-                    ],
-                    image: _image,
-                  ))
-                : null,
+            onPressed: ready && !_saving ? _save : null,
             child: Text(tr('保存')),
           ),
         ],
+      ),
+    );
+    return PopScope(
+      canPop: !_saving,
+      child: IgnorePointer(
+        ignoring: _saving,
+        child: ExcludeFocus(excluding: _saving, child: dialog),
       ),
     );
   }

@@ -439,7 +439,11 @@ class SideChat extends ChangeNotifier {
         .expand((m) => m.attachments.reversed.where((a) => a.isImage))
         .firstOrNull;
     unawaited(() async {
-      final result = await main.askLayoutFor(ask, image);
+      final result = await main.askLayoutFor(
+        ask,
+        image,
+        stale: () => _disposed || run != _run,
+      );
       if (_disposed || run != _run) return;
       _waiting = false;
       if (result.text.isEmpty) return notifyListeners();

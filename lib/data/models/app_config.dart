@@ -188,7 +188,7 @@ class LlmProfile {
 
   /// 这个接口要用的模型,按先后顺序;前一个失败了换下一个。
   List<String> get models => [
-    for (final m in model.split(RegExp(r'[,,\n]')))
+    for (final m in model.split(RegExp(r'[,，\n]')))
       if (m.trim().isNotEmpty) m.trim(),
   ];
 

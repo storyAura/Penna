@@ -33,7 +33,7 @@ class _ActivityBarState extends State<ActivityBar> {
   Widget build(BuildContext context) {
     final actions = widget.vm.actions;
     return AnimatedContainer(
-      duration: Motion.base,
+      duration: Motion.of(context, Motion.base),
       curve: Motion.swift,
       width: ActivityBar.widthOf(open: _open),
       decoration: BoxDecoration(

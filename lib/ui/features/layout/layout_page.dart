@@ -156,7 +156,11 @@ class _LayoutPageState extends State<LayoutPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final card = _cards[i]?.currentContext;
       if (card == null || !card.mounted) return;
-      Scrollable.ensureVisible(card, duration: Motion.base, alignment: 0.05);
+      Scrollable.ensureVisible(
+        card,
+        duration: Motion.of(context, Motion.base),
+        alignment: 0.05,
+      );
       if (edit) _fields[i]?.requestFocus();
     });
   }
@@ -515,14 +519,16 @@ class _TopBar extends StatelessWidget {
       context,
       archive.categoriesOf(archiveLayout),
       title: title(),
+      onSave: (entry) =>
+          archive.add(
+            text: jsonEncode(board.layout.toJson()),
+            title: entry.title,
+            category: entry.category,
+            kind: archiveLayout,
+          ) !=
+          null,
     );
     if (picked == null) return;
-    archive.add(
-      text: jsonEncode(board.layout.toJson()),
-      title: picked.title,
-      category: picked.category,
-      kind: archiveLayout,
-    );
     if (context.mounted) showToast(context, tr('已存进档案库'));
   }
 

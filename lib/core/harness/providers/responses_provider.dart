@@ -45,9 +45,12 @@ Map<String, Object?> responsesBody(LlmRequest req) => {
 };
 
 /// 一行 SSE 里的一件事:增量文字,或结束时带的来源(网址 → 标题)。出错时抛错。
-({String? delta, Map<String, String> sources}) parseResponsesLine(String line) {
+({String? delta, Map<String, String> sources}) parseResponsesLine(
+  String line,
+) => _event(sseJson(line));
+
+({String? delta, Map<String, String> sources}) _event(Object? json) {
   const none = (delta: null, sources: <String, String>{});
-  final json = sseJson(line);
   if (json is! Map) return none;
   switch (json['type']) {
     case 'response.output_text.delta':
@@ -113,9 +116,9 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
   final sources = <String, String>{};
   try {
     await for (final line in lines) {
-      final event = parseResponsesLine(line);
-      reportUsage(req, sseJson(line));
       final json = sseJson(line);
+      final event = _event(json);
+      reportUsage(req, json);
       cut = switch (json) {
         {'type': 'response.completed'} => null,
         {'type': 'response.incomplete', 'response': final Object? response} =>

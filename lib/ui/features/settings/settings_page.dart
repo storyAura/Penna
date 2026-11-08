@@ -152,7 +152,7 @@ class _TabItem extends StatelessWidget {
           child: GestureDetector(
             onTap: onTap,
             child: AnimatedContainer(
-              duration: Motion.base,
+              duration: Motion.of(context, Motion.base),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: selected ? PennaColors.primaryBg : PennaColors.card,

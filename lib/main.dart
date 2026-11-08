@@ -36,15 +36,17 @@ Future<void> main() async {
   // 所有用户数据都放在「文档\Penna」下,方便找到和备份。
   // 设了环境变量 PENNA_HOME 就改用它指的文件夹(便携使用,或不碰真实数据地试用)。
   final sep = Platform.pathSeparator;
-  final override = Platform.environment['PENNA_HOME'];
-  final home = override != null && override.trim().isNotEmpty
-      ? Directory(override.trim())
+  final override = Platform.environment['PENNA_HOME']?.trim();
+  final customHome = override != null && override.isNotEmpty;
+  final home = customHome
+      ? Directory(override)
       : Directory(
           '${(await getApplicationDocumentsDirectory()).path}${sep}Penna',
         );
   final config = ConfigService(
     dir: home,
-    legacyFile: ConfigService.defaultLegacyFile(),
+    // 自定义目录是独立实例，不从正常安装搬走旧配置和凭据。
+    legacyFile: customHome ? null : ConfigService.defaultLegacyFile(),
   );
   _logErrors(
     ErrorLog(
@@ -261,6 +263,8 @@ class _PennaAppState extends State<PennaApp> with WindowListener {
     try {
       widget.vm.stop();
       widget.layoutChat.stop();
+      widget.vm.side?.stop();
+      widget.layoutChat.side?.stop();
       widget.vm.flush();
       widget.layoutChat.flush();
       widget.vm.layout?.flush();
@@ -308,10 +312,11 @@ class _PennaAppState extends State<PennaApp> with WindowListener {
             physics: const BouncingScrollPhysics(),
           ),
           // 标题栏放在 Navigator 外面:弹窗的遮罩盖不到它,窗口随时能拖。
-          // ponytail: 整个界面不出无障碍语义树。Flutter 3.47 的 Windows 无障碍桥有空指针崩溃
+          // ponytail: Windows 暂不输出无障碍语义树。Flutter 3.47 的 Windows 无障碍桥有空指针崩溃
           // (flutter/flutter#175041,accessibility_bridge.cc:229):有读屏、输入法这类 UIA
           // 程序在读窗口时,切页就会闪退。代价是读屏软件读不到 Penna;引擎修好后去掉这层。
           builder: (context, child) => ExcludeSemantics(
+            excluding: Platform.isWindows,
             child: _Scaled(
               scale: cfg.uiScale,
               child: LookSwitcher(

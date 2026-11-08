@@ -284,8 +284,15 @@ extension StudioContext on StudioViewModel {
   Future<LocalToolResult> _askLayout(
     ({String name, String brief}) ask,
     int run,
-    Attachment? image,
-  ) async {
+    Attachment? image, {
+    bool Function()? stale,
+  }) async {
+    final pageEpoch = _pageEpoch;
+    bool cancelled() =>
+        _disposed ||
+        run != _toolRun ||
+        pageEpoch != _pageEpoch ||
+        stale?.call() == true;
     final agent = layoutAgent!;
     final board = agent.layout;
     if (board == null || agent.isStreaming) {
@@ -317,6 +324,7 @@ extension StudioContext on StudioViewModel {
     // 参考图和画布一横一竖:先把画布对调。上面已经换到新系列的空白页,
     // 用户原来的页不受影响,所以不用等自动审批。
     final flipped = image != null && await board.swapFor(image.bytes!) != null;
+    if (cancelled()) return (text: '', note: '');
     if (flipped) board.swap();
     final size = '${board.layout.width}×${board.layout.height}';
     final before = board.layout;
@@ -340,7 +348,7 @@ extension StudioContext on StudioViewModel {
         note: tr('区域控制没写出布局'),
       );
     }
-    if (_disposed || run != _toolRun) {
+    if (cancelled()) {
       return (text: '', note: '');
     }
     final count = board.layout.boxes.length;
@@ -566,8 +574,9 @@ extension StudioContext on StudioViewModel {
   /// 副聊天写的 `<ask-layout>`:和主聊天走同一条路,[image] 是副聊天里用户发的最新一张图。
   Future<LocalToolResult> askLayoutFor(
     ({String name, String brief}) ask,
-    Attachment? image,
-  ) => _askLayout(ask, _toolRun, image);
+    Attachment? image, {
+    required bool Function() stale,
+  }) => _askLayout(ask, _toolRun, image, stale: stale);
 
   /// 区域控制那边的副聊天照着排布局的要求(和布局页的 Agent 同一份,带着画板现在的样子)。
   String get layoutGuide =>

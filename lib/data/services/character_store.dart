@@ -98,12 +98,12 @@ class CharacterStore extends ChangeNotifier {
 
   /// [c] 的几个别名(中英文逗号、顿号都算分隔)。
   static List<String> aliasesOf(CharacterCard c) => [
-    for (final a in c.alias.split(RegExp('[,,、]')))
+    for (final a in c.alias.split(RegExp('[,，、]')))
       if (a.trim().isNotEmpty) a.trim(),
   ];
 
   /// 存一个角色。给了 [id] 就是改那一个;没给时同名的算同一个(换掉提示词),否则新增。
-  /// [image]、[alias]、[intro]、[outfits] 不给就留着原来的。名字或提示词是空的不存,返回 null。
+  /// [image]、[alias]、[intro]、[outfits] 不给就留着原来的。名字或提示词是空的、存盘失败时返回 null。
   CharacterCard? put({
     String? id,
     required String name,
@@ -120,6 +120,10 @@ class CharacterStore extends ChangeNotifier {
         .where((c) => id == null ? _key(c.name) == _key(name) : c.id == id)
         .firstOrNull;
     final cardId = old?.id ?? '${time.microsecondsSinceEpoch}';
+    final imagePath = image == null
+        ? old?.image ?? ''
+        : _saveImage(cardId, image, time, replacing: old?.image ?? '');
+    if (imagePath == null) return null;
     final card = (
       id: cardId,
       name: name.trim(),
@@ -129,18 +133,19 @@ class CharacterStore extends ChangeNotifier {
       outfits: outfits == null
           ? old?.outfits ?? const <CharacterOutfit>[]
           : _cleanOutfits(outfits),
-      image: image == null
-          ? old?.image ?? ''
-          : _saveImage(cardId, image, time, replacing: old?.image ?? ''),
+      image: imagePath,
       time: time,
     );
     // 改的留在原位(用户可能拖着排过顺序),新加的放最前。
-    _set(
+    final saved = _set(
       old == null
           ? [card, ..._cards]
           : [for (final c in _cards) c.id == cardId ? card : c],
     );
-    return card;
+    if (card.image != (old?.image ?? '')) {
+      _deleteImage(saved ? old?.image ?? '' : card.image);
+    }
+    return saved ? card : null;
   }
 
   /// 去掉名字和提示词都没写的服装,其余去掉首尾空白。
@@ -162,27 +167,30 @@ class CharacterStore extends ChangeNotifier {
   }
 
   /// 只换图([webp] 是已经转好的 WebP),名字和提示词不动。
-  void setImage(String id, List<int> webp) {
+  bool setImage(String id, List<int> webp) {
     final old = _cards.where((c) => c.id == id).firstOrNull;
-    if (old == null) return;
-    put(
+    if (old == null) return false;
+    final saved = put(
       id: id,
       name: old.name,
       prompt: old.prompt,
       image: (bytes: webp, ext: 'webp'),
     );
+    return saved != null && saved.image != old.image;
   }
 
-  void remove(String id) {
-    for (final c in _cards.where((c) => c.id == id)) {
+  bool remove(String id) {
+    final removed = _cards.where((c) => c.id == id);
+    if (!_set(_cards.where((c) => c.id != id))) return false;
+    for (final c in removed) {
       _deleteImage(c.image);
     }
-    _set(_cards.where((c) => c.id != id));
+    return true;
   }
 
-  /// 把图写进 characters 文件夹,返回路径;存不了返回空串。
+  /// 把图写进 characters 文件夹;无效图片保留原图,写入失败返回 null。
   /// 文件名带着时刻:换图之后路径不同,界面不会还显示旧图。
-  String _saveImage(
+  String? _saveImage(
     String id,
     CharacterImage image,
     DateTime time, {
@@ -196,18 +204,22 @@ class CharacterStore extends ChangeNotifier {
         image.bytes.length > maxCharacterImageBytes) {
       return replacing;
     }
-    try {
-      final file = File(
+    final stem =
         '${dir.path}${Platform.pathSeparator}characters'
-        '${Platform.pathSeparator}$id-${time.microsecondsSinceEpoch}.$ext',
-      );
+        '${Platform.pathSeparator}$id-${time.microsecondsSinceEpoch}';
+    var file = File('$stem.$ext');
+    var suffix = 0;
+    while (file.existsSync()) {
+      file = File('$stem-${++suffix}.$ext');
+    }
+    try {
       file.parent.createSync(recursive: true);
       file.writeAsBytesSync(image.bytes, flush: true);
-      _deleteImage(replacing);
       return file.path;
     } on FileSystemException catch (e) {
+      _deleteImage(file.path);
       debugPrint(tr('角色的图没存上:{0}', [e.message]));
-      return replacing;
+      return null;
     }
   }
 
@@ -221,15 +233,17 @@ class CharacterStore extends ChangeNotifier {
     }
   }
 
-  void _set(Iterable<CharacterCard> next) {
-    _cards = List.unmodifiable(next);
+  bool _set(Iterable<CharacterCard> next) {
+    final cards = List<CharacterCard>.unmodifiable(next);
+    if (!_save(cards)) return false;
+    _cards = cards;
     notifyListeners();
-    _save();
+    return true;
   }
 
   // ponytail: 每次改动都把整个文件重写一遍;存到几千个嫌慢时再改。
-  void _save() => _write(_file, [
-    for (final c in _cards)
+  bool _save(List<CharacterCard> cards) => _write(_file, [
+    for (final c in cards)
       {
         'id': c.id,
         'name': c.name,
@@ -246,16 +260,18 @@ class CharacterStore extends ChangeNotifier {
   ], tr('角色库没存上:{0}'));
 
   /// 把 [json] 写进 [file];[failed] 是写不了时记进日志的话({0} 是原因)。
-  void _write(File? file, Object json, String failed) {
-    if (file == null) return;
+  bool _write(File? file, Object json, String failed) {
+    if (file == null) return true;
     try {
       file.parent.createSync(recursive: true);
       // 先写临时文件再改名:写到一半断电也不会留下半个文件。
       File('${file.path}.tmp')
         ..writeAsStringSync(jsonEncode(json), flush: true)
         ..renameSync(file.path);
+      return true;
     } on FileSystemException catch (e) {
       debugPrint(failed.replaceAll('{0}', e.message));
+      return false;
     }
   }
 

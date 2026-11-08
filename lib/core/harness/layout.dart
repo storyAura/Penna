@@ -289,7 +289,7 @@ String mossLayoutJson(Layout l, {bool draft = false, String quality = ''}) {
   final w2 = l.width ~/ 2, h2 = l.height ~/ 2;
   final view = CameraView(l.camera, l.width, l.height);
   final meta = [
-    for (final m in l.meta.split(RegExp('[,,、]')))
+    for (final m in l.meta.split(RegExp('[,，、]')))
       if (m.trim().isNotEmpty) m.trim(),
   ];
   return const JsonEncoder.withIndent('  ').convert({

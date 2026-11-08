@@ -178,7 +178,7 @@ Future<int> _fetch(
       r'^bytes \*/(\d+)$',
       caseSensitive: false,
     ).firstMatch(response.headers.value(HttpHeaders.contentRangeHeader) ?? '');
-    await response.drain<void>();
+    await response.drain<void>().timeout(_stall);
     if (have > 0 && range != null && int.parse(range[1]!) == have) return have;
     if (have > 0) {
       return _fetch(client, url, f, part, 0, onProgress, cancel, headers);
@@ -186,7 +186,7 @@ Future<int> _fetch(
     throw DownloadException(tr('下载失败(HTTP {0})', [status]));
   }
   if (status != HttpStatus.ok && status != HttpStatus.partialContent) {
-    await response.drain<void>();
+    await response.drain<void>().timeout(_stall);
     throw DownloadException(switch (status) {
       401 || 403 when Uri.tryParse(f.url)?.host == 'huggingface.co' => tr(
         '下载被拒绝(HTTP {0}):这个模型可能要登录才能下',
@@ -203,7 +203,7 @@ Future<int> _fetch(
   // 加速站常用 200 回一张报错网页:写进 .part 的话,下一个地址会接在它后面。
   if (response.headers.contentType?.mimeType == 'text/html' ||
       (f.size != null && length >= 0 && have + length != f.size)) {
-    await response.drain<void>();
+    await response.drain<void>().timeout(_stall);
     throw DownloadException(tr('服务器回的不是这个文件'));
   }
   var total = f.size ?? (length < 0 ? null : have + length);
@@ -214,7 +214,7 @@ Future<int> _fetch(
       caseSensitive: false,
     ).firstMatch(response.headers.value(HttpHeaders.contentRangeHeader) ?? '');
     if (range == null || int.parse(range[1]!) != have) {
-      await response.drain<void>();
+      await response.drain<void>().timeout(_stall);
       throw DownloadException(tr('下载不完整,可以再点一次接着下'));
     }
     end = int.parse(range[2]!);
@@ -222,7 +222,7 @@ Future<int> _fetch(
     if (end < have ||
         total != null && end >= total ||
         length >= 0 && length != end - have + 1) {
-      await response.drain<void>();
+      await response.drain<void>().timeout(_stall);
       throw DownloadException(tr('下载不完整,可以再点一次接着下'));
     }
   }

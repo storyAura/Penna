@@ -147,7 +147,7 @@ extension LocalCaption on LocalModel {
   /// 下载一个清单里的模型(选中的量化档),下好后就用它。
   Future<String?> downloadCaption(CaptionModel m) async {
     final problem = await download(m.id, captionFiles(m));
-    if (problem == null) useCaption(m);
+    if (problem == null && !_disposed) useCaption(m);
     return problem;
   }
 
@@ -269,6 +269,8 @@ extension LocalCaption on LocalModel {
       problem = null;
     }
     _captioning = false;
+    _florenceInUse = null;
+    if (_disposed) _dropFlorence();
     _changed();
     return problem;
   }
@@ -281,16 +283,19 @@ extension LocalCaption on LocalModel {
   ) async {
     final paths = captionPaths(m);
     if (paths == null) return tr('先下载这个模型');
+    _florenceInUse = paths.model;
     try {
       if (_florenceFor != paths.model) {
         _dropFlorence();
         _florence = await FlorenceEngine.load(paths.model);
         _florenceFor = paths.model;
       }
+      if (_disposed) return null;
       final pixels = await decodeImage(
         image.bytes!,
         (_, _) => (width: florenceImageSize, height: florenceImageSize),
       );
+      if (_disposed) return null;
       final text = await _florence!.caption(
         florencePixels(pixels.rgba, florenceImageSize),
         florenceTaskOf(m),

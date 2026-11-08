@@ -8,8 +8,9 @@ import '../../../l10n/l10n.dart';
 export 'llm_http.dart';
 
 /// 取出一行 SSE 里的增量文本;不是内容行(注释、心跳、空行)返回 null。
-String? parseSseLine(String line) {
-  final json = sseJson(line);
+String? parseSseLine(String line) => _delta(sseJson(line));
+
+String? _delta(Object? json) {
   if (json is! Map) return null;
   final error = json['error'];
   if (error != null) {
@@ -134,9 +135,10 @@ Stream<String> _send(
       done = true;
       break;
     }
-    reportUsage(req, sseJson(line));
-    finish = _finishReason(sseJson(line)) ?? finish;
-    final delta = parseSseLine(line);
+    final json = sseJson(line);
+    reportUsage(req, json);
+    finish = _finishReason(json) ?? finish;
+    final delta = _delta(json);
     if (delta != null && delta.isNotEmpty) {
       yielded = true;
       yield delta;

@@ -554,7 +554,19 @@ class _TypingDotsState extends State<TypingDots>
   late final _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1900),
-  )..repeat();
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _controller
+        ..stop()
+        ..value = 0;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
+  }
 
   @override
   void dispose() {
@@ -583,12 +595,16 @@ class _TypingDotsState extends State<TypingDots>
                     padding: const EdgeInsets.only(right: 3.5),
                     child: Transform.translate(
                       offset: Offset(0, -2 * up),
-                      child: CircleAvatar(
-                        radius: 1.5 + 0.5 * up,
-                        backgroundColor: Color.lerp(
-                          PennaColors.slate400,
-                          PennaColors.primary,
-                          up,
+                      child: Container(
+                        width: 3 + up,
+                        height: 3 + up,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color.lerp(
+                            PennaColors.slate400,
+                            PennaColors.primary,
+                            up,
+                          ),
                         ),
                       ),
                     ),

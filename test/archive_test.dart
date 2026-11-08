@@ -14,6 +14,34 @@ import 'fixtures.dart';
 
 void main() {
   group('档案库', () {
+    test('元数据写入失败时换图和删除都保留原档案及原图', () async {
+      final dir = Directory.systemTemp.createTempSync('penna_archive_failure_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/archive.json');
+      final store = ArchiveStore(file)..add(text: 'keep');
+      store.setImage(store.entries.single.id, Uint8List.fromList([1, 2, 3]));
+      final original = store.entries.single;
+      final saved = file.readAsStringSync();
+      Directory('${file.path}.tmp').createSync();
+
+      expect(
+        store.setImage(original.id, Uint8List.fromList([4, 5, 6])),
+        isFalse,
+      );
+      expect(store.entries.single, original);
+      expect(File(original.image).readAsBytesSync(), [1, 2, 3]);
+      expect(Directory('${dir.path}/archive').listSync(), hasLength(1));
+      expect(store.remove(original.id), isFalse);
+      expect(store.entries.single, original);
+      expect(File(original.image).readAsBytesSync(), [1, 2, 3]);
+      expect(file.readAsStringSync(), saved);
+      expect(store.add(text: 'cannot save'), isNull);
+      expect(store.entries.single, original);
+      final reopened = ArchiveStore(file);
+      await reopened.load();
+      expect(reopened.entries.single, original);
+    });
+
     test('拖着换顺序;换预览图存成文件,存盘读回还在,删条目时图跟着删', () async {
       final dir = Directory.systemTemp.createTempSync('penna_archive');
       final store = ArchiveStore(File('${dir.path}/archive.json'));
@@ -34,7 +62,7 @@ void main() {
       expect(again.entries.map((e) => e.image).first, image);
       expect(again.entries.map((e) => e.text).join(), 'acb');
 
-      store.remove(a);
+      expect(store.remove(a), isTrue);
       expect(File(image).existsSync(), isFalse);
       // 只在内存里的不存图。
       expect(ArchiveStore().setImage('x', Uint8List(1)), isFalse);
@@ -42,8 +70,9 @@ void main() {
 
     test('存一条带时间和分类;空的不存;分类没填归未分类;能删', () {
       final store = ArchiveStore();
-      store.add(text: '  ');
-      store.add(text: 'a fox', now: DateTime(2026, 10, 9, 8));
+      expect(store.add(text: '  '), isNull);
+      final id = store.add(text: 'a fox', now: DateTime(2026, 10, 9, 8));
+      expect(id, store.entries.single.id);
       store.add(
         text: '【主体】a cat',
         title: '猫',
