@@ -31,7 +31,7 @@ extension StudioContext on StudioViewModel {
     final peek = side != null && splitPeek(prose, readSideChat).asked;
     final webs = _webQueries(prose);
     // 要某个 Skill 的正文。布局页的 Skill 是系统提示里固定带的。
-    final loads = layoutOnly
+    final loads = layoutOnly || mangaOnly
         ? const <String>[]
         : splitToolTag(prose, loadSkillTag).queries.take(_maxQueries).toList();
     // 要姿势参考图:用户同意后 Agent 才写。
@@ -387,7 +387,9 @@ extension StudioContext on StudioViewModel {
 
   String get _layoutPrompt => layout?.prompt ?? '';
 
-  String _systemFor(AppConfig cfg, AgentPreset preset) => layoutOnly
+  String _systemFor(AppConfig cfg, AgentPreset preset) => mangaOnly
+      ? _mangaSystemPrompt(cfg, preset)
+      : layoutOnly
       ? _layoutSystemPrompt(cfg, preset)
       : _systemPrompt(cfg, preset);
 

@@ -93,7 +93,11 @@ extension StudioMeter on StudioViewModel {
     final persona = estimateTokens(preset.systemPrompt);
     final skills = estimateTokens(_loadedSkillText(cfg));
     final draft = estimateTokens(
-      layoutOnly ? _layoutPrompt : '${_joined(labels: true)}$_siblingPages',
+      mangaOnly
+          ? manga!.agentView
+          : layoutOnly
+          ? _layoutPrompt
+          : '${_joined(labels: true)}$_siblingPages',
     );
     final system = estimateTokens(_systemFor(cfg, preset));
     final sent = _sentSkills(cfg);
@@ -123,7 +127,9 @@ extension StudioMeter on StudioViewModel {
   }
 
   /// 系统提示里 Skill 那部分的文字。区域控制那边固定带这几个(同 `_layoutSystemPrompt`)。
-  String _loadedSkillText(AppConfig cfg) => layoutOnly
+  String _loadedSkillText(AppConfig cfg) => mangaOnly
+      ? builtinSkillList.firstWhere((s) => s.id == 'character-lib').body
+      : layoutOnly
       ? [
           for (final s in builtinSkillList)
             if (s.id == 'moss-layout' ||

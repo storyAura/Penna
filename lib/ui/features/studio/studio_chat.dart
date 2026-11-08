@@ -269,7 +269,8 @@ extension StudioChat on StudioViewModel {
             // 模型要先查标签:查完它会接着写,成稿等那一条。
             if (_searchTags()) return;
             // 布局页的对话只往布局画板上放,不碰成稿。
-            if (!layoutOnly) {
+            if (mangaOnly) _deliverManga();
+            if (!layoutOnly && !mangaOnly) {
               _deliverDraft();
               _checkTags();
               // 成稿放好之后再出图:标签里没写提示词时用的是这页放好的成稿。

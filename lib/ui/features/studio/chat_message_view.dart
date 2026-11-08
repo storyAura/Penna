@@ -8,6 +8,7 @@ import '../../../core/harness/comfyui.dart' show splitGenerate;
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
+import '../../../core/harness/manga/manga_script.dart' show storyboardTag;
 import '../../../core/harness/providers/llm_http.dart' show LlmCut;
 import '../../../core/harness/tags/tag_search.dart';
 import '../../../core/harness/web_search.dart';
@@ -229,7 +230,10 @@ class ChatMessageView extends StatelessWidget {
     // 出图标签由程序交给 ComfyUI,聊天里只留进度和出好的图。
     final generate = splitGenerate(m.text);
     // 换工作流的标签也由程序做,结果记在回复的记录上。
-    final model = splitToolTag(generate.prose, comfyWorkflowTag);
+    final model = splitToolTag(
+      splitToolTag(generate.prose, storyboardTag).prose,
+      comfyWorkflowTag,
+    );
     final peeked = splitPeek(
       splitPeek(model.prose, readSideChat).prose,
       readMainChat,

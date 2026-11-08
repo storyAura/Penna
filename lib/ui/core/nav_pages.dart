@@ -12,6 +12,7 @@ typedef NavPage = ({String id, IconData icon, NavGroup group});
 const navPages = <NavPage>[
   (id: 'studio', icon: Icons.space_dashboard_outlined, group: NavGroup.create),
   (id: 'layout', icon: Icons.crop_free, group: NavGroup.create),
+  (id: 'manga', icon: Icons.auto_stories_outlined, group: NavGroup.create),
   (
     id: 'characters',
     icon: Icons.face_retouching_natural_outlined,
@@ -26,6 +27,7 @@ const navPages = <NavPage>[
 String navName(String id) => switch (id) {
   'studio' => tr('工作台'),
   'layout' => tr('区域控制工作台'),
+  'manga' => tr('漫画分镜工作台'),
   'characters' => tr('角色库'),
   'poses' => tr('姿势图库'),
   'local' => tr('本地反推'),

@@ -31,6 +31,7 @@ Penna is a tool for writing **positive prompts** for text-to-image models, cover
 - **Co-writing**: Agent changes arrive as a red/green diff, accepted or rejected section by section; prompts are split into labeled sections such as 【Subject】 and 【Lighting】, across pages and series.
 - **Agent chat**: conversations side by side, a side chat panel, image and file attachments, `@` Skill citations, web search and adjustable reasoning effort.
 - **Region Control**: draw regions, describe each one and produce MOSS-Image layout JSON; multi-panel comic pages included.
+- **Manga Storyboard**: set up characters and the world, draw panel layouts and shots gacha-style, let the Agent break the story into panels, then hand a page to Region Control or the Workbench for generation.
 - **Local Interrogate**: 20 built-in taggers and 15 vision models, plus online models.
 - **Tags and characters**: about 76,000 Danbooru tags and 74,000 characters built in, looked up by the Agent before writing.
 - **ComfyUI generation**: connects to a local or cloud ComfyUI, generates from the final prompt in one click with live progress, lets the Agent generate in chat and creates an Archive preview on save.

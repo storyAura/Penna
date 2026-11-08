@@ -23,6 +23,7 @@ import 'data/services/error_log.dart';
 import 'data/services/skill_store.dart';
 import 'ui/core/look_switcher.dart';
 import 'ui/core/theme.dart';
+import 'ui/features/manga/manga_board.dart';
 import 'ui/features/local/local_model.dart';
 import 'ui/features/poses/pose_library.dart';
 import 'ui/features/layout/layout_board.dart';
@@ -112,6 +113,22 @@ Future<void> main() async {
     saveFile: File('${home.path}${sep}layout_chat.json'),
   );
   await layoutChat.load();
+  // 漫画分镜工作台:作品存在 manga.json,它那场对话存在 manga_chat.json。
+  final manga = MangaBoard(dir: home);
+  await manga.load();
+  final mangaChat = StudioViewModel(
+    config: config,
+    streamChat: streamChat,
+    skills: skills,
+    tagDictionary: tagDictionary,
+    tagSearch: tagSearcher(() => config.config, tagDictionary),
+    characters: characters,
+    characterDict: characterDict,
+    manga: manga,
+    comfy: vm.comfy,
+    saveFile: File('${home.path}${sep}manga_chat.json'),
+  );
+  await mangaChat.load();
   final archive = ArchiveStore(File('${home.path}${sep}archive.json'));
   await archive.load();
   final notebooks = NotebookStore(File('${home.path}${sep}notebooks.json'));
@@ -132,6 +149,8 @@ Future<void> main() async {
   // 区域控制那场对话同样能本地反推、附姿势参考(两个工作台本是同一类)。
   layoutChat.local = local;
   layoutChat.poses = poses;
+  mangaChat.local = local;
+  mangaChat.poses = poses;
   // 主工作区要排布局时,交给区域控制工作台的 Agent。
   vm.layoutAgent = layoutChat;
   // 关窗前先停掉本地反推起的 llama-server:Windows 不会跟着把它关掉。
@@ -142,6 +161,7 @@ Future<void> main() async {
       skills: skills,
       vm: vm,
       layoutChat: layoutChat,
+      mangaChat: mangaChat,
       archive: archive,
       notebooks: notebooks,
       local: local,
@@ -236,6 +256,7 @@ class PennaApp extends StatefulWidget {
     required this.skills,
     required this.vm,
     required this.layoutChat,
+    this.mangaChat,
     required this.archive,
     required this.notebooks,
     required this.local,
@@ -243,6 +264,9 @@ class PennaApp extends StatefulWidget {
   });
 
   final StudioViewModel layoutChat;
+
+  /// 漫画分镜那场对话(带着分镜作品);测试里不给就由 [AppShell] 建一个只在内存里的。
+  final StudioViewModel? mangaChat;
 
   final ArchiveStore archive;
   final NotebookStore notebooks;
@@ -273,8 +297,11 @@ class _PennaAppState extends State<PennaApp> with WindowListener {
     try {
       widget.vm.stop();
       widget.layoutChat.stop();
+      widget.mangaChat?.stop();
       widget.vm.flush();
       widget.layoutChat.flush();
+      widget.mangaChat?.flush();
+      widget.mangaChat?.manga?.flush();
       widget.vm.layout?.flush();
       await widget.config.flushed();
       await widget.local.stopServer();
@@ -349,6 +376,7 @@ class _PennaAppState extends State<PennaApp> with WindowListener {
           home: AppShell(
             vm: _vm,
             layoutChat: widget.layoutChat,
+            mangaChat: widget.mangaChat,
             config: widget.config,
             skills: widget.skills,
             archive: widget.archive,

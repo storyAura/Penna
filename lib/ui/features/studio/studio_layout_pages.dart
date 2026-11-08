@@ -241,6 +241,22 @@ extension StudioLayoutPages on StudioViewModel {
     (m) => m.copyWith(toolSummary: [?m.toolSummary, text].join(' · ')),
   );
 
+  /// 别的页面交过来一整张布局(漫画分镜的一页):另起一个系列放上去并换过去,
+  /// 用户原来的页不动;那边只有一张空白页、还没聊过时直接用它。放不了返回原因。
+  String? receiveLayout(Layout l, {String name = ''}) {
+    final board = layout;
+    if (!layoutOnly || board == null) return null;
+    if (isStreaming) return tr('区域控制的 Agent 正在忙,等它说完再试');
+    final blank = seriesLength == 1 && body.trim().isEmpty && messages.isEmpty;
+    if (!blank) {
+      final problem = addPage(newSeries: true);
+      if (problem != null) return problem;
+    }
+    if (name.isNotEmpty) renameSeries(series, name);
+    board.replace(l);
+    return null;
+  }
+
   /// 把一份布局 JSON 放到布局画板上(聊天里布局卡片上的按钮),放进眼前这一页。
   /// 读不了返回 false。
   bool adoptLayout(String json) => layout?.apply(json) ?? false;

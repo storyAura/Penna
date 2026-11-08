@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:penna/core/harness/manga/manga_gacha.dart';
 import 'package:penna/core/harness/lighting.dart';
 import 'package:penna/core/harness/local/caption_catalog.dart';
 import 'package:penna/core/harness/local/model_sources.dart';
@@ -70,6 +71,8 @@ void main() {
       for (final e in lightExtras) e.label,
       for (final r in lightRoleInfo.values) r.zh,
       uncategorized,
+      ...mangaFramings,
+      ...mangaAngles,
     ].where(_han.hasMatch);
     for (final MapEntry(key: lang, value: table) in tables.entries) {
       final missing = texts.where((t) => !table.containsKey(t)).toList();

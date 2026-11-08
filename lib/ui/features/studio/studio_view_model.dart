@@ -14,6 +14,8 @@ import '../../../core/harness/characters/character_mentions.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
+import '../../../core/harness/manga/manga_gacha.dart';
+import '../../../core/harness/manga/manga_script.dart';
 import '../../../core/harness/providers/grok_auth.dart';
 import '../../../core/harness/providers/llm_router.dart';
 import '../../../core/harness/providers/openai_provider.dart';
@@ -28,6 +30,7 @@ import '../../../data/services/translate_chain.dart';
 import '../../../data/services/translate_engines.dart';
 import '../layout/layout_board.dart';
 import '../local/local_model.dart';
+import '../manga/manga_board.dart';
 import '../poses/pose_library.dart';
 import 'chat_message.dart';
 import 'comfy_runner.dart';
@@ -44,6 +47,7 @@ part 'studio_context.dart';
 part 'studio_draft.dart';
 part 'studio_history.dart';
 part 'studio_layout_pages.dart';
+part 'studio_manga.dart';
 part 'studio_meter.dart';
 part 'studio_pages.dart';
 part 'studio_poses.dart';
@@ -176,6 +180,7 @@ class StudioViewModel extends ChangeNotifier {
     this.layout,
     this.layoutOnly = false,
     ComfyRunner? comfy,
+    this.manga,
   }) : comfy = comfy ?? ComfyRunner(config),
        _blocks = List.unmodifiable(blocks),
        _messages = List.unmodifiable(messages) {
@@ -235,6 +240,9 @@ class StudioViewModel extends ChangeNotifier {
 
   /// 副聊天有了要存的改动(说完一条、换了对话、删了历史):和工作台一起存。
   void sideChanged() => _scheduleSave();
+
+  /// 漫画分镜工作台那场对话的分镜作品;有它时这场对话只写分镜(见 [StudioManga])。
+  final MangaBoard? manga;
 
   /// 布局页右边那场对话用的:系统提示只讲布局,回复里的 `<layout>` 放到 [layout] 上,
   /// 不往成稿里送。界面和工作台的对话是同一个 `ChatPane`。

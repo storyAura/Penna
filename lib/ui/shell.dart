@@ -14,6 +14,8 @@ import 'features/layout/layout_board.dart';
 import 'features/layout/layout_page.dart';
 import 'features/local/local_model.dart';
 import 'features/local/local_page.dart';
+import 'features/manga/manga_board.dart';
+import 'features/manga/manga_page.dart';
 import 'features/notebook/notebook_page.dart';
 import 'features/poses/pose_library.dart';
 import 'features/poses/poses_page.dart';
@@ -35,7 +37,8 @@ const _studio = 0,
     _localPage = 4,
     _layoutPage = 5,
     _notebookPage = 6,
-    _posesPage = 7;
+    _posesPage = 7,
+    _mangaPage = 8;
 
 /// 图标栏上的页 id → 在 [Stack] 里排第几。
 const _pageOf = {
@@ -46,6 +49,7 @@ const _pageOf = {
   'layout': _layoutPage,
   'notebook': _notebookPage,
   'poses': _posesPage,
+  'manga': _mangaPage,
 };
 
 /// 应用外壳:最左图标栏,右边在「工作台」「档案库」「角色库」「姿势图库」「本地反推」「布局」「记事本」「设置」之间切换。
@@ -56,6 +60,7 @@ class AppShell extends StatefulWidget {
     required this.config,
     required this.skills,
     this.layoutChat,
+    this.mangaChat,
     this.archive,
     this.notebooks,
     this.local,
@@ -71,6 +76,9 @@ class AppShell extends StatefulWidget {
 
   /// 布局页右边那场对话;不给就用一个只在内存里的(测试用)。
   final StudioViewModel? layoutChat;
+
+  /// 漫画分镜那场对话(`manga` 是分镜作品);不给就用一个只在内存里的(测试用)。
+  final StudioViewModel? mangaChat;
 
   final StudioViewModel vm;
   final ConfigService config;
@@ -98,6 +106,8 @@ class _AppShellState extends State<AppShell> {
     widget.vm.poses ??= _poses;
     _layoutChat.local ??= _local;
     _layoutChat.poses ??= _poses;
+    _mangaChat.local ??= _local;
+    _mangaChat.poses ??= _poses;
     widget.vm.layoutAgent ??= _layoutChat;
     widget.vm.side ??= SideChat(widget.vm);
     _layoutChat.side ??= SideChat(_layoutChat);
@@ -132,6 +142,18 @@ class _AppShellState extends State<AppShell> {
         characterDict: widget.vm.characterDict,
         layout: _layout,
         layoutOnly: true,
+        comfy: widget.vm.comfy,
+      );
+
+  late final _mangaChat =
+      widget.mangaChat ??
+      StudioViewModel(
+        config: widget.config,
+        streamChat: widget.vm.streamChat,
+        skills: widget.skills,
+        characters: _characters,
+        characterDict: widget.vm.characterDict,
+        manga: MangaBoard(),
         comfy: widget.vm.comfy,
       );
 
@@ -231,6 +253,27 @@ class _AppShellState extends State<AppShell> {
                             config: widget.config,
                             onOpenStudio: () => _go(_studio),
                             onOpenSettings: () => _go(_settings),
+                          ),
+                        ),
+                        _Page(
+                          active: _page == _mangaPage,
+                          child: MangaWorkbench(
+                            board: _mangaChat.manga!,
+                            chat: _mangaChat,
+                            config: widget.config,
+                            onOpenSettings: () => _go(_settings),
+                            onToLayout: (layout, name) {
+                              final problem = _layoutChat.receiveLayout(
+                                layout,
+                                name: name,
+                              );
+                              if (problem == null) _go(_layoutPage);
+                              return problem;
+                            },
+                            onToStudio: (text) {
+                              _go(_studio);
+                              _toChat.value = (text: text, image: null);
+                            },
                           ),
                         ),
                         _Page(
