@@ -113,6 +113,7 @@ class _AppShellState extends State<AppShell> {
     widget.vm.layoutAgent ??= _layoutChat;
     widget.vm.side ??= SideChat(widget.vm);
     _layoutChat.side ??= SideChat(_layoutChat);
+    _mangaChat.side ??= SideChat(_mangaChat);
     if (widget.checkUpdates) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => checkForUpdate(

@@ -3,14 +3,13 @@ import 'package:flutter/material.dart';
 import '../../../core/harness/attachment.dart';
 import '../../../data/services/archive_store.dart';
 import '../../../data/services/config_service.dart';
-import '../../core/theme.dart';
+import '../../core/pane_splitter.dart';
 import 'activity_bar.dart';
 import 'right_bar.dart';
 import 'chat_pane.dart';
 import 'prompt_pane.dart';
 import 'studio_view_model.dart';
 
-const _splitterWidth = 4.0;
 const _minSplit = 0.3;
 const _maxSplit = 0.7;
 
@@ -103,7 +102,9 @@ class _StudioPageState extends State<StudioPage> {
       builder: (context, box) {
         // ComfyUI 侧栏的窄边只从对话栏里扣,工作区宽度不变。
         final usable =
-            box.maxWidth - _splitterWidth - ActivityBar.widthOf(open: false);
+            box.maxWidth -
+            PaneSplitter.width -
+            ActivityBar.widthOf(open: false);
         return ListenableBuilder(
           listenable: _changes,
           builder: (context, _) => Stack(
@@ -125,7 +126,7 @@ class _StudioPageState extends State<StudioPage> {
                         },
                       ),
                     ),
-                    _Splitter(
+                    PaneSplitter(
                       onDrag: (dx) => setState(() {
                         _split = (_split + dx / usable).clamp(
                           _minSplit,
@@ -170,29 +171,6 @@ class _StudioPageState extends State<StudioPage> {
           ),
         );
       },
-    );
-  }
-}
-
-class _Splitter extends StatelessWidget {
-  const _Splitter({required this.onDrag});
-
-  final ValueChanged<double> onDrag;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.resizeColumn,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragUpdate: (d) => onDrag(d.delta.dx),
-        child: Container(
-          width: _splitterWidth,
-          color: PennaColors.border,
-          alignment: Alignment.center,
-          child: Container(width: 2, height: 32, color: PennaColors.slate400),
-        ),
-      ),
     );
   }
 }

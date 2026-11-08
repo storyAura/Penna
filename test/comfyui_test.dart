@@ -764,4 +764,28 @@ void main() {
     expect(Directory(from).listSync().length, 1);
     expect(await moveComfyImages(to, to), 0);
   });
+
+  test('输出文件夹:只留图片,去掉 [output],历史里有的不重复', () {
+    final files = parseOutputFiles([
+      'b.png [output]',
+      'a.webp',
+      'note.txt [output]',
+      7,
+    ]);
+    expect([for (final f in files) f['filename']], ['b.png', 'a.webp']);
+    expect(parseOutputFiles('nope'), isEmpty);
+    final history = <ComfyShot>[
+      (
+        id: '1',
+        file: {'filename': 'b.png', 'subfolder': '', 'type': 'output'},
+        prompt: 'cat',
+        time: DateTime(2026),
+      ),
+    ];
+    final all = withOutputFiles(history, files);
+    expect(all.length, 2);
+    expect(all.first.prompt, 'cat');
+    expect(all.last.file['filename'], 'a.webp');
+    expect(all.last.id, isEmpty);
+  });
 }

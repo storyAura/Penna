@@ -2,35 +2,69 @@ part of 'prompt_pane.dart';
 
 // 工作区下半区:成稿汇总、最终提示词和历史提示词。
 
-class _SummarySection extends StatelessWidget {
+class _SummarySection extends StatefulWidget {
   const _SummarySection({required this.vm});
 
   final StudioViewModel vm;
 
   @override
+  State<_SummarySection> createState() => _SummarySectionState();
+}
+
+class _SummarySectionState extends State<_SummarySection> {
+  /// 眼前是「出图」页签。
+  bool _images = false;
+
+  StudioViewModel get vm => widget.vm;
+
+  void _showImages() => setState(() => _images = true);
+
+  @override
   Widget build(BuildContext context) {
     final prompt = vm.finalPrompt;
+    final runner = vm.comfy;
     return Column(
       children: [
         const Divider(height: 1),
-        // 页签留着:以后这里还会加别的分页。
         PennaBar(
           children: [
             Tooltip(
-              message: tr('放大查看'),
+              message: _images ? '' : tr('放大查看'),
               child: _Tab(
                 icon: Icons.inventory_2_outlined,
                 label: tr('成稿汇总'),
-                selected: true,
-                onTap: () => _showSummary(context, vm),
+                selected: !_images,
+                // 已经在这一页时再点是放大看。
+                onTap: _images
+                    ? () => setState(() => _images = false)
+                    : () => _showSummary(context, vm),
               ),
+            ),
+            const SizedBox(width: 6),
+            ListenableBuilder(
+              listenable: runner,
+              builder: (context, _) {
+                final progress = runner.progress;
+                return _Tab(
+                  icon: Icons.brush_outlined,
+                  label: !runner.running
+                      ? tr('出图')
+                      : progress == null
+                      ? tr('出图中')
+                      : tr('出图中 · {0}%', [(progress * 100).round()]),
+                  selected: _images,
+                  onTap: _showImages,
+                );
+              },
             ),
           ],
         ),
         Expanded(
           child: ColoredBox(
             color: PennaColors.editorBg,
-            child: prompt.isEmpty && vm.tags.isEmpty && vm.promptLog.isEmpty
+            child: _images
+                ? _ComfyStrip(runner: runner)
+                : prompt.isEmpty && vm.tags.isEmpty && vm.promptLog.isEmpty
                 ? Center(
                     child: Text(
                       tr('暂无内容'),
@@ -72,9 +106,20 @@ class _SummarySection extends StatelessWidget {
                             text: prompt,
                             toast: tr('已复制'),
                             onCopied: vm.recordPrompt,
-                            extra: _GenerateButton(vm: vm),
+                            extra: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (vm.seriesLength > 1) ...[
+                                  _SeriesGenerateButton(
+                                    vm: vm,
+                                    onStart: _showImages,
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
+                                _GenerateButton(vm: vm, onStart: _showImages),
+                              ],
+                            ),
                           ),
-                          _ComfyStrip(runner: vm.comfy),
                         ],
                         if (vm.promptLog.isNotEmpty) ...[
                           const SizedBox(height: 14),

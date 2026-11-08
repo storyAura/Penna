@@ -5,6 +5,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import '../../l10n/l10n.dart';
+import 'attachment.dart';
 import 'comfyui_progress.dart';
 
 export 'comfyui_progress.dart' show ComfyProgress;
@@ -263,6 +264,34 @@ List<ComfyShot> parseHistory(Object? json) {
   return [for (final (_, s) in ordered) s];
 }
 
+/// 读 `/internal/files/output` 的结果(输出文件夹最外层的文件名,新改的在前;
+/// 新版本的名字后面带 ` [output]`),只留图片,换成给 /view 用的文件。
+List<Map<String, Object?>> parseOutputFiles(Object? json) => [
+  if (json is List)
+    for (final e in json)
+      if (e is String)
+        if (e.replaceFirst(RegExp(r' \[output\]$'), '') case final name
+            when imageMimes.containsKey(
+              name.substring(name.lastIndexOf('.') + 1).toLowerCase(),
+            ))
+          {'filename': name, 'subfolder': '', 'type': 'output'},
+];
+
+/// 历史里的图加上输出文件夹里历史没记着的(ComfyUI 重启前出的,没有提示词和时刻,排在最后)。
+List<ComfyShot> withOutputFiles(
+  List<ComfyShot> history,
+  List<Map<String, Object?>> files,
+) {
+  String keyOf(Map<String, Object?> f) =>
+      '${f['type'] ?? 'output'}/${f['subfolder'] ?? ''}/${f['filename']}';
+  final known = {for (final s in history) keyOf(s.file)};
+  return [
+    ...history,
+    for (final f in files)
+      if (!known.contains(keyOf(f))) (id: '', file: f, prompt: '', time: null),
+  ];
+}
+
 /// 一次运行的结果里要下载的图:有存下来的(SaveImage,type 是 output)就只要它们,
 /// 没有才要预览图(PreviewImage,type 是 temp)。
 List<Map<String, Object?>> pickOutputImages(Object? outputs) {
@@ -389,6 +418,10 @@ class ComfyClient {
   /// 最近 [max] 单出过的图(ComfyUI 重启后它的历史就清空了)。
   Future<List<ComfyShot>> history({int max = 300}) async =>
       parseHistory(await _json('GET', '/history?max_items=$max'));
+
+  /// 输出文件夹最外层的图(新改的在前);老版本的 ComfyUI 没有这个接口,会抛 [ComfyException]。
+  Future<List<Map<String, Object?>>> outputFiles() async =>
+      parseOutputFiles(await _json('GET', '/internal/files/output'));
 
   /// 从 ComfyUI 的历史里去掉这几单(输出文件夹里的图片文件不删,ComfyUI 没有删文件的接口)。
   Future<void> forget(List<String> ids) =>

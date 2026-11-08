@@ -1297,7 +1297,7 @@ const en = <String, String>{
   '第 {0} 页 · {1} 格': 'Page {0} · {1} panels',
   '有锁着的格,格数对不上,没有重排':
       'Has locked panels and the panel count differs; layout unchanged',
-  '按这页漫画分镜写提示词:每一格写成一页,放进新系列「{0}」。每格都带上出场角色的外貌,用词前后一致;景别和角度照分镜。': 'Write prompts from this storyboard page: one page per panel, in a new series "{0}". Include each character\'s appearance in every panel with consistent wording; follow the storyboard\'s shot sizes and angles.',
+  '按这页漫画分镜写一张 {1} 格漫画的提示词:整页是一张图,不要拆成几页,放进新系列「{0}」。先写一段【整体】:画风、这是一页 {1} 格的漫画、分格怎么排、阅读顺序;再一格一段(【第1格】【第2格】……),写景别、角度、出场角色的外貌、动作和台词气泡。角色外貌每格用词一致。': 'Write the prompt for one {1}-panel manga page from this storyboard: the whole page is a single image, don\'t split it into pages; put it in a new series "{0}". Start with a 【整体】 section: art style, that this is a {1}-panel manga page, how the panels are laid out, and the reading order; then one section per panel (【第1格】, 【第2格】…) with shot size, angle, the characters\' appearance, actions and speech bubbles. Keep each character\'s appearance worded the same in every panel.',
   '漫画分镜工作台': 'Manga Storyboard',
   '这一格太小,拆不开': 'This panel is too small to split',
   '只能和同一刀切出来的相邻格合并,锁着的格不合并': 'Can only merge with the neighbor from the same cut; locked panels aren\'t merged',
@@ -1397,8 +1397,7 @@ const en = <String, String>{
   '动线': 'Flow',
   '整部作品存进档案库': 'Save the whole work to the Archive',
   '整页一张图:摆好格框交给区域控制的 Agent 写完': 'One image for the page: place the panel boxes and let the Region Control Agent finish it',
-  '一格一张图:让工作台的 Agent 逐格写提示词':
-      'One image per panel: the Workbench Agent writes a prompt for each',
+  '整页一张多格漫画:让工作台的 Agent 写提示词': 'The whole page as one multi-panel image: the Workbench Agent writes the prompt',
   '系列名': 'Series name',
   '这个系列的设定和每一页都会删掉,可以撤销。':
       'This series\' setting and every page will be deleted. You can undo.',
@@ -1455,4 +1454,12 @@ const en = <String, String>{
   '背面': 'Back',
   '女': 'Female',
   '男': 'Male',
+  '更早': 'Earlier',
+  '重新生成': 'Regenerate',
+  '系列出图': 'Series images',
+  '这个系列有 {0} 页,要全部排进出图队列吗?':
+      'This series has {0} pages. Queue them all for images?',
+  '全部出图': 'Generate all',
+  '已排进出图队列 {0} 张': '{0} queued for images',
+  '这个系列从第 1 页起按顺序出图': 'Generate the series in order, from page 1',
 };

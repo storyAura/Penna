@@ -41,13 +41,20 @@ extension StudioManga on StudioViewModel {
       '- 格里画着出场角色的人偶参考。要指定谁摆什么姿势,在那一格写 "poses": {"阿禾": "叉腰"};'
       '姿势只能用这些:${mangaPoses.map((p) => p.name).join('、')}。不写就按 action 里的字自动认。\n'
       '- 正文只用一两句说做了什么,不要把分镜在正文里再抄一遍。分镜本身不出图:'
-      '用户要出图时,告诉他点顶栏的「交给区域控制」(整页一张图,带格子的框)或「交给工作台」(每格写一条提示词)。';
+      '用户要出图时,告诉他点顶栏的「交给区域控制」(整页一张图,带格子的框)或「交给工作台」(整页写成一张多格漫画的提示词)。';
+
+  /// 副聊天的系统提示里带的:分镜的写法和眼前的作品。
+  String get mangaGuide =>
+      mangaOnly ? '$_mangaAgentPrompt\n\n${manga!.agentView}' : '';
+
+  /// 一条回复里完整的 `<storyboard>` 放进分镜;返回要记在回复上的话(主聊天、副聊天共用)。
+  String? placeStoryboard(String reply) =>
+      manga?.applyReply(splitNewSkill(reply).prose);
 
   /// 回复正常结束时:完整的 `<storyboard>` 放进分镜,记一句在回复上。
   void _deliverManga() {
-    final board = manga;
-    if (board == null || _messages.isEmpty) return;
-    final note = board.applyReply(splitNewSkill(_messages.last.text).prose);
+    if (manga == null || _messages.isEmpty) return;
+    final note = placeStoryboard(_messages.last.text);
     if (note != null && note.isNotEmpty) _note(note);
   }
 }

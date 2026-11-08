@@ -8,6 +8,7 @@ import '../../../core/harness/attachment.dart';
 import '../../../core/harness/layout.dart';
 import '../../../data/services/archive_store.dart';
 import '../../../data/services/config_service.dart';
+import '../../core/pane_splitter.dart';
 import '../../core/smooth_scroll.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
@@ -35,7 +36,9 @@ const _propsWidth = 340.0;
 
 /// 镜头停下这么久才算"调好了",提醒按视角改描述。
 const _settleDelay = Duration(milliseconds: 1200);
-const _chatWidth = 420.0;
+
+/// 对话栏最窄多宽(拖分割线能拉宽)。
+const _minChatWidth = 420.0;
 
 /// 区域控制工作台:左边写各块的属性,中间在画布上画框,右边和布局 Agent 对话,
 /// 得到 MOSS-Image 的布局 JSON。能存进档案库的「区域控制」分区。
@@ -70,6 +73,9 @@ class LayoutPage extends StatefulWidget {
 }
 
 class _LayoutPageState extends State<LayoutPage> {
+  /// 对话栏宽多少(拖分割线改,不存盘)。
+  double _chatWidth = _minChatWidth;
+
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
 
@@ -390,9 +396,21 @@ class _LayoutPageState extends State<LayoutPage> {
                         ),
                         // 3D 视图的摄像机一栏贴在画布右边,不盖住画布。
                         if (board.threeD) CameraPanel(board: board),
-                        Container(
-                          width: _chatWidth,
-                          decoration: BoxDecoration(border: Border(left: side)),
+                        PaneSplitter(
+                          onDrag: (dx) => setState(
+                            () => _chatWidth = chatPaneWidth(
+                              context,
+                              _chatWidth - dx,
+                              _minChatWidth,
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: chatPaneWidth(
+                            context,
+                            _chatWidth,
+                            _minChatWidth,
+                          ),
                           child: ListenableBuilder(
                             listenable: Listenable.merge([
                               widget.chat,

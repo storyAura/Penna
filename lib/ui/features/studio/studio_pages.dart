@@ -369,6 +369,12 @@ extension StudioPages on StudioViewModel {
         ),
   ];
 
+  /// 第 [s] 个系列里有字的每一页交付出去的提示词,按页的先后(系列出图用)。
+  List<String> finalPromptsOf(int s) => [
+    for (final p in pages)
+      if (p.series == s) _joined(labels: false, blocks: p.blocks),
+  ].where((t) => t.trim().isNotEmpty).toList();
+
   /// 有哪些系列(按页的先后)。
   List<int> get seriesIds => [
     for (final (i, p) in pages.indexed)

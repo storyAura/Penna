@@ -15,6 +15,7 @@ import '../../../data/services/archive_store.dart';
 import '../../../data/services/config_service.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
+import '../../core/pane_splitter.dart';
 import '../../core/scroll_strip.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
@@ -31,7 +32,9 @@ part 'manga_gacha_bar.dart';
 part 'manga_series_strip.dart';
 
 const _inspectorWidth = 320.0;
-const _chatWidth = 420.0;
+
+/// 对话栏最窄多宽(拖分割线能拉宽)。
+const _minChatWidth = 420.0;
 
 /// 交给区域控制:整个系列每页换成的布局、先看第几页、系列名、
 /// 请那边 Agent 润色那一页的话、那一页的人偶参考图。放不上或发不出返回原因。
@@ -43,7 +46,7 @@ typedef MangaToLayout = String? Function(
   Attachment? image,
 );
 
-/// 交给工作台:请工作台 Agent 逐格写提示词的话、人偶参考图。发不出返回原因。
+/// 交给工作台:请工作台 Agent 把整页写成一张多格漫画的话、人偶参考图。发不出返回原因。
 typedef MangaToStudio = String? Function(String brief, Attachment? image);
 
 /// 漫画分镜工作台:左边设定和本格,中间一个个系列、一页页的分格(抽卡在下面),
@@ -80,6 +83,9 @@ class MangaWorkbench extends StatefulWidget {
 class _MangaWorkbenchState extends State<MangaWorkbench> {
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
+
+  /// 对话栏宽多少(拖分割线改,不存盘)。
+  double _chatWidth = _minChatWidth;
 
   MangaBoard get board => widget.board;
 
@@ -251,9 +257,21 @@ class _MangaWorkbenchState extends State<MangaWorkbench> {
                           ],
                         ),
                       ),
-                      Container(
-                        width: _chatWidth,
-                        decoration: BoxDecoration(border: Border(left: side)),
+                      PaneSplitter(
+                        onDrag: (dx) => setState(
+                          () => _chatWidth = chatPaneWidth(
+                            context,
+                            _chatWidth - dx,
+                            _minChatWidth,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: chatPaneWidth(
+                          context,
+                          _chatWidth,
+                          _minChatWidth,
+                        ),
                         child: ListenableBuilder(
                           listenable: Listenable.merge([
                             widget.chat,
@@ -418,7 +436,7 @@ class _TopBar extends StatelessWidget {
         PennaButton(
           label: tr('交给工作台'),
           icon: Icons.space_dashboard_outlined,
-          tooltip: tr('一格一张图:让工作台的 Agent 逐格写提示词'),
+          tooltip: tr('整页一张多格漫画:让工作台的 Agent 写提示词'),
           background: PennaColors.primary,
           foreground: Colors.white,
           onPressed: onToStudio,

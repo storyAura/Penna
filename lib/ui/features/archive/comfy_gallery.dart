@@ -20,10 +20,14 @@ const _gap = 10.0;
 /// 一次最多读多少单(每单可能出好几张)。
 const _maxRuns = 300;
 
-/// 档案库的「图片」分区:直接读 ComfyUI 出过的图(`/history`),在 ComfyUI 里跑的也算。
+/// 输出文件夹里历史没记着的,最多再列多少张。
+const _maxFiles = 300;
+
+/// 档案库的「图片」分区:读 ComfyUI 的输出文件夹(`/internal/files/output`),
+/// 再用出图历史(`/history`)补上提示词和时刻,在 ComfyUI 里跑的也算。
 /// 点开看原图;右键复制图片、复制当时的提示词、放回成稿。
-// ponytail: ComfyUI 重启后它的历史就清空了,这里也跟着没了(Penna 出的图另存在图片位置里);
-// 要长期留着就把读到的记进本地。
+// ponytail: 历史没记着的(ComfyUI 重启前出的)没有提示词和时刻,归在「更早」里,
+// 只读输出文件夹最外层,子文件夹里的不列;要时刻得逐张问 /view 的 Last-Modified。
 class ComfyGallery extends StatefulWidget {
   const ComfyGallery({super.key, required this.vm, required this.onOpenStudio});
 
@@ -76,7 +80,13 @@ class _ComfyGalleryState extends State<ComfyGallery> {
     List<ComfyShot>? shots;
     String? error;
     try {
-      shots = await runner.client.history(max: _maxRuns);
+      final client = runner.client;
+      final history = await client.history(max: _maxRuns);
+      // 老版本没有列文件的接口:那就只有历史里的。
+      final files = await client.outputFiles().catchError(
+        (Object _) => const <Map<String, Object?>>[],
+      );
+      shots = withOutputFiles(history, files.take(_maxFiles).toList());
     } on ComfyException catch (e) {
       error = e.message;
     } on Object catch (e) {
@@ -124,7 +134,8 @@ class _ComfyGalleryState extends State<ComfyGallery> {
     final picked = await popMenu(context, at, [
       copyPicture,
       if (shot.prompt.isNotEmpty) ...[copyPrompt, restore],
-      delete,
+      // 只在输出文件夹里、历史没记着的没法删(ComfyUI 没有删文件的接口)。
+      if (shot.id.isNotEmpty) delete,
     ]);
     if (!mounted) return;
     if (picked == delete) return _delete(shot);
@@ -301,7 +312,7 @@ String dayKey(DateTime? t) =>
 
 /// 组标题:今天、昨天,别的写日期。
 String dayLabel(String key) {
-  if (key.isEmpty) return tr('未知日期');
+  if (key.isEmpty) return tr('更早');
   final now = DateTime.now();
   if (key == dayKey(now)) return tr('今天');
   if (key == dayKey(now.subtract(const Duration(days: 1)))) return tr('昨天');

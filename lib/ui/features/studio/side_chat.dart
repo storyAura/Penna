@@ -9,6 +9,7 @@ import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
+import '../../../core/harness/manga/manga_script.dart' show storyboardTag;
 import '../../../core/harness/providers/llm_router.dart';
 import '../../../core/harness/tags/tag_search.dart';
 import '../../../l10n/l10n.dart';
@@ -224,7 +225,25 @@ class SideChat extends ChangeNotifier {
     return _start(history, time);
   }
 
-  String get _systemPrompt => main.layoutOnly ? _layoutPrompt : _draftPrompt;
+  String get _systemPrompt => main.mangaOnly
+      ? _mangaPrompt
+      : main.layoutOnly
+      ? _layoutPrompt
+      : _draftPrompt;
+
+  /// 漫画分镜那边:看分镜、改分镜,交的是 `<storyboard>`(2026-11-09 用户要求)。
+  String get _mangaPrompt => [
+    '你是 Penna 漫画分镜工作台的副聊天助手:用户在主聊天里和分镜 Agent 设计分镜,'
+        '在这里和你另开一场对话,让你帮着看、帮着改:回答问题、点评、出主意;'
+        '要改分镜时照下面分镜 Agent 的写法在回复最后写 <$storyboardTag>,程序会放进用户的分镜。'
+        '不写 <draft>、<layout>。下面「你是分镜 Agent」那段是写法,照着写就行。',
+    '用户要你参考主聊天里说过的话、或问主聊天的 Agent 说了什么时,只输出 <$readMainChat></$readMainChat>,'
+        '程序把主聊天最近的记录交给你,你再接着回答。',
+    main.mangaGuide,
+    main.webSearchGuide,
+    main.localGuide,
+    main.lookupGuide,
+  ].where((s) => s.isNotEmpty).join('\n\n');
 
   /// 区域控制那边:看画板、改布局,交的是完整的 `<layout>`。
   String get _layoutPrompt => [
@@ -259,6 +278,7 @@ class SideChat extends ChangeNotifier {
 
   /// 回复里的成稿放进工作区,和主聊天的一样;放不上的记在这条回复上。
   void _deliver() {
+    if (main.mangaOnly) return _deliverManga();
     if (main.layoutOnly) return _deliverLayout();
     final drafts = splitDrafts(_messages.last.text).drafts;
     final ask = _messages.where((m) => m.fromUser && !m.tool).lastOrNull;
@@ -343,6 +363,16 @@ class SideChat extends ChangeNotifier {
     // 布局放好之后再出图,和主聊天一样。
     final reply = _messages.last;
     main.deliverComfy(reply.text, reply.time, _updateAt(reply.time));
+  }
+
+  /// 漫画分镜那边:写完的 `<storyboard>` 放进分镜,记一笔在这条回复上。
+  void _deliverManga() {
+    final note = main.placeStoryboard(_messages.last.text);
+    if (note != null && note.isNotEmpty) {
+      _update(
+        (m) => m.copyWith(toolSummary: [?m.toolSummary, note].join(' · ')),
+      );
+    }
   }
 
   /// 以 [history](最后一条是用户消息)为上文开始一条回复。

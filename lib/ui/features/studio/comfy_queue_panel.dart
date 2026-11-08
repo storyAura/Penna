@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -163,22 +164,26 @@ class _JobTile extends StatelessWidget {
               ],
             ),
           ),
-          if (active)
-            Tooltip(
-              message: job.state == ComfyJobState.running ? tr('停止') : tr('撤掉'),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(4),
-                onTap: () => runner.cancel(job.id),
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(
-                    Icons.close,
-                    size: 13,
-                    color: PennaColors.slate500,
-                  ),
+          Tooltip(
+            message: active
+                ? (job.state == ComfyJobState.running ? tr('停止') : tr('撤掉'))
+                : tr('重新生成'),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(4),
+              // 重新生成是同一条提示词再排一单,种子会重摇。
+              onTap: active
+                  ? () => runner.cancel(job.id)
+                  : () => unawaited(runner.generate(job.prompt)),
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(
+                  active ? Icons.close : Icons.refresh,
+                  size: active ? 13 : 15,
+                  color: active ? PennaColors.slate500 : PennaColors.primary,
                 ),
               ),
             ),
+          ),
         ],
       ),
     );
@@ -186,7 +191,7 @@ class _JobTile extends StatelessWidget {
 
   /// 出完的是第一张图的缩略图,点开看大图;别的是一个图标占位。
   Widget _thumb(BuildContext context) {
-    const size = 46.0;
+    const size = 64.0;
     final path = job.images.firstOrNull;
     final box = BoxDecoration(
       color: PennaColors.slate100,
@@ -217,7 +222,7 @@ class _JobTile extends StatelessWidget {
           decoration: box,
           child: Image.file(
             File(path),
-            cacheWidth: 112,
+            cacheWidth: 160,
             fit: BoxFit.cover,
             errorBuilder: (_, _, _) => Icon(
               Icons.broken_image_outlined,

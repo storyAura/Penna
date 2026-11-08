@@ -8,7 +8,7 @@ import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
 
 const _closedWidth = 30.0;
-const _openWidth = 230.0;
+const _openWidth = 320.0;
 
 /// 左侧栏展开的是哪一块。
 enum _Panel { actions, queue }
