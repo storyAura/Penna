@@ -109,50 +109,33 @@ extension StudioAutoLookup on StudioViewModel {
   bool wantsWebSearch(String reply) =>
       _webQueries(splitNewSkill(reply).prose).isNotEmpty;
 
-  /// 联网搜索:用能搜的接口(不一定是写回复的这个)查好。一个接口搜不了就换下一个,
-  /// 都不行的如实告诉模型。
+  /// 联网搜索:用能搜的接口(不一定是写回复的这个)查好,见 [searchInTurn]。
   // ponytail: 用户点停止时这里不掐断,搜完的结果丢掉就是,最多多花一次搜索的钱。
   Future<Map<String, WebResult>> _searchWeb(List<String> asked) async {
     if (asked.isEmpty) return const {};
-    final cfg = config.config;
-    final chain = webSearchChain(cfg);
-    final found = await Future.wait([
-      for (final query in asked)
-        () async {
-          try {
-            final text = await joinWithin(
-              streamWithFailover(
-                _requests(
-                  cfg,
-                  chain,
-                  cfg.activePreset,
-                  [
-                    {'role': 'system', 'content': webSearchSystem},
-                    {'role': 'user', 'content': query},
-                  ],
-                  piercing: '',
-                  webSearch: true,
-                ),
-                this.streamChat,
-              ),
-              webSearchDeadline,
-            );
-            return (text: text, failed: false);
-          } on TimeoutException {
-            return (
-              text: tr('等了 {0} 秒没有搜完', [webSearchDeadline.inSeconds]),
-              failed: true,
-            );
-          } on Object catch (e) {
-            // 认不出的只报类型,原文可能带着 Key。
-            return (
-              text: e is LlmException ? e.message : '${e.runtimeType}',
-              failed: true,
-            );
-          }
-        }(),
-    ]);
+    final found = await Future.wait(asked.map(_searchOne));
     return {for (final (i, query) in asked.indexed) query: found[i]};
+  }
+
+  Future<WebResult> _searchOne(String query) {
+    final cfg = config.config;
+    return searchInTurn(
+      webSearchChain(cfg),
+      (llm) => streamWithFailover(
+        _requests(
+          cfg,
+          [llm],
+          cfg.activePreset,
+          [
+            {'role': 'system', 'content': webSearchSystem},
+            {'role': 'user', 'content': query},
+          ],
+          piercing: '',
+          webSearch: true,
+        ),
+        this.streamChat,
+      ),
+    );
   }
 
   /// 副聊天的回复里写了 `<search-tags>` / `<search-character>` / `<web-search>`:
@@ -175,7 +158,12 @@ extension StudioAutoLookup on StudioViewModel {
     final calls = local == null
         ? const <LocalToolCall>[]
         : splitLocalTools(prose).calls.take(_maxLocalCalls).toList();
-    if (queries.isEmpty && names.isEmpty && webs.isEmpty && calls.isEmpty) {
+    final reads = layoutOnly || mangaOnly ? null : _readSeries(prose);
+    if (queries.isEmpty &&
+        names.isEmpty &&
+        webs.isEmpty &&
+        calls.isEmpty &&
+        reads == null) {
       return null;
     }
     final (results, web) = await (_findTags(queries), _searchWeb(webs)).wait;
@@ -192,6 +180,7 @@ extension StudioAutoLookup on StudioViewModel {
           formatCharacterResults(people, formOf: characterDict?.parentOf),
         if (web.isNotEmpty) formatWebResults(web),
         if (ran.isNotEmpty) _localResults(ran),
+        ?reads?.text,
       ].join('\n\n'),
       // 联网搜索不写在这:界面从 [text] 里读出来,单独显示一块。
       note: [
@@ -202,9 +191,18 @@ extension StudioAutoLookup on StudioViewModel {
         if (people.isNotEmpty)
           tr('查了角色库 · {0} 个', [people.values.expand((h) => h).length]),
         for (final r in ran) r.note,
+        ?reads?.note,
       ].join(' · '),
     );
   }
+
+  /// 副聊天的回复里有没有要程序替它做的查询([lookupFor] 管的那几种)。
+  bool wantsLookup(String reply) =>
+      splitTagSearch(reply).queries.isNotEmpty ||
+      splitCharacterTags(reply).queries.isNotEmpty ||
+      splitLocalTools(reply).calls.isNotEmpty ||
+      splitToolTag(reply, readSeriesTag).queries.isNotEmpty ||
+      wantsWebSearch(reply);
 
   /// 副聊天、区域控制的系统提示里讲本地反推怎么用:没关掉「本地反推」时才有。
   String get localGuide =>

@@ -146,6 +146,7 @@ Future<void> main() async {
   // Agent 在对话里要用本地模型反推时,交给本地反推页这一份。
   vm.local = local;
   vm.poses = poses;
+  vm.archive = archive;
   // 区域控制那场对话同样能本地反推、附姿势参考(两个工作台本是同一类)。
   layoutChat.local = local;
   layoutChat.poses = poses;

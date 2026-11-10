@@ -2,10 +2,10 @@ part of 'studio_view_model.dart';
 
 /// 操作记录:记一笔、把几笔合成一笔、回到某一步之前或之后。
 ///
-/// 记录是一棵树。每一笔拍下做之前的样子,做完之后的样子在换走时补上;
-/// 回到某一步不删记录,只是把工作台换成那时的样子、把「眼前」([_head])指过去。
-/// 回到前面以后再做新的,原来往后那几笔就成了另一个分支,还能切回去(用户要求:
-/// 以前回滚会删掉后面的记录,只能靠「回滚」那一笔再滚回去,来回切几次就对不上了)。
+/// 记录是一条线,和撤销 / 重做一样:每一笔拍下做之前的样子,做完之后的样子在换走时补上;
+/// 回到某一步不删记录,只是把工作台换成那时的样子、把「眼前」([_head])指过去,
+/// 后面那几笔变灰(撤回来的),点它们能重做;这时再做新的操作,灰的就扔掉。
+/// (2026-11-11 用户反馈以前那棵带分支的树看着乱,改成这样。)
 extension StudioHistory on StudioViewModel {
   /// 工作台现在的样子。里面都是不可变的东西,所以只是记个引用,不费地方。
   _Snapshot _snapshot() => (
@@ -36,21 +36,29 @@ extension StudioHistory on StudioViewModel {
     _Snapshot before, {
     List<String> details = const [],
   }) {
+    // 撤回来的那几笔扔掉(新的在前,所以是眼前这一笔前面的那些);
     // 眼前这一笔做完之后的样子,就是这一笔做之前的样子。
-    final head = _head;
-    _actions = List.unmodifiable([
-      for (final a in _actions) a.id == head ? a._withAfter(before) : a,
-    ]);
+    final kept = _actions.skip(_headIndex).toList();
     final made = ActionRecord._(
       id: _nextActionId++,
       time: DateTime.now(),
       text: text,
-      parent: head,
       before: before,
       details: List.unmodifiable(details),
     );
-    _actions = List.unmodifiable([made, ..._actions].take(_maxActions));
+    _actions = List.unmodifiable(
+      [
+        made,
+        for (final (i, a) in kept.indexed) i == 0 ? a._withAfter(before) : a,
+      ].take(_maxActions),
+    );
     _head = made.id;
+  }
+
+  /// 眼前这一笔在 [actions] 里的位置;在最开始时是 [actions] 的长度。
+  int get _headIndex {
+    final i = _actions.indexWhere((a) => a.id == _head);
+    return i < 0 ? _actions.length : i;
   }
 
   /// 把 [run] 里记的几笔合成一笔,回到它之前时一起撤(用户反馈:Agent 一条回复里的
@@ -91,18 +99,30 @@ extension StudioHistory on StudioViewModel {
   String _pageTitle(int i) =>
       tr('{0} · 第 {1} 页', [seriesName(_pages[i].series), pageNumber(i)]);
 
-  /// 回到 [actions] 里第 [index] 笔之前的样子(它和从它往后做的都撤掉,但都还留在记录里)。
+  /// 回到 [actions] 里第 [index] 笔之前的样子(它和它之后的都算撤回来的,记录还留着)。
   /// 生成中不能换,返回原因。
-  String? rollback(int index) => _goTo(index, after: false);
+  String? rollback(int index) => index + 1 < _actions.length
+      ? restoreTo(index + 1)
+      : _goTo(index, start: true);
 
-  /// 回到 [actions] 里第 [index] 笔做完之后的样子:撤掉的能重做,别的分支也能切过去。
-  String? restoreTo(int index) => _goTo(index, after: true);
+  /// 回到 [actions] 里第 [index] 笔做完之后的样子。
+  String? restoreTo(int index) => _goTo(index);
 
-  String? _goTo(int index, {required bool after}) {
+  /// 撤销眼前这一笔。已经在最开始时什么也不做。
+  String? undo() => _headIndex < _actions.length ? rollback(_headIndex) : null;
+
+  /// 重做撤回来的下一笔。
+  String? redo() => _headIndex > 0 ? restoreTo(_headIndex - 1) : null;
+
+  bool get canUndo => _headIndex < _actions.length;
+  bool get canRedo => _headIndex > 0;
+
+  /// 换到第 [index] 笔做完之后;[start] 为真时换到最早那一笔做之前(最开始)。
+  String? _goTo(int index, {bool start = false}) {
     if (index < 0 || index >= _actions.length) return null;
     if (isStreaming) return tr('正在生成,请先停止当前回复');
     final target = _actions[index];
-    if (after && target.id == _head) return null;
+    if (!start && target.id == _head) return null;
     // 先把眼前的样子(连同那之后手打的字)记在眼前这一笔上,切回来还在。
     final now = _snapshot();
     final head = _head;
@@ -110,34 +130,23 @@ extension StudioHistory on StudioViewModel {
       for (final a in _actions) a.id == head ? a._withAfter(now) : a,
     ]);
     final fresh = _actions[index];
-    if (after) {
+    if (start) {
+      _restore(fresh._before);
+      _head = null;
+    } else {
       _restore(fresh._after ?? now);
       _head = fresh.id;
-    } else {
-      _restore(fresh._before);
-      // 它的上一笔已经太旧、被删掉了:就当回到了最开始。
-      final parent = fresh.parent;
-      _head = _actions.any((a) => a.id == parent) ? parent : null;
     }
     // 区域控制那场对话要把这页摆回画板上。
     _changed();
     return null;
   }
 
-  /// 第 [index] 笔和眼前的关系:就是眼前、走到眼前做过的、撤回来的、别的分支上的。
+  /// 第 [index] 笔和眼前的关系。
   ActionState stateOf(int index) {
-    final a = _actions[index];
-    if (a.id == _head) return ActionState.current;
-    final byId = {for (final r in _actions) r.id: r};
-    // 从眼前往回走:路上的都是做过的。
-    for (var at = byId[_head]; at != null; at = byId[at.parent]) {
-      if (at.id == a.id) return ActionState.done;
-    }
-    // 从它往回走能走到眼前(或走到最开始而眼前就是最开始):是撤回来的。
-    for (ActionRecord? at = a; at != null; at = byId[at.parent]) {
-      if (at.parent == _head) return ActionState.undone;
-    }
-    return ActionState.branch;
+    final head = _headIndex;
+    if (index == head) return ActionState.current;
+    return index > head ? ActionState.done : ActionState.undone;
   }
 
   /// 把工作台整个换成 [s] 那时的样子。

@@ -20,10 +20,15 @@ class CharacterMentions {
 
   late final Map<String, String> _index = () {
     final common = <String>{};
+    // 普通标签里出现过的英文单词(black hair 的 black):单个词的角色名是这种词时不认,
+    // 不然「white shirt」会查出 white (among us)(用户反馈)。带括号的标签不拆:
+    // `ganyu_(cosplay)` 里的 ganyu 就是人名。
+    final words = <String>{};
     for (final t in tags?.all ?? const <TagHit>[]) {
       final name = t.tag.replaceAll('_', ' ');
       if (dict.byName(name) != null) continue;
       common.add(name);
+      if (!name.contains('(')) words.addAll(name.split(' '));
       // 含义里也混着英文(`ganyu (cosplay)` 那条写着 Ganyu):只收中日文的。
       for (final w in t.zh.split(_wordSeparators)) {
         if (_cjk.hasMatch(w)) common.add(w.toLowerCase());
@@ -37,7 +42,7 @@ class CharacterMentions {
     for (final r in dict.all) {
       final paren = r.name.indexOf(' (');
       for (final n in [r.name, if (paren > 0) r.name.substring(0, paren)]) {
-        if (n.length >= _minLatin) put(n, r.name);
+        if (n.length >= _minLatin && !words.contains(n)) put(n, r.name);
       }
       // 别名排在前面的是正经译名,后面混着 pixiv 式的标签(「雨天」「小猫」、CP 名「刻甘」),
       // 所以只认前几个;两个字的只认排第一的那个。

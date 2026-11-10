@@ -66,6 +66,23 @@ void main() {
     expect(splitPeek('a < b', readSideChat).prose, 'a < b');
   });
 
+  test('副聊天记下接口报的用量,上下文圆环用它;没报过时按文字估', () async {
+    final seen = <LlmRequest>[];
+    final (vm, side) = _chats(['好的'], seen);
+    final before = side.meter!;
+    expect(before.estimated, isTrue);
+    expect(before.api, 'B');
+
+    side.send('你好');
+    await pumpEventQueue();
+    seen.single.onUsage!((input: 900, cached: 0, output: 100));
+
+    final after = side.meter!;
+    expect(side.messages.last.usage?.input, 900);
+    expect(after.estimated, isFalse);
+    expect(after.used, 1000);
+  });
+
   test('副聊天写 <reverse-image> 时程序真去跑本地反推,结果交还给它再接着写', () async {
     final seen = <LlmRequest>[];
     final (vm, side) = _chats([

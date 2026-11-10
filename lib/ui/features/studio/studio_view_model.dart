@@ -24,6 +24,7 @@ import '../../../core/harness/tags/tag_dictionary.dart';
 import '../../../core/harness/tags/tag_search.dart';
 import '../../../core/harness/web_search.dart';
 import '../../../data/models/app_config.dart';
+import '../../../data/services/archive_store.dart';
 import '../../../data/services/character_store.dart';
 import '../../../data/services/config_service.dart';
 import '../../../data/services/skill_store.dart';
@@ -50,9 +51,11 @@ part 'studio_history.dart';
 part 'studio_layout_pages.dart';
 part 'studio_manga.dart';
 part 'studio_meter.dart';
+part 'studio_page_batch.dart';
 part 'studio_pages.dart';
 part 'studio_poses.dart';
 part 'studio_rewrite.dart';
+part 'studio_series_refs.dart';
 part 'studio_skills.dart';
 part 'studio_storage.dart';
 
@@ -68,15 +71,13 @@ typedef QueuedMessage = ({
 });
 
 /// 操作记录里的一笔:什么时候,做了什么,做之前、做之后工作台的样子。
-/// 记录是一棵树:每一笔记着做它时眼前是哪一笔之后([parent]),回到前面再做别的,
-/// 原来那几笔就成了另一个分支,还能切回去(见 [StudioHistory])。
+/// 记录是一条线(见 [StudioHistory]):撤回来的还在,再做新的就扔掉。
 @immutable
 class ActionRecord {
   const ActionRecord._({
     required this.id,
     required this.time,
     required this.text,
-    required this.parent,
     required _Snapshot before,
     this.details = const [],
     _Snapshot? after,
@@ -93,9 +94,6 @@ class ActionRecord {
   /// 合成这一笔的那几步(Agent 一条回复里新开页、起名、采纳……);只有一步时是空的。
   final List<String> details;
 
-  /// 做这一步时眼前是哪一笔之后的样子;null 是最开始(或那一笔已经太旧、删掉了)。
-  final int? parent;
-
   final _Snapshot _before;
 
   /// 做完之后的样子。眼前这一笔的就是现在,换走时才补上,所以可能是 null。
@@ -105,7 +103,6 @@ class ActionRecord {
     id: id,
     time: time,
     text: text,
-    parent: parent,
     before: _before,
     details: details,
     after: after,
@@ -120,11 +117,8 @@ enum ActionState {
   /// 走到眼前之前做过的。
   done,
 
-  /// 从眼前往后做过、又撤回来的(「回到这一步之后」能重做)。
+  /// 撤回来的:点它能重做;这时再做新的操作,它就被扔掉。
   undone,
-
-  /// 别的分支上的:回到前面以后又做了别的,它们留在原来那条路上。
-  branch,
 }
 
 const _maxActions = 100;
@@ -218,6 +212,10 @@ class StudioViewModel extends ChangeNotifier {
   /// 姿势图库:装了的话 Agent 问过用户后能写 `<pose-ref>` 附参考图([StudioPoses])。
   /// 同 [local] 建好之后才接上。
   PoseLibrary? poses;
+
+  /// 档案库:Agent 看得到里面存了哪些系列,写 `<read-series>` 能读全文([StudioSeriesRefs])。
+  /// 同 [local] 建好之后才接上。
+  ArchiveStore? archive;
 
   /// 区域控制工作台的那场对话(`layoutOnly`)。主工作区的 Agent 写 `<ask-layout>` 时,
   /// 把活转给它,等它把布局放到画板上,再把 JSON 拿回主工作区的新系列。

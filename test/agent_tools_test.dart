@@ -1130,6 +1130,26 @@ void main() {
       expect(vm.messages.last.text, '查好了');
     });
 
+    test('排第一的接口一直不说话:到点换下一个能搜的', () async {
+      final hung = StreamController<String>();
+      addTearDown(hung.close);
+      final tried = <String>[];
+      final found = await searchInTurn([_grok, _gemini], (llm) {
+        tried.add(llm.id);
+        return llm.id == 'gk' ? hung.stream : Stream.value('维尔汀是灰发');
+      }, limit: const Duration(milliseconds: 50));
+      expect(tried, ['gk', 'gm']);
+      expect(found, (text: '维尔汀是灰发', failed: false));
+
+      final failed = await searchInTurn(
+        [_grok, _gemini],
+        (llm) => llm.id == 'gk' ? Stream.error('x') : const Stream.empty(),
+        limit: const Duration(milliseconds: 50),
+      );
+      expect(failed.failed, isTrue);
+      expect(failed.text.split('\n'), hasLength(2));
+    });
+
     test('结果里写的假标签不算一次搜索;失败的认得出来', () {
       final text = formatWebResults({
         '甲': (

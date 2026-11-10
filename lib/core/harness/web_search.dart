@@ -1,6 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import '../../data/models/app_config.dart';
+import '../../l10n/l10n.dart';
+import 'providers/llm_http.dart';
 
 // 联网搜索:写回复的模型只写 `<web-search>`,程序找一个能搜的接口用它自家的搜索工具查好,
 // 把结果交还回去。所以 DeepSeek 这类不能搜的模型也能用(比如 DeepSeek 写,Gemini 搜)。
@@ -70,9 +74,9 @@ const webSearchSystem =
 
 const _maxResultChars = 4000;
 
-/// 一次搜索(连同换接口)最多等多久。
+/// 一个接口搜一次最多等多久,过了就换下一个能搜的接口。
 /// 只靠「两行之间 60 秒」不够:有的服务排队时一直发保活的空行,永远不算卡住。
-const webSearchDeadline = Duration(seconds: 90);
+const webSearchDeadline = Duration(seconds: 60);
 
 /// 把 [stream] 的字接起来;过了 [limit] 还没完就掐断(取消订阅会断开连接)并报超时。
 Future<String> joinWithin(Stream<String> stream, Duration limit) {
@@ -100,6 +104,33 @@ Future<String> joinWithin(Stream<String> stream, Duration limit) {
 
 /// 一次搜索的结果;[failed] 为真时 [text] 是失败的原因。
 typedef WebResult = ({String text, bool failed});
+
+/// 按 [chain] 的顺序一个个接口搜,每个最多等 [limit]:报错、没出字、到点没搜完都换下一个。
+/// 以前整条链共用一个时限,排第一的接口一直不说话(只发保活)时,时间耗光也轮不到
+/// 后面能搜的(用户反馈:Grok 卡住,Gemini 一次没试)。
+Future<WebResult> searchInTurn(
+  List<LlmProfile> chain,
+  Stream<String> Function(LlmProfile llm) search, {
+  Duration limit = webSearchDeadline,
+}) async {
+  final failures = <String>[];
+  for (final llm in chain) {
+    try {
+      final text = await joinWithin(search(llm), limit);
+      if (text.trim().isNotEmpty) return (text: text, failed: false);
+      failures.add('${llm.name}:${tr('模型没有返回内容')}');
+    } on TimeoutException {
+      failures.add('${llm.name}:${tr('等了 {0} 秒没有搜完', [limit.inSeconds])}');
+    } on Object catch (e) {
+      // 认不出的只报类型,原文可能带着 Key。
+      failures.add(
+        '${llm.name}:${e is LlmException ? e.message : '${e.runtimeType}'}',
+      );
+    }
+    debugPrint('联网搜索换下一个接口:${failures.last}');
+  }
+  return (text: failures.join('\n'), failed: true);
+}
 
 /// 交还给模型的那一段。网上的文字可能写着让它做什么,所以标清边界。
 String formatWebResults(Map<String, WebResult> results) {

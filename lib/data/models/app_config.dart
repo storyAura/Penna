@@ -145,6 +145,16 @@ const protocolGoogle = 'google';
 const protocolGrok = 'grok';
 const defaultGrokModel = 'grok-4.7';
 
+/// Claude 订阅、Codex 订阅:不填地址和 Key,调本机登录过的命令行(`cli_provider.dart`)。
+const protocolClaudeCode = 'claude-code';
+const protocolCodex = 'codex';
+
+/// 模型名写这个时用命令行自己的默认模型。
+const cliDefaultModel = 'default';
+
+bool isCliProtocol(String protocol) =>
+    protocol == protocolClaudeCode || protocol == protocolCodex;
+
 const defaultBaseUrls = {
   protocolOpenAi: 'https://api.openai.com/v1',
   protocolGoogle: 'https://generativelanguage.googleapis.com/v1beta',
@@ -172,6 +182,8 @@ class LlmProfile {
     protocol: switch (j['protocol']) {
       protocolGoogle => protocolGoogle,
       protocolGrok => protocolGrok,
+      protocolClaudeCode => protocolClaudeCode,
+      protocolCodex => protocolCodex,
       _ => protocolOpenAi,
     },
     enabled: j['enabled'] as bool? ?? true,
@@ -364,6 +376,10 @@ const factoryPresets = [
 /// 思考强度,滑块上从左到右。
 const thinkingLevels = ['low', 'medium', 'high', 'xhigh'];
 
+/// [AppConfig.contextPages] 能选的几档;0 是不限。
+const contextPageChoices = [2, 4, 8, 16, 0];
+const defaultContextPages = 4;
+
 /// 深色模式的几种选法,见 [AppConfig.darkTheme]。
 const darkThemes = ['system', 'on', 'off', 'schedule'];
 
@@ -403,6 +419,8 @@ class AppConfig {
     this.layoutSnap = defaultLayoutSnap,
     this.compressImages = true,
     this.autoApprove = false,
+    this.contextPages = defaultContextPages,
+    this.seriesGenerate = false,
     this.thinking = 'medium',
     this.characterPreviews = false,
     this.updateChannel = 'main',
@@ -483,6 +501,10 @@ class AppConfig {
           .toInt(),
       compressImages: m['compressImages'] as bool? ?? true,
       autoApprove: m['autoApprove'] as bool? ?? false,
+      contextPages: contextPageChoices.contains(m['contextPages'])
+          ? m['contextPages'] as int
+          : defaultContextPages,
+      seriesGenerate: m['seriesGenerate'] as bool? ?? false,
       thinking: thinkingLevels.contains(m['thinking'])
           ? m['thinking'] as String
           : 'medium',
@@ -640,6 +662,14 @@ class AppConfig {
   /// 成稿的待确认改动一出来就自动采纳,不用用户点。
   final bool autoApprove;
 
+  /// 同系列的其他页带全文给 Agent 的有几页(眼前这页前后各一半),0 是不限;
+  /// 再远的只列页码和名字(2026-11-11 用户要求能在设置里改)。
+  final int contextPages;
+
+  /// Agent 一条回复写了好几页又要出图时,按页的顺序全部排进出图队列;
+  /// 关着时不自动出图,回复下面留「出图」按钮(2026-11-11 用户要求,默认关)。
+  final bool seriesGenerate;
+
   /// 思考强度,[thinkingLevels] 之一。
   final String thinking;
 
@@ -692,6 +722,8 @@ class AppConfig {
     'layoutSnap': layoutSnap,
     'compressImages': compressImages,
     'autoApprove': autoApprove,
+    'contextPages': contextPages,
+    'seriesGenerate': seriesGenerate,
     'thinking': thinking,
     'characterPreviews': characterPreviews,
     'updateChannel': updateChannel,
@@ -778,6 +810,8 @@ class AppConfig {
     int? layoutSnap,
     bool? compressImages,
     bool? autoApprove,
+    int? contextPages,
+    bool? seriesGenerate,
     String? thinking,
     bool? characterPreviews,
     String? updateChannel,
@@ -821,6 +855,8 @@ class AppConfig {
     layoutSnap: layoutSnap ?? this.layoutSnap,
     compressImages: compressImages ?? this.compressImages,
     autoApprove: autoApprove ?? this.autoApprove,
+    contextPages: contextPages ?? this.contextPages,
+    seriesGenerate: seriesGenerate ?? this.seriesGenerate,
     thinking: thinking ?? this.thinking,
     characterPreviews: characterPreviews ?? this.characterPreviews,
     updateChannel: updateChannel ?? this.updateChannel,

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/draft_block.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
@@ -44,6 +45,107 @@ Finder _inStudio(Finder f) =>
     find.descendant(of: find.byType(StudioPage), matching: f);
 
 void main() {
+  group('多选的页', () {
+    /// 两个系列:A 有 a1 a2 a3,B 有 b1。眼前停在 a1。
+    StudioViewModel two() {
+      final vm = _studio(blocks: const [(text: 'a1', pinned: false)]);
+      for (final t in ['a2', 'a3']) {
+        vm.addPage();
+        vm.setText(0, t);
+      }
+      vm.addPage(newSeries: true);
+      vm.setText(0, 'b1');
+      vm.openPage(0);
+      return vm;
+    }
+
+    List<String> texts(StudioViewModel vm) => [
+      for (final p in vm.pages) p.blocks.map((b) => b.text).join(),
+    ];
+
+    test('拖到别的系列的页上:挪过去归进那个系列,一个都不剩的系列跟着没了', () {
+      final vm = two();
+      final b = vm.pages[3].series;
+      expect(vm.movePages([1, 2], 3), isNull);
+      expect(texts(vm), ['a1', 'a2', 'a3', 'b1']);
+      expect(
+        [for (final p in vm.pages) p.series == b],
+        [false, true, true, true],
+      );
+      expect(vm.pageIndex, 0);
+      // 眼前这页也挪过去:人跟着过去,对话换成那个系列的。
+      expect(vm.movePages([0], 3), isNull);
+      expect(vm.seriesIds, [b]);
+      expect(texts(vm)[vm.pageIndex], 'a1');
+      expect(vm.series, b);
+      // 一笔一笔都能撤。
+      vm.undo();
+      vm.undo();
+      expect(texts(vm), ['a1', 'a2', 'a3', 'b1']);
+      expect(vm.seriesIds, hasLength(2));
+    });
+
+    test('建立系列、批量改名、删除', () {
+      final vm = two();
+      expect(vm.groupPages([1, 2]), isNull);
+      expect(vm.seriesIds, hasLength(3));
+      expect(texts(vm), ['a1', 'b1', 'a2', 'a3']);
+      vm.renamePages([2, 3], '女仆');
+      expect([vm.pages[2].name, vm.pages[3].name], ['女仆 1', '女仆 2']);
+      expect(vm.actions.first.text, '2 页改名');
+      expect(vm.removePages([2, 3]), isNull);
+      expect(texts(vm), ['a1', 'b1']);
+      expect(vm.removePages([0, 1]), isNotNull);
+      expect(vm.finalPromptOf(1), 'b1');
+    });
+  });
+
+  group('别的系列', () {
+    test('Agent 看得到其他系列和档案库的系列,写 <read-series> 读回全文', () async {
+      final seen = <LlmRequest>[];
+      final vm = _studio(
+        seen: seen,
+        reply: (_) =>
+            seen.length == 1 ? '<read-series>女仆六景</read-series>' : '好',
+        blocks: const [(text: '【主体】a fox', pinned: false)],
+      );
+      final archive = ArchiveStore()
+        ..add(text: '【角色】maid, 1girl', title: '第 1 页', category: '女仆六景');
+      vm.archive = archive;
+      vm.addPage(newSeries: true);
+      vm.renameSeries(vm.series, '城市');
+
+      vm.send('拿女仆六景那套换成小葱');
+      await pumpEventQueue();
+
+      final system = seen.first.messages.first['content']!;
+      expect(system, contains('【档案库的系列】'));
+      expect(system, contains('「女仆六景」(1)'));
+      expect(system, contains('【其他系列】'));
+      expect(system, contains('【加词进系列】'));
+      final tool = seen.last.messages.last['content']!;
+      expect(tool, contains('【系列全文】'));
+      expect(tool, contains('maid, 1girl'));
+      expect(vm.messages.last.text, '好');
+    });
+
+    test('同系列带全文的页数照设置;不限时全给', () {
+      final vm = _studio(blocks: const [(text: 'p1', pinned: false)]);
+      for (final t in ['p2', 'p3', 'p4', 'p5']) {
+        vm.addPage();
+        vm.setText(0, t);
+      }
+      vm.openPage(0);
+      String system() => vm.workspaceText;
+      vm.config.update(vm.config.config.copyWith(contextPages: 2));
+      expect(system(), contains('p2'));
+      expect(system(), isNot(contains('p3')));
+      expect(system(), contains('<read-series>'));
+      vm.config.update(vm.config.config.copyWith(contextPages: 0));
+      expect(system(), contains('p5'));
+    });
+  });
+
   group('成稿标签', () {
     test('一条回复里的几份成稿都拆出来,各带各的页', () {
       final (:prose, :drafts) = splitDrafts(
@@ -447,6 +549,38 @@ void main() {
     await tester.tap(find.text('保存系列'));
     await tester.pump();
     expect(archive.entries.map((e) => e.text), ['an owl', 'a fox', 'a crow']);
+  });
+
+  testWidgets('页签:按住 Shift 多选,右键批量改名', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final vm = _studio(blocks: const [(text: 'a fox', pinned: false)]);
+    vm.addPage();
+    vm.addPage();
+    vm.openPage(0);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AppShell(vm: vm, config: vm.config, skills: tempSkills()),
+      ),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(_tab(3));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+    // 多选不换页。
+    expect(vm.pageIndex, 0);
+
+    await tester.tap(_tab(3), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(find.text('删除选中的页'), findsOneWidget);
+    await tester.tap(find.text('批量改名'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '女仆');
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect([for (final p in vm.pages) p.name], ['女仆 1', '', '女仆 2']);
   });
 
   testWidgets('页签:加一页、另起系列、点页码换页', (tester) async {

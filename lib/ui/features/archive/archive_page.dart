@@ -220,6 +220,7 @@ class _ArchivePageState extends State<ArchivePage> {
             if (e.kind == _kind) e,
         ];
         final categories = widget.archive.categoriesOf(_kind);
+        final counts = widget.archive.countsOf(_kind);
         // 筛着的分类被删空了就回到全部。
         final category = categories.contains(_category) ? _category : null;
         final shown = [
@@ -318,7 +319,7 @@ class _ArchivePageState extends State<ArchivePage> {
                             ),
                             for (final c in categories)
                               PennaChip(
-                                label: tr(c),
+                                label: '${tr(c)} ${counts[c]}',
                                 selected: c == category,
                                 onTap: () => setState(() => _category = c),
                               ),

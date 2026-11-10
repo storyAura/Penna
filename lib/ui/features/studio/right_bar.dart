@@ -182,7 +182,7 @@ class _RightBarState extends State<RightBar> {
   );
 
   Widget _history() {
-    final chats = vm.pastChats;
+    final chats = byRecent(vm.pastChats);
     if (chats.isEmpty) {
       return Center(
         child: Text(
@@ -191,60 +191,81 @@ class _RightBarState extends State<RightBar> {
         ),
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.all(8),
-      itemCount: chats.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 2),
-      itemBuilder: (context, i) {
-        final chat = chats[i];
-        return InkWell(
-          borderRadius: BorderRadius.circular(6),
-          // 生成回复期间换不了对话。
-          onTap: vm.isStreaming ? null : () => vm.openChat(chat.id),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 6, 2, 6),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        chatTitle(chat.messages),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: PennaColors.slate700,
-                        ),
-                      ),
-                      Text(
-                        tr('{0} · {1} 条', [
-                          shortTime(chat.messages.first.time),
-                          chat.messages.length,
-                        ]),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: PennaColors.slate400,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: tr('删除这场对话'),
-                  iconSize: 14,
-                  visualDensity: VisualDensity.compact,
-                  color: PennaColors.slate400,
-                  icon: const Icon(Icons.close),
-                  onPressed: () => vm.deleteChat(chat.id),
-                ),
-              ],
+    // 按最后说话的日子分组:今天、昨天、日期。
+    final rows = <Object>[];
+    String? day;
+    for (final c in chats) {
+      final key = dayKey(chatTime(c));
+      if (key != day) rows.add(day = key);
+      rows.add(c);
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 32),
+      itemCount: rows.length,
+      itemBuilder: (context, i) => switch (rows[i]) {
+        final String key => Padding(
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
+          child: Text(
+            dayLabel(key),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: PennaColors.slate500,
             ),
           ),
-        );
+        ),
+        final ChatSession chat => _historyRow(chat),
+        _ => const SizedBox.shrink(),
       },
+    );
+  }
+
+  Widget _historyRow(ChatSession chat) {
+    final t = chatTime(chat);
+    String two(int n) => '$n'.padLeft(2, '0');
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      // 生成回复期间换不了对话。
+      onTap: vm.isStreaming ? null : () => vm.openChat(chat.id),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 2, 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    chatTitle(chat.messages),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: PennaColors.slate700,
+                    ),
+                  ),
+                  Text(
+                    tr('{0} · {1} 条', [
+                      '${two(t.hour)}:${two(t.minute)}',
+                      chat.messages.length,
+                    ]),
+                    style: TextStyle(fontSize: 11, color: PennaColors.slate400),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: tr('删除这场对话'),
+              iconSize: 14,
+              visualDensity: VisualDensity.compact,
+              color: PennaColors.slate400,
+              icon: const Icon(Icons.close),
+              onPressed: () => vm.deleteChat(chat.id),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -181,24 +181,66 @@ class _ActivityBarState extends State<ActivityBar> {
                             ),
                           ),
                         )
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(8),
-                          itemCount: actions.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 4),
-                          itemBuilder: (context, i) => _ActionTile(
-                            record: actions[i],
-                            state: widget.vm.stateOf(i),
-                            onBefore: () =>
-                                _report(context, widget.vm.rollback(i)),
-                            onAfter: () =>
-                                _report(context, widget.vm.restoreTo(i)),
-                          ),
-                        ),
+                      : _actionList(context, actions),
                 ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  /// 撤销、重做两个按钮,下面一行一笔(新的在前),点哪笔回到它做完之后;
+  /// 最底下「最开始」回到第一笔之前。
+  Widget _actionList(BuildContext context, List<ActionRecord> actions) {
+    final vm = widget.vm;
+    final atStart = !vm.canUndo;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+          child: Row(
+            children: [
+              PennaButton(
+                icon: Icons.undo,
+                label: tr('撤销'),
+                onPressed: vm.canUndo
+                    ? () => _report(context, vm.undo())
+                    : null,
+              ),
+              const SizedBox(width: 4),
+              PennaButton(
+                icon: Icons.redo,
+                label: tr('重做'),
+                onPressed: vm.canRedo
+                    ? () => _report(context, vm.redo())
+                    : null,
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(8),
+            children: [
+              for (final (i, a) in actions.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: _ActionTile(
+                    record: a,
+                    state: vm.stateOf(i),
+                    onTap: () => _report(context, vm.restoreTo(i)),
+                  ),
+                ),
+              _StartTile(
+                current: atStart,
+                onTap: () => _report(context, vm.rollback(actions.length - 1)),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -207,57 +249,39 @@ void _report(BuildContext context, String? problem) {
   if (problem != null) showToast(context, problem, warn: true);
 }
 
-/// 操作记录里的一笔:时间、和眼前的关系、做了什么(合成的几步用小字列在下面),
-/// 右上角两个按钮回到它之前、之后。眼前这一笔底色标出;撤回来的、别的分支上的是灰字。
+/// 操作记录里的一笔:时间、做了什么(合成的几步用小字列在下面)。点它回到这一步做完之后。
+/// 眼前这一笔底色标出;撤回来的是灰字。
 class _ActionTile extends StatelessWidget {
   const _ActionTile({
     required this.record,
     required this.state,
-    required this.onBefore,
-    required this.onAfter,
+    required this.onTap,
   });
 
   final ActionRecord record;
   final ActionState state;
-  final VoidCallback onBefore;
-  final VoidCallback onAfter;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final current = state == ActionState.current;
-    final away = state == ActionState.undone || state == ActionState.branch;
-    final tag = switch (state) {
-      ActionState.current => tr('当前'),
-      ActionState.undone => tr('已撤销'),
-      ActionState.branch => tr('另一分支'),
-      ActionState.done => null,
-    };
-    return Container(
-      padding: const EdgeInsets.fromLTRB(6, 4, 2, 6),
-      decoration: BoxDecoration(
-        color: current ? PennaColors.primaryBg : null,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-          color: current ? PennaColors.primaryBorder : Colors.transparent,
-        ),
-      ),
+    final away = state == ActionState.undone;
+    return _Tile(
+      current: current,
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              if (state == ActionState.branch) ...[
-                Icon(Icons.call_split, size: 11, color: PennaColors.slate400),
-                const SizedBox(width: 3),
-              ],
               Text(
                 _clock(record.time),
                 style: TextStyle(fontSize: 10.5, color: PennaColors.slate400),
               ),
-              if (tag != null) ...[
+              if (current || away) ...[
                 const SizedBox(width: 6),
                 Text(
-                  tag,
+                  current ? tr('当前') : tr('已撤销'),
                   style: TextStyle(
                     fontSize: 10.5,
                     fontWeight: FontWeight.w600,
@@ -265,9 +289,6 @@ class _ActionTile extends StatelessWidget {
                   ),
                 ),
               ],
-              const Spacer(),
-              _jump(Icons.undo, tr('回到这一步之前'), onBefore),
-              if (!current) _jump(Icons.redo, tr('回到这一步之后'), onAfter),
             ],
           ),
           Text(
@@ -294,15 +315,69 @@ class _ActionTile extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _jump(IconData icon, String tip, VoidCallback onTap) => Tooltip(
-    message: tip,
+/// 最底下那一行:回到第一笔之前。
+class _StartTile extends StatelessWidget {
+  const _StartTile({required this.current, required this.onTap});
+
+  final bool current;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => _Tile(
+    current: current,
+    onTap: onTap,
+    child: Row(
+      children: [
+        Icon(Icons.flag_outlined, size: 13, color: PennaColors.slate400),
+        const SizedBox(width: 4),
+        Text(
+          tr('最开始'),
+          style: TextStyle(fontSize: 12, color: PennaColors.slate500),
+        ),
+        if (current) ...[
+          const SizedBox(width: 6),
+          Text(
+            tr('当前'),
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              color: PennaColors.primary,
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+class _Tile extends StatelessWidget {
+  const _Tile({
+    required this.current,
+    required this.onTap,
+    required this.child,
+  });
+
+  final bool current;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: current ? PennaColors.primaryBg : Colors.transparent,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(6),
+      side: BorderSide(
+        color: current ? PennaColors.primaryBorder : Colors.transparent,
+      ),
+    ),
     child: InkWell(
-      borderRadius: BorderRadius.circular(4),
-      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      onTap: current ? null : onTap,
       child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: Icon(icon, size: 13, color: PennaColors.slate500),
+        padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+        child: child,
       ),
     ),
   );

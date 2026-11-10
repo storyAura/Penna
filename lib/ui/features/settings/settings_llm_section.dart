@@ -20,6 +20,8 @@ Map<String, String> get _protocolLabels => {
   protocolOpenAi: 'OpenAI',
   protocolGoogle: 'Google',
   protocolGrok: tr('Grok 账号'),
+  protocolClaudeCode: tr('Claude 订阅'),
+  protocolCodex: tr('Codex 订阅'),
 };
 
 /// 「常用服务」里预填的接口(地址和模型取自各家 2026-10 的文档)。名字存进设置,不翻译。
@@ -74,8 +76,29 @@ class LlmSection extends StatelessWidget {
     final picked = await popMenu(
       context,
       box.localToGlobal(box.size.bottomLeft(Offset.zero)),
-      [for (final p in llmProviders) p.name, _protocolLabels[protocolGrok]!],
+      [
+        for (final p in llmProviders) p.name,
+        _protocolLabels[protocolGrok]!,
+        _protocolLabels[protocolClaudeCode]!,
+        _protocolLabels[protocolCodex]!,
+      ],
     );
+    if (picked == _protocolLabels[protocolClaudeCode]) {
+      return _add(
+        name: 'Claude',
+        baseUrl: '',
+        model: 'opus',
+        protocol: protocolClaudeCode,
+      );
+    }
+    if (picked == _protocolLabels[protocolCodex]) {
+      return _add(
+        name: 'Codex',
+        baseUrl: '',
+        model: cliDefaultModel,
+        protocol: protocolCodex,
+      );
+    }
     if (picked == _protocolLabels[protocolGrok]) {
       return _add(
         name: 'Grok',
@@ -446,10 +469,16 @@ class _LlmCardState extends State<_LlmCard> {
       llm.copyWith(
         protocol: protocol,
         baseUrl: untouched || protocol == protocolGrok
-            ? defaultBaseUrls[protocol]
+            ? defaultBaseUrls[protocol] ?? ''
             : null,
-        model: protocol == protocolGrok && llm.models.isEmpty
+        model: llm.models.isNotEmpty
+            ? null
+            : protocol == protocolGrok
             ? defaultGrokModel
+            : protocol == protocolClaudeCode
+            ? 'opus'
+            : protocol == protocolCodex
+            ? cliDefaultModel
             : null,
       ),
     );
@@ -500,15 +529,21 @@ class _LlmCardState extends State<_LlmCard> {
                 ),
               ),
               const SizedBox(width: 12),
-              for (final protocol in _protocolLabels.keys) ...[
-                PennaChip(
-                  label: _protocolLabels[protocol]!,
-                  selected: llm.protocol == protocol,
-                  onTap: () => _setProtocol(protocol),
+              // 协议多了一行放不下时折行。
+              Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final protocol in _protocolLabels.keys)
+                      PennaChip(
+                        label: _protocolLabels[protocol]!,
+                        selected: llm.protocol == protocol,
+                        onTap: () => _setProtocol(protocol),
+                      ),
+                  ],
                 ),
-                const SizedBox(width: 6),
-              ],
-              const Spacer(),
+              ),
               IconButton(
                 tooltip: tr('删除'),
                 iconSize: 18,
@@ -554,6 +589,8 @@ class _LlmCardState extends State<_LlmCard> {
                         hint: switch (llm.protocol) {
                           protocolGoogle => tr('gemini-2.5-flash,可填多个'),
                           protocolGrok => tr('grok-4.7,可填多个'),
+                          protocolClaudeCode => tr('opus、sonnet,可填多个'),
+                          protocolCodex => tr('default 为默认模型'),
                           _ => tr('gpt-4o-mini,可填多个'),
                         },
                         value: llm.model,
@@ -584,6 +621,14 @@ class _LlmCardState extends State<_LlmCard> {
                   GrokLoginRow(
                     service: service,
                     draft: _draft.copyWith(enabled: widget.llm.enabled),
+                  ),
+                  gap,
+                ] else if (isCliProtocol(llm.protocol)) ...[
+                  Text(
+                    llm.protocol == protocolClaudeCode
+                        ? tr('用本机 Claude Code 登录的账号')
+                        : tr('用本机 Codex 登录的账号'),
+                    style: TextStyle(fontSize: 12, color: PennaColors.slate500),
                   ),
                   gap,
                 ] else ...[

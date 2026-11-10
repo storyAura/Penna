@@ -40,10 +40,31 @@ class ArchiveStore extends ChangeNotifier {
   List<ArchiveEntry> get entries => _entries;
 
   /// [kind] 这个分区里用过的分类,按最近用到的先后。
-  List<String> categoriesOf(String kind) => {
-    for (final e in _entries)
-      if (e.kind == kind) e.category,
-  }.toList();
+  /// 最近存过东西的在前(按存的时刻,不按拖过的位置),「未分类」放最后
+  /// (2026-11-11 用户反馈:按条目的位置排,分类一多就乱)。
+  List<String> categoriesOf(String kind) {
+    final latest = <String, DateTime>{};
+    for (final e in _entries) {
+      if (e.kind != kind) continue;
+      final t = latest[e.category];
+      if (t == null || e.time.isAfter(t)) latest[e.category] = e.time;
+    }
+    int rank(String c) => c == uncategorized ? 1 : 0;
+    return latest.keys.toList()..sort(
+      (a, b) => rank(a) != rank(b)
+          ? rank(a) - rank(b)
+          : latest[b]!.compareTo(latest[a]!),
+    );
+  }
+
+  /// [kind] 这个分区里每个分类有几条。
+  Map<String, int> countsOf(String kind) {
+    final out = <String, int>{};
+    for (final e in _entries) {
+      if (e.kind == kind) out[e.category] = (out[e.category] ?? 0) + 1;
+    }
+    return out;
+  }
 
   /// 存一条,返回它的 id;[text] 是空的就不存,返回 null。分类没填归「未分类」。
   String? add({

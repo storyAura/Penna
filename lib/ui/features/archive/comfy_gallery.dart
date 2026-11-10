@@ -497,21 +497,6 @@ class _ComfyGalleryState extends State<ComfyGallery> {
   );
 }
 
-String _two(int n) => '$n'.padLeft(2, '0');
-
-/// 分组用的日子:`2026-11-08`;没有时刻的是空串。
-String dayKey(DateTime? t) =>
-    t == null ? '' : '${t.year}-${_two(t.month)}-${_two(t.day)}';
-
-/// 组标题:今天、昨天,别的写日期。
-String dayLabel(String key) {
-  if (key.isEmpty) return tr('更早');
-  final now = DateTime.now();
-  if (key == dayKey(now)) return tr('今天');
-  if (key == dayKey(now.subtract(const Duration(days: 1)))) return tr('昨天');
-  return key;
-}
-
 /// 一天的标题行:箭头、日子、张数,点了收起或展开。
 class _DayHeader extends StatelessWidget {
   const _DayHeader({

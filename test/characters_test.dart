@@ -399,12 +399,17 @@ void main() {
       final dict = CharacterDict.parse(
         '$_tsv\n'
         'ninja (final fantasy)\tfinal fantasy\t1boy\t\t忍者, 忍者(FF)\n'
-        'tenma\tinazuma eleven\t1boy\t\t松風天馬, 拓天, 雨天\n',
+        'tenma\tinazuma eleven\t1boy\t\t松風天馬, 拓天, 雨天\n'
+        'white (among us)\tamong us\tno humans\t\t\n',
       );
       final mentions = CharacterMentions(
         dict,
-        tags: TagDictionary.parse('ninja\t100\t忍者, しのび\n'),
+        tags: TagDictionary.parse(
+          'ninja\t100\t忍者, しのび\nwhite_shirt\t100\t白衬衫\n',
+        ),
       );
+      // 普通标签里的词(white shirt 的 white)不当成角色名。
+      expect(mentions.inText('1girl, white shirt, long hair'), isEmpty);
       expect(mentions.inText('画一张初音未来和甘雨的合照'), [
         'hatsune miku',
         'ganyu (genshin impact)',

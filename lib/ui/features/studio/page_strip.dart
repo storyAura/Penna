@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
@@ -32,17 +35,22 @@ const _darkSeriesTints = <_Tint>[
 ];
 
 /// 成稿正文上方的页签:每个系列一个彩色框,框里先是系列的名字,再是它的各页
-/// (页码每个系列都从 1 数)。双击改名,右键更多操作,按住页签可以在系列里拖着调顺序。
-class PageStrip extends StatelessWidget {
+/// (页码每个系列都从 1 数)。双击改名,右键更多操作,按住页签拖着调顺序、拖到别的系列;
+/// 按住 Shift(或 Ctrl)点页签多选,右键批量改名、出图、建立系列、删除。
+class PageStrip extends StatefulWidget {
   const PageStrip({
     super.key,
     required this.vm,
     this.label,
     this.tips = true,
     this.onArchive,
+    this.generate = false,
   });
 
   final StudioViewModel vm;
+
+  /// 右键菜单里有没有「出图」(工作台有;区域控制的页是布局,不在这出)。
+  final bool generate;
 
   /// 归档几个系列(存进档案库再从工作区删掉);为 null 时菜单里没有「归档」(区域控制)。
   final void Function(Set<int> series)? onArchive;
@@ -53,19 +61,103 @@ class PageStrip extends StatelessWidget {
   /// 小标题后面带不带问号(悬停列出成稿里藏着的操作)。
   final bool tips;
 
+  @override
+  State<PageStrip> createState() => _PageStripState();
+}
+
+class _PageStripState extends State<PageStrip> {
+  StudioViewModel get vm => widget.vm;
+  void Function(Set<int> series)? get onArchive => widget.onArchive;
+  String? get label => widget.label;
+  bool get tips => widget.tips;
+
+  /// 多选中的页(`pages` 的下标)。做完一次批量操作、单击换页就清掉。
+  // ponytail: 按下标记,选着的时候 Agent 加了页,选中的会错位;做完一件事就清掉,够用。
+  Set<int> _picked = const {};
+
   void _do(BuildContext context, String? problem) {
+    if (_picked.isNotEmpty) setState(() => _picked = const {});
     if (problem != null) showToast(context, problem, warn: true);
   }
 
+  void _tap(int i) {
+    final keys = HardwareKeyboard.instance;
+    if (keys.isShiftPressed || keys.isControlPressed) {
+      // 第一次多选时把眼前这页也算上。
+      final base = _picked.isEmpty ? {vm.pageIndex} : _picked;
+      setState(
+        () => _picked = Set.unmodifiable(
+          base.contains(i) ? ({...base}..remove(i)) : {...base, i},
+        ),
+      );
+      return;
+    }
+    _do(context, vm.openPage(i));
+  }
+
+  /// 按页的先后排进出图队列。
+  void _generate(BuildContext context, Iterable<int> which) {
+    final prompts = [
+      for (final i in which.toList()..sort()) vm.finalPromptOf(i),
+    ].where((p) => p.trim().isNotEmpty).toList();
+    _do(context, null);
+    if (prompts.isEmpty) {
+      return showToast(context, tr('这些页还是空的'), warn: true);
+    }
+    for (final p in prompts) {
+      unawaited(vm.comfy.generate(p));
+    }
+    showToast(context, tr('已排进出图队列 {0} 张', [prompts.length]));
+  }
+
+  /// 多选时右键:对选中的几页一起做。
+  Future<void> _batchMenu(BuildContext context, Offset at) async {
+    final which = _picked;
+    final generate = tr('出图({0} 张)', [which.length]);
+    final picked = await popMenu(context, at, [
+      tr('批量改名'),
+      if (widget.generate) generate,
+      tr('建立系列'),
+      tr('删除选中的页'),
+      tr('取消选择'),
+    ]);
+    if (!context.mounted || picked == null) return;
+    if (picked == tr('批量改名')) {
+      final name = await askName(context, tr('这几页的名字'), '');
+      if (name != null) vm.renamePages(which, name);
+      if (context.mounted) _do(context, null);
+      return;
+    }
+    if (picked == tr('建立系列')) return _do(context, vm.groupPages(which));
+    if (picked == tr('删除选中的页')) {
+      if (!await confirmDelete(
+        context,
+        tr('删除选中的 {0} 页?', [which.length]),
+        tr('这几页的成稿会一起删掉。'),
+      )) {
+        return;
+      }
+      if (context.mounted) _do(context, vm.removePages(which));
+      return;
+    }
+    if (picked == generate) return _generate(context, which);
+    _do(context, null);
+  }
+
   Future<void> _pageMenu(BuildContext context, Offset at, int i) async {
+    if (_picked.length > 1 && _picked.contains(i)) {
+      return _batchMenu(context, at);
+    }
     final picked = await popMenu(context, at, [
       tr('改名'),
+      if (widget.generate) tr('出图'),
       tr('脱离系列'),
       tr('建立系列'),
       tr('删除这一页'),
       tr('删除整个系列'),
     ]);
     if (!context.mounted || picked == null) return;
+    if (picked == tr('出图')) return _generate(context, [i]);
     final page = vm.pages[i];
     if (picked == tr('脱离系列')) return _do(context, vm.detachPage(i));
     if (picked == tr('建立系列')) return _do(context, vm.addPage(newSeries: true));
@@ -130,6 +222,7 @@ class PageStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pages = vm.pages;
+    if (_picked.any((i) => i >= pages.length)) _picked = const {};
     // 系列满了不能再另起;往已有的系列里加页不限。
     final full = vm.seriesFull;
     // 同系列的页挨在一起,所以顺着数就能分出组来。
@@ -219,16 +312,25 @@ class PageStrip extends StatelessWidget {
                             name: pages[i].name,
                             tint: _seriesTints[g % _seriesTints.length],
                             selected: i == vm.pageIndex,
+                            picked: _picked.contains(i),
+                            // 拖着的是选中的一页时,选中的几页一起走。
+                            dragCount: _picked.contains(i) ? _picked.length : 1,
                             waiting: pages[i].pending != null,
-                            // 只收同一个系列里拖过来的。
+                            // 别的系列的页也收:挪过来归进这个系列。
                             accepts: (from) =>
                                 from != i &&
-                                pages[from].series == pages[i].series,
-                            onTap: () => _do(context, vm.openPage(i)),
+                                !(_picked.contains(from) &&
+                                    _picked.contains(i)),
+                            onTap: () => _tap(i),
                             onMenu: (at) => _pageMenu(context, at, i),
                             onRename: () => _renamePage(context, i),
-                            onDrop: (from) =>
-                                _do(context, vm.movePage(from, i)),
+                            onDrop: (from) => _do(
+                              context,
+                              vm.movePages(
+                                _picked.contains(from) ? _picked : [from],
+                                i,
+                              ),
+                            ),
                           ),
                         _IconChip(
                           icon: Icons.add,
@@ -458,8 +560,8 @@ class _SeriesLabel extends StatelessWidget {
   }
 }
 
-/// 一页的页签:点一下换页,双击改名,右键更多操作,按住拖到同系列的另一页上调顺序。
-/// [waiting] 表示这页有待确认的改动,右上角亮一个小点。
+/// 一页的页签:点一下换页,双击改名,右键更多操作,按住拖到另一页上(别的系列也行)。
+/// [waiting] 表示这页有待确认的改动,右上角亮一个小点;[picked] 是多选中的。
 class _PageChip extends StatelessWidget {
   const _PageChip({
     required this.index,
@@ -467,6 +569,8 @@ class _PageChip extends StatelessWidget {
     required this.name,
     required this.tint,
     required this.selected,
+    required this.picked,
+    required this.dragCount,
     required this.waiting,
     required this.accepts,
     required this.onTap,
@@ -483,6 +587,10 @@ class _PageChip extends StatelessWidget {
   final String name;
   final _Tint tint;
   final bool selected;
+  final bool picked;
+
+  /// 拖它时一起走几页(多选时是选中的页数)。
+  final int dragCount;
   final bool waiting;
   final bool Function(int from) accepts;
   final VoidCallback onTap;
@@ -501,8 +609,12 @@ class _PageChip extends StatelessWidget {
         color: selected ? tint.text : PennaColors.card,
         borderRadius: BorderRadius.circular(5),
         border: Border.all(
-          color: hovered || selected ? tint.text : tint.border,
-          width: hovered ? 2 : 1,
+          color: picked
+              ? PennaColors.primary
+              : hovered || selected
+              ? tint.text
+              : tint.border,
+          width: hovered || picked ? 2 : 1,
         ),
       ),
       // 宽度跟着字走(不写 widthFactor 会把页签撑到最宽)。
@@ -536,7 +648,11 @@ class _PageChip extends StatelessWidget {
           color: Colors.transparent,
           elevation: 6,
           borderRadius: BorderRadius.circular(5),
-          child: _face(hovered: false),
+          child: Badge(
+            isLabelVisible: dragCount > 1,
+            label: Text('$dragCount'),
+            child: _face(hovered: false),
+          ),
         ),
         childWhenDragging: Opacity(opacity: 0.35, child: _face(hovered: false)),
         child: Tooltip(
@@ -578,7 +694,8 @@ class _PageChip extends StatelessWidget {
 
 /// 「成稿正文」旁边的问号:这一块藏着的操作。
 String get _bodyTips => tr(
-  '页签、系列名:双击改名 · 右键更多 · 按住拖动换顺序\n'
+  '页签、系列名:双击改名 · 右键更多 · 按住拖动换顺序、拖到别的系列\n'
+  '页签:按住 Shift 点几个多选,右键批量操作\n'
   '分段:右键标注改名 · 拖左上角把手换位置\n'
   '选中文字后右键:固定、润色、翻译、建立分段',
 );

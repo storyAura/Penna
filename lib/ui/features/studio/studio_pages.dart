@@ -548,21 +548,22 @@ extension StudioPages on StudioViewModel {
         '概括画的是什么(用户存进档案库时当名称)。';
   }
 
-  static const _siblingNear = 2;
-
   /// 发给 Agent 看的同系列其他页;只有一页时是空串。
-  /// 前后 [_siblingNear] 页内的给全文(去掉中文对照),再远的只列页码和名字。
+  /// 前后共 [AppConfig.contextPages] 页内的给全文(去掉中文对照,0 是全给),
+  /// 再远的只列页码和名字,Agent 要看时写 `<read-series>`。
   /// 用户反馈:一个系列 71 页、全文约 28 万字每次都发,新对话也被旧页的角色带偏。
   /// ponytail: 按页码远近取,不看内容是否相关;要更准再按角色名挑。
   String get _siblingPages {
     final here = pageNumber(_page);
+    final pages = this.pages;
+    final half = config.config.contextPages ~/ 2;
     final near = <String>[];
     final far = <String>[];
     for (final (i, p) in pages.indexed) {
       if (i == _page || p.series != series) continue;
       final n = pageNumber(i);
       final title = '第 $n 页${p.name.isEmpty ? '' : '(${p.name})'}';
-      if ((n - here).abs() <= _siblingNear) {
+      if (half == 0 || (n - here).abs() <= half) {
         near.add(
           '$title:\n${stripGlossLines(p.blocks.map((b) => b.text).join()).trim()}',
         );
@@ -577,7 +578,9 @@ extension StudioPages on StudioViewModel {
       if (near.isNotEmpty)
         '相邻的几页如下;用户说要和它们一致(同一角色、场景、画风)时才照着来,'
             '否则以用户这次说的为准:\n${near.join('\n\n')}',
-      if (far.isNotEmpty) '同系列还有:${far.join('、')}。',
+      if (far.isNotEmpty)
+        '同系列还有:${far.join('、')}。要看它们的全文(用户要和整个系列一致、要你通看一遍时)'
+            '写 <$readSeriesTag>${seriesName(series)}</$readSeriesTag>。',
     ].join('\n');
   }
 

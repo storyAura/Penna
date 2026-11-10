@@ -545,7 +545,7 @@ class BodyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PageStrip(vm: vm, onArchive: onArchiveSeries),
+          PageStrip(vm: vm, onArchive: onArchiveSeries, generate: true),
           ...columns,
         ],
       ),

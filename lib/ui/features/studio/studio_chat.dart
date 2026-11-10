@@ -83,8 +83,9 @@ extension StudioChat on StudioViewModel {
   ///
   /// 成稿是空的时直接填进去(没有东西会被盖掉,不用确认);
   /// 已经有内容时只提出待确认改动,由用户采纳或驳回。
-  void _deliverDraft() {
-    if (_messages.length < 2) return;
+  /// 返回成稿写到了哪几页(`_pages` 的下标)。
+  Set<int> _deliverDraft() {
+    if (_messages.length < 2) return const {};
     // 中间可能隔着查标签的那几条,所以找用户自己发的最后一条。
     final ask = _messages.lastWhere(
       (m) => m.fromUser && !m.tool,
@@ -117,6 +118,7 @@ extension StudioChat on StudioViewModel {
       _note(tr('成稿没放上:{0}', [problem]));
     }
     showWritten(written);
+    return written;
   }
 
   /// 成稿只写到了别的页(比如新开的一页):换过去,让用户看到刚写好的。
@@ -271,11 +273,11 @@ extension StudioChat on StudioViewModel {
             // 布局页的对话只往布局画板上放,不碰成稿。
             if (mangaOnly) _deliverManga();
             if (!layoutOnly && !mangaOnly) {
-              _deliverDraft();
+              final written = _deliverDraft();
               _checkTags();
               // 成稿放好之后再出图:标签里没写提示词时用的是这页放好的成稿。
               // 要换工作流的先换,换不成就不出图。
-              _deliverComfy();
+              _deliverComfy(written);
             }
             _deliverCharacters();
             // 透视在 _deliverLayout 里先放(没有布局时它自己放)。

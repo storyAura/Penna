@@ -298,5 +298,16 @@ String chatTitle(List<ChatMessage> messages) {
 /// 一场收起来的对话。
 typedef ChatSession = ({String id, List<ChatMessage> messages});
 
+/// 这场对话最后一次说话的时刻;一句都没有时用编号(开始的时刻)。
+DateTime chatTime(ChatSession c) =>
+    c.messages.lastOrNull?.time ??
+    DateTime.fromMicrosecondsSinceEpoch(int.tryParse(c.id) ?? 0);
+
+/// 历史列表的顺序:最近说过话的在前(用户反馈:以前按收起的先后排,
+/// 显示的却是开始的时刻,看着乱)。
+List<ChatSession> byRecent(Iterable<ChatSession> chats) => List.unmodifiable(
+  chats.toList()..sort((a, b) => chatTime(b).compareTo(chatTime(a))),
+);
+
 /// 历史提示词里的一条:当时的成稿(带分段标注)。
 typedef PromptRecord = ({DateTime time, String text});

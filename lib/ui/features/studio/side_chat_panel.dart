@@ -136,6 +136,9 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
                 // 倒着排:新消息贴在底下,生成时不用自己滚。
                 child: ListView.separated(
                   reverse: true,
+                  // 同主聊天:整场都排好版,总高度是量出来的;只排看得见的几条时
+                  // 估出的总高度偏差大,拖滚动条会乱跳(用户反馈)。
+                  scrollCacheExtent: const ScrollCacheExtent.pixels(1e6),
                   padding: const EdgeInsets.all(14),
                   itemCount: rows.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 14),
@@ -250,7 +253,7 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
   /// 历史副聊天:点一场接着聊(眼前这场收进历史),叉掉是删。
   Widget _history() {
     final chat = widget.chat;
-    final past = chat.pastChats;
+    final past = byRecent(chat.pastChats);
     return PopupMenuButton<String>(
       popUpAnimationStyle: Motion.menu(context),
       tooltip: tr('历史对话'),
@@ -282,7 +285,7 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
                       ),
                       Text(
                         tr('{0} · {1} 条', [
-                          shortTime(c.messages.first.time),
+                          shortTime(chatTime(c)),
                           c.messages.length,
                         ]),
                         style: TextStyle(
@@ -455,6 +458,20 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
                   color: PennaColors.primary,
                 ),
               ),
+            ],
+          ),
+          // 思考强度(和主聊天是同一个设置)、上下文圆环。
+          Row(
+            children: [
+              _ThinkingButton(
+                level: widget.config.config.thinking,
+                compact: false,
+                onChanged: (level) => widget.config.update(
+                  widget.config.config.copyWith(thinking: level),
+                ),
+              ),
+              const Spacer(),
+              if (widget.chat.meter case final m?) _ContextRing(meter: m),
             ],
           ),
         ],

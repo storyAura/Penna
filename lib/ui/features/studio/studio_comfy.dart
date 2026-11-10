@@ -54,10 +54,16 @@ extension StudioComfy on StudioViewModel {
       };
 
   /// 主聊天的回复正常结束时:照它写的 ComfyUI 标签做事,结果记在这条回复上。
-  void _deliverComfy() {
+  /// [written] 是这条回复的成稿写到的页。
+  void _deliverComfy([Set<int> written = const {}]) {
     if (_messages.isEmpty) return;
     final reply = _messages.last;
-    deliverComfy(reply.text, reply.time, _updateAt(reply.time));
+    deliverComfy(
+      reply.text,
+      reply.time,
+      _updateAt(reply.time),
+      written: written,
+    );
   }
 
   /// 主聊天里点了「出图」(回复下面、成稿卡片上):[prompt] 见 [generateFor]。
@@ -70,12 +76,14 @@ extension StudioComfy on StudioViewModel {
 
   /// 回复里的 ComfyUI 标签(主聊天、副聊天共用):写了 `<comfy-workflow>` 先换工作流,
   /// 换不成就不出图;写了 `<generate-image>` 就出图(设置成手动确认时等用户点回复下面的「出图」)。
-  /// [update] 改那条回复。
+  /// [update] 改那条回复。[written] 是这条回复的成稿写到的页:不止一页时
+  /// 不自动出图,设置里开了「系列连续出图」才按页的先后全部排进队列(2026-11-11 用户要求)。
   void deliverComfy(
     String reply,
     DateTime at,
-    void Function(ChatMessage Function(ChatMessage)) update,
-  ) {
+    void Function(ChatMessage Function(ChatMessage)) update, {
+    Set<int> written = const {},
+  }) {
     final prose = splitNewSkill(reply).prose;
     final flows = splitToolTag(prose, comfyWorkflowTag).queries;
     if (flows.isNotEmpty) {
@@ -88,9 +96,25 @@ extension StudioComfy on StudioViewModel {
       );
       if (done.flow == null) return;
     }
-    if (!splitGenerate(prose).asked || !config.config.comfy.autoGenerate) {
+    if (!splitGenerate(prose).asked) return;
+    if (written.length > 1) {
+      if (!config.config.seriesGenerate) {
+        return _noteOn(update, tr('写了 {0} 页,没有自动出图', [written.length]));
+      }
+      // _pages 的下标就是页的先后。
+      // ponytail: 有待确认改动的页出的是改之前的。
+      for (final i in written.toList()..sort()) {
+        if (i >= _pages.length) continue;
+        final text = i == _page
+            ? finalPrompt
+            : _joined(labels: false, blocks: _pages[i].blocks);
+        if (text.trim().isNotEmpty) {
+          generateFor(reply, at, update, prompt: text);
+        }
+      }
       return;
     }
+    if (!config.config.comfy.autoGenerate) return;
     generateFor(reply, at, update);
   }
 

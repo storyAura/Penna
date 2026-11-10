@@ -4,14 +4,11 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/harness/attachment.dart';
-import '../../../core/harness/characters/character_dict.dart';
 import '../../../core/harness/chat_peek.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
-import '../../../core/harness/local/local_tools.dart';
 import '../../../core/harness/manga/manga_script.dart' show storyboardTag;
 import '../../../core/harness/providers/llm_router.dart';
-import '../../../core/harness/tags/tag_search.dart';
 import '../../../l10n/l10n.dart';
 import 'studio_view_model.dart';
 
@@ -225,6 +222,18 @@ class SideChat extends ChangeNotifier {
     return _start(history, time);
   }
 
+  /// 输入框旁边的上下文圆环。生成时每来一段字都重建界面,所以正在生成时用上一次算的。
+  ContextMeter? get meter {
+    if (_meter != null && (isStreaming || identical(_meterFor, _messages))) {
+      return _meter;
+    }
+    _meterFor = _messages;
+    return _meter = main.sideMeter(_systemPrompt, _messages);
+  }
+
+  ContextMeter? _meter;
+  List<ChatMessage>? _meterFor;
+
   String get _systemPrompt => main.mangaOnly
       ? _mangaPrompt
       : main.layoutOnly
@@ -323,7 +332,12 @@ class SideChat extends ChangeNotifier {
     _seen = _workspace;
     // 出图、换工作流和主聊天一样,图贴在副聊天这条回复下面(成稿放好之后再出)。
     final reply = _messages.last;
-    main.deliverComfy(reply.text, reply.time, _updateAt(reply.time));
+    main.deliverComfy(
+      reply.text,
+      reply.time,
+      _updateAt(reply.time),
+      written: written,
+    );
   }
 
   /// 改 [at] 那条回复(按时刻找,出图期间可能又多了几条);不在了就不改。
@@ -388,6 +402,7 @@ class SideChat extends ChangeNotifier {
       sent,
       ask: ask,
       lookup: lookup,
+      onUsage: (u) => _update((m) => m.copyWith(usage: u)),
       onCut: (cut) => _update((m) => m.copyWith(cut: cut)),
     );
     if (requests.isEmpty) return tr('请先在设置里添加模型并填写模型名称');
@@ -445,12 +460,7 @@ class SideChat extends ChangeNotifier {
   bool _lookup() {
     if (_rounds >= _maxRounds) return false;
     final reply = _messages.last.text;
-    if (splitTagSearch(reply).queries.isEmpty &&
-        splitCharacterTags(reply).queries.isEmpty &&
-        splitLocalTools(reply).calls.isEmpty &&
-        !main.wantsWebSearch(reply)) {
-      return false;
-    }
+    if (!main.wantsLookup(reply)) return false;
     _rounds++;
     final run = ++_run;
     _waiting = true;

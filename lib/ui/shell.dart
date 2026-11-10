@@ -106,6 +106,7 @@ class _AppShellState extends State<AppShell> {
     // 测试里没在 main() 接上:Agent 用的就是这一页上的本地反推。
     widget.vm.local ??= _local;
     widget.vm.poses ??= _poses;
+    widget.vm.archive ??= _archive;
     _layoutChat.local ??= _local;
     _layoutChat.poses ??= _poses;
     _mangaChat.local ??= _local;

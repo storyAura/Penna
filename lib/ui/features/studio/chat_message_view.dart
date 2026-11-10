@@ -243,10 +243,13 @@ class ChatMessageView extends StatelessWidget {
         splitTagSearch(
           splitToolTag(
             splitToolTag(
-              splitToolTag(peeked, webSearchTag).prose,
-              loadSkillTag,
+              splitToolTag(
+                splitToolTag(peeked, webSearchTag).prose,
+                loadSkillTag,
+              ).prose,
+              poseRefTag,
             ).prose,
-            poseRefTag,
+            readSeriesTag,
           ).prose,
         ).prose,
       ).prose,

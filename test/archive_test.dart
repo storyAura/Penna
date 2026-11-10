@@ -54,6 +54,18 @@ void main() {
       expect(store.entries.map((e) => e.title), ['猫', '']);
       expect(store.entries.first.time, DateTime(2026, 10, 9, 9));
       expect(store.categoriesOf(archivePrompt), ['动物', uncategorized]);
+      // 分类按最近存的排,不按条目的位置;「未分类」在最后。
+      store.add(text: 'a car', category: '车', now: DateTime(2026, 10, 9, 7));
+      store.add(text: 'a bus', category: '车', now: DateTime(2026, 10, 9, 10));
+      store.move(store.entries.first.id, store.entries.last.id);
+      expect(store.categoriesOf(archivePrompt), ['车', '动物', uncategorized]);
+      expect(store.countsOf(archivePrompt), {
+        '车': 2,
+        '动物': 1,
+        uncategorized: 1,
+      });
+      store.remove(store.entries.firstWhere((e) => e.text == 'a car').id);
+      store.remove(store.entries.firstWhere((e) => e.text == 'a bus').id);
 
       store.remove(store.entries.first.id);
       expect(store.entries.single.text, 'a fox');
@@ -122,7 +134,7 @@ void main() {
     expect(find.text('狐狸'), findsOneWidget);
     expect(find.text('old cat'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(GestureDetector, '动物').first);
+    await tester.tap(find.widgetWithText(GestureDetector, '动物 1').first);
     await tester.pumpAndSettle();
     expect(find.text('狐狸'), findsNothing);
 

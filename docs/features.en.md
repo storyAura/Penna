@@ -28,6 +28,8 @@ Each page is a separate prompt, and pages can be grouped into series. There can 
 - One Agent reply can write several pages at once and starts a new series automatically when the topic changes.
 - Double-click a page tab or series name to rename it. Pages can be reordered or moved out of a series, and a whole series can be saved to the Archive at once.
 - Right-click a series name to **Archive** it: its pages are saved to the Archive and removed from the workspace. **Manage in bulk** selects several series to archive or delete together.
+- Shift-click page tabs to select several, then right-click to rename them, generate them in order, group them into a series or delete them; tabs can be dragged into another series.
+- The Agent knows the other series in the workspace and in the Archive, and can read back a saved prompt set and rewrite it with a new character or outfit.
 
 ## Agent chat
 
@@ -134,7 +136,7 @@ A Skill is a writing guide (`SKILL.md`) that decides how the Agent writes prompt
 
 ## API Management
 
-- Supports OpenAI-compatible APIs, the Google API (including Vertex AI) and Grok account sign-in.
+- Supports OpenAI-compatible APIs, the Google API (including Vertex AI), Grok account sign-in, and Claude and Codex subscriptions through the locally signed-in Claude Code and Codex command-line tools.
 - Context usage: a ring next to the send button shows how much of the model's context limit the current chat uses; hover for a panel with a color-coded ring showing the share of the system preset, Skills, built-in rules, draft, chat, tool results and attachments, along with input, cache and output counts and the current API and model. Opening an earlier chat shows the estimated context to load. Limits are recognized from the model name and can also be set on the API card.
 - Thinking effort: a button below the input box opens a card with a slider for Low, Medium, High and Max, each with its own color. Medium is the default, and the setting applies to chat, polishing and the side chat. If a model does not support the chosen level, Penna steps down or uses the model's default.
 - Web search: the Agent can look things up online. The search runs on an API with a search tool (Gemini, Grok, OpenAI, Zhipu, Bailian, OpenRouter), selected automatically or chosen in Settings, so a model without search can still use it. During and after a search, the query and a short summary of the result appear above the reply.

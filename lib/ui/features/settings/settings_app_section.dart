@@ -358,6 +358,39 @@ class _ChatOptions extends StatelessWidget {
           cfg.autoApprove,
           (v) => service.update(service.config.copyWith(autoApprove: v)),
         ),
+        gap,
+        _toggle(
+          tr('系列连续出图'),
+          tr('Agent 一次写了几页时按顺序全部出图'),
+          cfg.seriesGenerate,
+          (v) => service.update(service.config.copyWith(seriesGenerate: v)),
+        ),
+        gap,
+        PennaCard(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(tr('同系列带全文的页数'), style: titleStyle),
+              Text(tr('其余只给页名'), style: hintStyle),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final n in contextPageChoices)
+                    PennaChip(
+                      label: n == 0 ? tr('不限') : '$n',
+                      selected: cfg.contextPages == n,
+                      onTap: () => service.update(
+                        service.config.copyWith(contextPages: n),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
         if (_characterPreviewsReady) ...[
           gap,
           _toggle(

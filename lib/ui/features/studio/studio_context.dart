@@ -36,6 +36,8 @@ extension StudioContext on StudioViewModel {
         : splitToolTag(prose, loadSkillTag).queries.take(_maxQueries).toList();
     // 要姿势参考图:用户同意后 Agent 才写。
     final pose = _poseRefs(prose);
+    // 要别的系列(工作区的、档案库的)每页的全文。
+    final reads = layoutOnly || mangaOnly ? null : _readSeries(prose);
     if (queries.isEmpty &&
             names.isEmpty &&
             calls.isEmpty &&
@@ -43,6 +45,7 @@ extension StudioContext on StudioViewModel {
             webs.isEmpty &&
             loads.isEmpty &&
             pose == null &&
+            reads == null &&
             !peek ||
         _toolRounds >= _maxToolRounds) {
       return false;
@@ -88,6 +91,7 @@ extension StudioContext on StudioViewModel {
             if (web.isNotEmpty) formatWebResults(web),
             if (ran.isNotEmpty) _localResults(ran),
             ?pose?.text,
+            ?reads?.text,
           ].join('\n\n'),
           attachments: pose?.images ?? const [],
           time: time,
@@ -99,6 +103,7 @@ extension StudioContext on StudioViewModel {
             // 用了哪些技能不写在这:界面从 text 里读出来,单独显示一块(同联网搜索)。
             for (final r in ran) r.note,
             ?pose?.note,
+            ?reads?.note,
           ].join(' · '),
           toolDetails: [
             for (final MapEntry(key: query, value: found) in results.entries)
@@ -420,6 +425,7 @@ extension StudioContext on StudioViewModel {
             '写 <draft page="新" name="页名">,不要写进当前页。',
       ],
       _siblingPages,
+      _seriesRefPrompt,
       // 副聊天说过话才提:模型知道有这么个地方、怎么去看。
       if (side?.messages.isNotEmpty ?? false) sideNoteForMain,
       _namingNote('draft'),
@@ -545,6 +551,7 @@ extension StudioContext on StudioViewModel {
     List<ChatMessage> sent, {
     ChatMessage? ask,
     String lookup = '',
+    void Function(LlmUsage)? onUsage,
     void Function(LlmCut)? onCut,
   }) {
     final cfg = config.config;
@@ -572,6 +579,8 @@ extension StudioContext on StudioViewModel {
       ],
       images: _imagesOf(sent),
       piercing: cfg.sidePiercing ? cfg.piercingPrompt.trim() : '',
+      onUsage: onUsage,
+      onCut: onCut,
     );
   }
 
@@ -599,6 +608,7 @@ extension StudioContext on StudioViewModel {
       '【当前系列】「${seriesName(series)}」,共 $seriesLength 页\n'
           '第 ${pageNumber(_page)} 页$name(用户眼前这页):\n${_joined(labels: true)}',
       _siblingPages,
+      _seriesRefPrompt,
     ].where((s) => s.isNotEmpty).join('\n\n');
   }
 

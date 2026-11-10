@@ -413,6 +413,47 @@ void main() {
       expect(vm.comfy.latestFor('a cat'), reply.images.single);
     });
 
+    test('一条回复写了好几页:默认不自动出图;开了系列连续出图就按页的先后都出', () async {
+      final service = tempConfig();
+      service.update(
+        service.config
+            .putLlm(
+              const LlmProfile(
+                id: 'a',
+                name: 'A',
+                baseUrl: 'http://a',
+                model: 'm',
+              ),
+            )
+            .copyWith(comfy: _at(server.port)),
+      );
+      const reply =
+          '<draft page="1">\n【主体】a cat\n</draft>'
+          '<draft page="2">\n【主体】a dog\n</draft>'
+          '<generate-image></generate-image>';
+      final vm = StudioViewModel(
+        config: service,
+        streamChat: (_) => Stream.value(reply),
+      );
+      expect(vm.send('画两页'), isNull);
+      await pumpEventQueue();
+      expect(vm.pages, hasLength(2));
+      expect(vm.comfy.jobs, isEmpty);
+      expect(vm.messages.last.toolSummary, contains('没有自动出图'));
+
+      service.update(service.config.copyWith(seriesGenerate: true));
+      expect(vm.send('再画两页'), isNull);
+      await pumpEventQueue();
+      expect(
+        [for (final j in vm.comfy.jobs.reversed) j.prompt],
+        ['a cat', 'a dog'],
+      );
+      for (var i = 0; i < 100 && vm.messages.last.images.length < 2; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(vm.messages.last.images, hasLength(2));
+    });
+
     test('区域控制的 Agent 出图:先放布局,用画板交出去的 JSON,和工作台同一条队列', () async {
       final service = tempConfig();
       service.update(

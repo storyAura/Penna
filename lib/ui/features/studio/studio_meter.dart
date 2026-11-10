@@ -68,6 +68,53 @@ extension StudioMeter on StudioViewModel {
     );
   }
 
+  /// 副聊天的上下文圆环(2026-11-11 用户要求):系统提示 [system] 加上 [messages]。
+  /// 最后一条是报过用量的回复时用真数,否则按文字估。没有可用的模型时为 null。
+  ContextMeter? sideMeter(String system, List<ChatMessage> messages) {
+    final cfg = config.config;
+    final chain = _usable(cfg.sideChain);
+    if (chain.isEmpty) return null;
+    final latest = messages.reversed.where((m) => !m.tool).firstOrNull;
+    final measured = latest == null || latest.fromUser ? null : latest.usage;
+    final (llm, model) = _modelNamed(
+      chain,
+      measured == null ? null : latest!.by,
+    );
+    final prompt =
+        estimateTokens(system) +
+        (cfg.sidePiercing ? estimateTokens(cfg.piercingPrompt) : 0);
+    var chat = 0, tools = 0, files = 0;
+    for (final m in messages) {
+      if (!m.fromUser && (m.failed || m.text.isEmpty)) continue;
+      final own = estimateTokens(m.text);
+      m.tool ? tools += own : chat += own;
+      if (m.fromUser) {
+        files +=
+            m.attachments.where((a) => a.isImage).length * imageTokenEstimate;
+      }
+    }
+    final total = prompt + chat + tools + files;
+    final used = measured == null ? total : measured.input + measured.output;
+    return (
+      used: used,
+      limit: llm.contextLimit > 0 ? llm.contextLimit : modelContextLimit(model),
+      estimated: measured == null,
+      usage: measured,
+      api: llm.name,
+      model: model,
+      parts: [
+        for (final (label, tokens) in [
+          (tr('系统预设'), prompt),
+          (tr('对话'), chat),
+          (tr('工具结果'), tools),
+          (tr('附件和引用'), files),
+        ])
+          if (tokens > 0 && total > 0)
+            (label: label, tokens: tokens * used ~/ total),
+      ],
+    );
+  }
+
   /// 显示名([_requests] 起的)对应哪个接口的哪个模型;对不上就是眼前要用的第一个。
   (LlmProfile, String) _modelNamed(List<LlmProfile> chain, String? name) {
     for (final llm in chain) {

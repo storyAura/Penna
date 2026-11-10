@@ -43,7 +43,6 @@ class ComfyPanel extends StatelessWidget {
 
     final comfy = config.config.comfy;
     final wf = runner.workflow;
-    final models = wf == null ? const <ModelSlot>[] : modelSlots(wf);
     return ListView(
       // 底下多留一截:窗口右下角盖着一行版本号。
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 32),
@@ -64,7 +63,7 @@ class ComfyPanel extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: 4, left: 2),
           child: Text(
-            '${comfyStatusText(runner.status)} · ${comfy.server.url}',
+            comfyStatusText(runner.status),
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 11, color: PennaColors.slate500),
@@ -79,18 +78,6 @@ class ComfyPanel extends StatelessWidget {
           selected: runner.flowId,
           onSelected: runner.selectFlow,
         ),
-        for (final m in models)
-          Padding(
-            padding: const EdgeInsets.only(top: 4, left: 2),
-            child: Tooltip(
-              message: m.value,
-              child: Text(
-                m.value.split(RegExp(r'[\\/]')).last,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: PennaColors.slate500),
-              ),
-            ),
-          ),
         if (wf != null) ..._loras(context, wf, comfy, report),
       ],
     );

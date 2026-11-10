@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show debugPrint;
 
+import '../../../data/models/app_config.dart';
+import 'cli_provider.dart';
 import 'gemini_provider.dart';
 import 'openai_provider.dart';
 import 'responses_provider.dart';
@@ -12,6 +14,7 @@ import '../../../l10n/l10n.dart';
 Stream<String> streamChat(LlmRequest request) => switch (request.protocol) {
   'google' => streamGeminiChat(request),
   'grok' => streamResponsesChat(request),
+  protocolClaudeCode || protocolCodex => streamCliChat(request),
   _ when request.webSearch && searchesByResponses(request.baseUrl) =>
     streamResponsesChat(request),
   _ => streamOpenAiChat(request),
@@ -23,6 +26,7 @@ Future<List<String>> listModels({
   required String baseUrl,
   required String apiKey,
 }) async {
+  if (isCliProtocol(protocol)) return cliModels(protocol);
   final models = protocol == 'google'
       ? await listGeminiModels(baseUrl, apiKey)
       : await listOpenAiModels(baseUrl, apiKey);
