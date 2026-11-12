@@ -9,6 +9,9 @@ import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
 import '../../../core/harness/manga/manga_script.dart' show storyboardTag;
+import '../../../core/harness/notebook_tags.dart';
+import '../../../core/harness/llm_log.dart';
+import '../../../core/harness/piercing_document.dart';
 import '../../../core/harness/providers/llm_http.dart' show LlmCut;
 import '../../../core/harness/tags/tag_search.dart';
 import '../../../core/harness/web_search.dart';
@@ -61,6 +64,7 @@ class ChatMessageView extends StatelessWidget {
     required this.draftStatus,
     this.streaming = false,
     this.onRetry,
+    this.onContinue,
     this.pager,
     this.onShowReply,
     this.onEdit,
@@ -129,6 +133,9 @@ class ChatMessageView extends StatelessWidget {
 
   /// 非空时显示「重新回复」;只给最后一条回复。
   final VoidCallback? onRetry;
+
+  /// 非空时显示「接着写」:这条回复只写了半截,留着它让模型从断开处接着写。
+  final VoidCallback? onContinue;
 
   /// 重新回复留下了几份时给这个,回复下面出现翻页;只给最后一条回复。
   final ({int at, int total})? pager;
@@ -228,15 +235,22 @@ class ChatMessageView extends StatelessWidget {
     final m = message;
     // 先拆新 Skill:它正文里举例用的成稿标签不能被当成成稿。
     // 出图标签由程序交给 ComfyUI,聊天里只留进度和出好的图。
-    final generate = splitGenerate(m.text);
+    // 穿甲弹文档模式的 <document> 只是一层包装,里面的标签照常认。
+    final generate = splitGenerate(stripDocumentMarks(m.text));
     // 换工作流的标签也由程序做,结果记在回复的记录上。
     final model = splitToolTag(
       splitToolTag(generate.prose, storyboardTag).prose,
       comfyWorkflowTag,
     );
-    final peeked = splitPeek(
-      splitPeek(model.prose, readSideChat).prose,
-      readMainChat,
+    // 记事本的两个标签:读的走工具循环,存的说完才存,都不显示。
+    final peeked = splitToolTag(
+      splitSaveNote(
+        splitPeek(
+          splitPeek(model.prose, readSideChat).prose,
+          readMainChat,
+        ).prose,
+      ).prose,
+      readNotebookTag,
     ).prose;
     final tools = splitLocalTools(
       splitCharacterTags(
@@ -439,6 +453,15 @@ class ChatMessageView extends StatelessWidget {
                   background: Colors.transparent,
                   foreground: PennaColors.slate500,
                   onPressed: () => copyWithToast(context, copyable, tr('已复制')),
+                ),
+              if (onContinue != null)
+                PennaButton(
+                  label: tr('接着写'),
+                  icon: Icons.play_arrow_outlined,
+                  tooltip: tr('留着写好的部分,从断开处接着写'),
+                  background: Colors.transparent,
+                  foreground: PennaColors.primary,
+                  onPressed: onContinue,
                 ),
               if (onRetry != null)
                 PennaButton(

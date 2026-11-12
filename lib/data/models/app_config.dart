@@ -172,6 +172,7 @@ class LlmProfile {
     this.protocol = protocolOpenAi,
     this.enabled = true,
     this.contextLimit = 0,
+    this.serviceTier = '',
   });
 
   factory LlmProfile.fromJson(Map<String, dynamic> j) => LlmProfile(
@@ -188,6 +189,9 @@ class LlmProfile {
     },
     enabled: j['enabled'] as bool? ?? true,
     contextLimit: (j['contextLimit'] as num?)?.toInt() ?? 0,
+    serviceTier: geminiTiers.contains(j['serviceTier'])
+        ? j['serviceTier'] as String
+        : '',
   );
 
   final String id;
@@ -210,6 +214,14 @@ class LlmProfile {
   /// 用户填的上下文上限(token 数);0 是按模型名自动认。
   final int contextLimit;
 
+  /// Google 接口的用量档位([geminiTiers]):空串是自动(不传,官方默认 Standard)。
+  /// 只在用户选了时才传,Flex、Priority 不会自动换成别的档(防涨价)。
+  final String serviceTier;
+
+  /// [m] 挪到最前面、其余照旧的一份(只在内存里,不改设置)。
+  LlmProfile withFirstModel(String m) =>
+      copyWith(model: [m, ...models.where((x) => x != m)].join(', '));
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
@@ -218,6 +230,7 @@ class LlmProfile {
     'protocol': protocol,
     'enabled': enabled,
     if (contextLimit > 0) 'contextLimit': contextLimit,
+    if (serviceTier.isNotEmpty) 'serviceTier': serviceTier,
   };
 
   LlmProfile copyWith({
@@ -227,6 +240,7 @@ class LlmProfile {
     String? protocol,
     bool? enabled,
     int? contextLimit,
+    String? serviceTier,
   }) => LlmProfile(
     id: id,
     name: name ?? this.name,
@@ -235,8 +249,12 @@ class LlmProfile {
     protocol: protocol ?? this.protocol,
     enabled: enabled ?? this.enabled,
     contextLimit: contextLimit ?? this.contextLimit,
+    serviceTier: serviceTier ?? this.serviceTier,
   );
 }
+
+/// Google 接口能选的用量档位(2026-11-13 用户给的《Gemini 用量方案与 Penna 适配》)。
+const geminiTiers = ['standard', 'flex', 'priority'];
 
 /// Preset = 系统提示 + 工具白名单。Skills 对所有 Preset 生效,见 [AppConfig.disabledSkills]。
 @immutable
@@ -390,9 +408,11 @@ class AppConfig {
     this.activeLlmId,
     this.polishLlmId,
     this.sideLlmId,
+    this.activeModel,
+    this.sideModel,
     this.sidePiercing = false,
     this.webSearch = true,
-    this.webSearchLlmId,
+    this.webSearchLlmIds = const [],
     this.mtOrder = defaultMtOrder,
     this.mtEnabled = defaultMtEnabled,
     this.mtAttempts = defaultMtAttempts,
@@ -415,9 +435,11 @@ class AppConfig {
     this.tagSearchOnline = true,
     this.piercing = false,
     this.piercingPrompt = '',
+    this.piercingDocument = false,
     this.layoutQuality = defaultLayoutQuality,
     this.layoutSnap = defaultLayoutSnap,
     this.compressImages = true,
+    this.chatIdeas = true,
     this.autoApprove = false,
     this.contextPages = defaultContextPages,
     this.seriesGenerate = false,
@@ -444,9 +466,14 @@ class AppConfig {
       activeLlmId: m['activeLlmId'] as String?,
       polishLlmId: m['polishLlmId'] as String?,
       sideLlmId: m['sideLlmId'] as String?,
+      activeModel: m['activeModel'] as String?,
+      sideModel: m['sideModel'] as String?,
       sidePiercing: m['sidePiercing'] as bool? ?? false,
       webSearch: m['webSearch'] as bool? ?? true,
-      webSearchLlmId: m['webSearchLlmId'] as String?,
+      // 旧版的 webSearchLlmId 是「指定的排第一、其余后备」,不搬:回到自动。
+      webSearchLlmIds: List.unmodifiable(
+        (m['webSearchLlmIds'] as List? ?? const []).whereType<String>(),
+      ),
       mtOrder: normalizeMtOrder((m['mtOrder'] as List? ?? const []).cast()),
       // 旧版配置没有 mtOrder:那时的开关还没接功能,直接换成新默认(免费引擎)。
       mtEnabled: m['mtOrder'] == null
@@ -495,11 +522,13 @@ class AppConfig {
       ]),
       piercing: m['piercing'] as bool? ?? false,
       piercingPrompt: m['piercingPrompt'] as String? ?? '',
+      piercingDocument: m['piercingDocument'] as bool? ?? false,
       layoutQuality: m['layoutQuality'] as String? ?? defaultLayoutQuality,
       layoutSnap: ((m['layoutSnap'] as num?) ?? defaultLayoutSnap)
           .clamp(minLayoutSnap, maxLayoutSnap)
           .toInt(),
       compressImages: m['compressImages'] as bool? ?? true,
+      chatIdeas: m['chatIdeas'] as bool? ?? true,
       autoApprove: m['autoApprove'] as bool? ?? false,
       contextPages: contextPageChoices.contains(m['contextPages'])
           ? m['contextPages'] as int
@@ -542,25 +571,36 @@ class AppConfig {
   final String? sideLlmId;
   final bool sidePiercing;
 
+  /// 指定的接口里先用哪个模型(对话顶栏的下拉里选的);null 或对不上时照接口里填的先后。
+  final String? activeModel;
+  final String? sideModel;
+
   /// Agent 对话依次尝试的模型。
-  List<LlmProfile> get agentChain => _llmChain(activeLlmId);
+  List<LlmProfile> get agentChain => _llmChain(activeLlmId, activeModel);
 
   /// 润色依次尝试的模型。
   List<LlmProfile> get polishChain => _llmChain(polishLlmId);
-  List<LlmProfile> get sideChain => _llmChain(sideLlmId);
+  List<LlmProfile> get sideChain => _llmChain(sideLlmId, sideModel);
 
-  /// Agent 能联网搜索。搜索不一定用写回复的模型:[webSearchLlmId] 指定用哪个接口,
-  /// null 是自动(优先用 Agent 对话那个,能搜的才算,见 `web_search.dart`)。
+  /// Agent 能联网搜索。搜索不一定用写回复的模型:[webSearchLlmIds] 是勾选的接口,
+  /// 按勾选的先后轮换,只用它们;空的是自动(优先用 Agent 对话那个,能搜的才算,
+  /// 见 `web_search.dart`)。2026-11-13 用户要求:能单独设置哪些接口参与轮换。
   final bool webSearch;
-  final String? webSearchLlmId;
+  final List<String> webSearchLlmIds;
 
   /// 联网搜索依次尝试的接口(还没筛能不能搜)。
-  List<LlmProfile> get searchChain => _llmChain(webSearchLlmId ?? activeLlmId);
+  List<LlmProfile> get searchChain => webSearchLlmIds.isEmpty
+      ? _llmChain(activeLlmId)
+      : [
+          for (final id in webSearchLlmIds)
+            ...llms.where((l) => l.enabled && l.id == id),
+        ];
 
-  List<LlmProfile> _llmChain(String? pinnedId) {
+  List<LlmProfile> _llmChain(String? pinnedId, [String? model]) {
     final usable = llms.where((l) => l.enabled);
     return [
-      ...usable.where((l) => l.id == pinnedId),
+      for (final l in usable.where((l) => l.id == pinnedId))
+        l.models.contains(model) ? l.withFirstModel(model!) : l,
       ...usable.where((l) => l.id != pinnedId),
     ];
   }
@@ -647,17 +687,25 @@ class AppConfig {
   final bool piercing;
   final String piercingPrompt;
 
+  /// 穿甲弹的文档模式:当成规则文件发、用户的话包成上传的文件、正文写进文档
+  /// (`piercing_document.dart`)。只用在对话上,润色、反推照旧接在系统提示前面。
+  final bool piercingDocument;
+
   /// 区域控制交出去的 JSON 里 summary.caption 最前面的质量词;空串是不加。
   final String layoutQuality;
 
   /// 区域控制的画布宽高对齐到它的倍数(见 [defaultLayoutSnap])。
   final int layoutSnap;
 
-  /// 要注入的穿甲弹文字;关着或没填为空串。
-  String get piercingText => piercing ? piercingPrompt.trim() : '';
+  /// 要注入的穿甲弹文字;关着、没填或用文档模式时为空串(文字只给提示词模式用)。
+  String get piercingText =>
+      piercing && !piercingDocument ? piercingPrompt.trim() : '';
 
   /// 对话里附上的大图先缩小、转成 WebP 再发。
   final bool compressImages;
+
+  /// 新对话里没说话时,用 Agent 的模型想几条创作点子摆在空白处。
+  final bool chatIdeas;
 
   /// 成稿的待确认改动一出来就自动采纳,不用用户点。
   final bool autoApprove;
@@ -691,9 +739,11 @@ class AppConfig {
     'activeLlmId': activeLlmId,
     'polishLlmId': polishLlmId,
     'sideLlmId': sideLlmId,
+    'activeModel': activeModel,
+    'sideModel': sideModel,
     'sidePiercing': sidePiercing,
     'webSearch': webSearch,
-    'webSearchLlmId': webSearchLlmId,
+    'webSearchLlmIds': webSearchLlmIds,
     'mtOrder': mtOrder,
     'mtEnabled': mtEnabled.toList(),
     'mtAttempts': mtAttempts,
@@ -718,9 +768,11 @@ class AppConfig {
     'tagSearchOnline': tagSearchOnline,
     'piercing': piercing,
     'piercingPrompt': piercingPrompt,
+    'piercingDocument': piercingDocument,
     'layoutQuality': layoutQuality,
     'layoutSnap': layoutSnap,
     'compressImages': compressImages,
+    'chatIdeas': chatIdeas,
     'autoApprove': autoApprove,
     'contextPages': contextPages,
     'seriesGenerate': seriesGenerate,
@@ -781,9 +833,11 @@ class AppConfig {
     String? Function()? activeLlmId,
     String? Function()? polishLlmId,
     String? Function()? sideLlmId,
+    String? Function()? activeModel,
+    String? Function()? sideModel,
     bool? sidePiercing,
     bool? webSearch,
-    String? Function()? webSearchLlmId,
+    List<String>? webSearchLlmIds,
     Set<String>? mtEnabled,
     List<String>? mtOrder,
     int? mtAttempts,
@@ -806,9 +860,11 @@ class AppConfig {
     bool? tagSearchOnline,
     bool? piercing,
     String? piercingPrompt,
+    bool? piercingDocument,
     String? layoutQuality,
     int? layoutSnap,
     bool? compressImages,
+    bool? chatIdeas,
     bool? autoApprove,
     int? contextPages,
     bool? seriesGenerate,
@@ -824,11 +880,13 @@ class AppConfig {
     activeLlmId: activeLlmId == null ? this.activeLlmId : activeLlmId(),
     polishLlmId: polishLlmId == null ? this.polishLlmId : polishLlmId(),
     sideLlmId: sideLlmId == null ? this.sideLlmId : sideLlmId(),
+    activeModel: activeModel == null ? this.activeModel : activeModel(),
+    sideModel: sideModel == null ? this.sideModel : sideModel(),
     sidePiercing: sidePiercing ?? this.sidePiercing,
     webSearch: webSearch ?? this.webSearch,
-    webSearchLlmId: webSearchLlmId == null
-        ? this.webSearchLlmId
-        : webSearchLlmId(),
+    webSearchLlmIds: webSearchLlmIds == null
+        ? this.webSearchLlmIds
+        : List.unmodifiable(webSearchLlmIds),
     mtEnabled: mtEnabled ?? this.mtEnabled,
     mtOrder: mtOrder ?? this.mtOrder,
     mtAttempts: mtAttempts ?? this.mtAttempts,
@@ -851,9 +909,11 @@ class AppConfig {
     tagSearchOnline: tagSearchOnline ?? this.tagSearchOnline,
     piercing: piercing ?? this.piercing,
     piercingPrompt: piercingPrompt ?? this.piercingPrompt,
+    piercingDocument: piercingDocument ?? this.piercingDocument,
     layoutQuality: layoutQuality ?? this.layoutQuality,
     layoutSnap: layoutSnap ?? this.layoutSnap,
     compressImages: compressImages ?? this.compressImages,
+    chatIdeas: chatIdeas ?? this.chatIdeas,
     autoApprove: autoApprove ?? this.autoApprove,
     contextPages: contextPages ?? this.contextPages,
     seriesGenerate: seriesGenerate ?? this.seriesGenerate,
@@ -897,7 +957,10 @@ class AppConfig {
     ],
     activeLlmId: () => activeLlmId == id ? null : activeLlmId,
     polishLlmId: () => polishLlmId == id ? null : polishLlmId,
-    webSearchLlmId: () => webSearchLlmId == id ? null : webSearchLlmId,
+    webSearchLlmIds: [
+      for (final w in webSearchLlmIds)
+        if (w != id) w,
+    ],
     secrets: {...secrets}
       ..remove(llmSecretKey(id))
       ..remove(llmRefreshKey(id))

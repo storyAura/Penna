@@ -220,7 +220,7 @@ void main() {
 
     await tester.tap(find.byTooltip('设置'));
     await tester.pump();
-    await tester.tap(find.text('添加模型'));
+    await tester.tap(find.text('添加接口'));
     await tester.pump();
     expect(config.config.agentChain.firstOrNull?.name, '新模型');
     await tester.tap(find.text('常用服务'));
@@ -282,6 +282,64 @@ void main() {
     await tester.tap(find.text('微软雅黑'));
     await tester.pump();
     expect(config.config.fontCjk, 'Microsoft YaHei UI');
+  });
+
+  testWidgets('模型下拉:只展开眼前那家的模型,点别家不关菜单、换过去展开', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final config = tempConfig()
+      ..update(
+        const AppConfig(
+          llms: [
+            LlmProfile(
+              id: 'a',
+              name: 'A',
+              baseUrl: 'http://x',
+              model: 'm1, m2',
+            ),
+            LlmProfile(
+              id: 'b',
+              name: 'B',
+              baseUrl: 'http://y',
+              model: 'n1, n2',
+            ),
+          ],
+          activeLlmId: 'a',
+        ),
+      );
+    final vm = StudioViewModel(
+      config: config,
+      streamChat: (_) => const Stream.empty(),
+    );
+    addTearDown(vm.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: pennaTheme(),
+        home: AppShell(vm: vm, config: config, skills: tempSkills()),
+      ),
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byType(StudioPage),
+        matching: find.text('A · m1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('m2').hitTestable(), findsOneWidget);
+    expect(find.text('n1').hitTestable(), findsNothing);
+
+    await tester.tap(find.text('B').last);
+    await tester.pumpAndSettle();
+    expect(config.config.activeLlmId, 'b');
+    expect(find.text('管理模型…'), findsOneWidget);
+    expect(find.text('n2').hitTestable(), findsOneWidget);
+    expect(find.text('m2').hitTestable(), findsNothing);
+
+    await tester.tap(find.text('n2').hitTestable());
+    await tester.pumpAndSettle();
+    expect(config.config.activeModel, 'n2');
+    expect(find.text('管理模型…'), findsNothing);
   });
 
   testWidgets('有待确认 diff 时点击采纳后 diff 块消失', (tester) async {

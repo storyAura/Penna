@@ -157,6 +157,33 @@ extension StudioChat on StudioViewModel {
     return _startReply(history, now ?? DateTime.now());
   }
 
+  /// 最后一条回复只写了半截时,写好的那部分([partialReply]);否则 null。
+  String? get partialLast =>
+      _messages.isEmpty ? null : partialReply(_messages.last);
+
+  /// 接着写:最后那条半截的回复留着,连同它一起发回去,只让模型写断开之后的部分,
+  /// 写出来的接在后面(2026-11-13 用户要求)。不能接时返回原因。
+  String? continueReply({DateTime? now}) {
+    if (isStreaming) return tr('正在生成,请先停止当前回复');
+    final partial = partialLast;
+    if (partial == null) return tr('这条回复已经写完了');
+    _toolRounds = 0;
+    final last = _messages.last;
+    return _startReply(
+      [
+        ..._messages.take(_messages.length - 1),
+        last.copyWith(
+          text: partial,
+          failed: false,
+          stopped: false,
+          uncut: true,
+        ),
+      ],
+      now ?? DateTime.now(),
+      resume: true,
+    );
+  }
+
   /// 翻到第 [index] 份回复。只换对话里显示的,成稿不动:要用旧回复里的成稿,点卡片上的按钮。
   void showReplyAt(int index) {
     if (isStreaming) return;
@@ -187,21 +214,31 @@ extension StudioChat on StudioViewModel {
   }
 
   /// 以 [history](最后一条是用户消息)为上文开始一条新的流式回复。
-  String? _startReply(List<ChatMessage> history, DateTime time) {
+  /// [resume] 时 [history] 最后一条是写了半截的回复:请模型接着写,写的接在它后面。
+  String? _startReply(
+    List<ChatMessage> history,
+    DateTime time, {
+    bool resume = false,
+  }) {
     final cfg = config.config;
     final chain = _usable(cfg.agentChain);
     if (chain.isEmpty) return tr('请先在设置里添加模型并填写模型名称');
 
-    // 出错的、被停在开头的空回复不算历史,有的接口会拒收空内容。
+    // 出错的、被停在开头的空回复不算历史,有的接口会拒收空内容;
+    // 写了半截才出错的留下写好的部分(去掉出错原因),模型知道自己写到了哪。
     final sent = [
       for (final m in history)
-        if (m.fromUser || !m.failed && m.text.isNotEmpty) m,
+        if (m.fromUser || !m.failed && m.text.isNotEmpty)
+          m
+        else if (partialReply(m) case final part?)
+          m.copyWith(text: part),
     ];
     // 用户这次的话里提到的角色,先替模型查好,接在那条消息后面(查工具那几轮也一直带着)。
     final (:ask, text: auto, :note) = autoLookupFor(sent);
     _messages = List.unmodifiable([
       ...history,
-      ChatMessage(fromUser: false, text: '', time: time, toolSummary: note),
+      if (!resume)
+        ChatMessage(fromUser: false, text: '', time: time, toolSummary: note),
     ]);
     final preset = cfg.activePreset;
     final enabled = _sentSkills(cfg);
@@ -239,8 +276,10 @@ extension StudioChat on StudioViewModel {
               final text => text,
             },
           },
+        if (resume) {'role': 'user', 'content': _continuePrompt},
       ],
       images: _imagesOf(sent),
+      document: cfg.piercing,
       onUsage: (u) {
         _liveUsageAt = _messages.last.time;
         _updateReply((m) => m.copyWith(usage: u));
@@ -280,6 +319,7 @@ extension StudioChat on StudioViewModel {
               _deliverComfy(written);
             }
             _deliverCharacters();
+            _deliverNotes();
             // 透视在 _deliverLayout 里先放(没有布局时它自己放)。
             _deliverLayout();
             _deliverLayers();
@@ -311,6 +351,12 @@ extension StudioChat on StudioViewModel {
     unawaited(_reply!.cancel());
     _reply = null;
     _updateReply((m) => m.copyWith(stopped: true));
+    final last = _messages.last;
+    llmLog.add(
+      LlmEventKind.stopped,
+      last.by ?? '',
+      last.text.isEmpty ? tr('还没出字就停了') : tr('写到一半停了'),
+    );
   }
 
   /// 发一条消息,等这条回复彻底说完(查标签那几轮也算)。主工作区把排布局的活

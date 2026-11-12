@@ -9,6 +9,7 @@ import '../data/services/notebook_store.dart';
 import '../data/services/skill_store.dart';
 import 'core/theme.dart';
 import 'core/version.dart';
+import 'core/llm_log_view.dart';
 import 'core/widgets.dart';
 import 'features/archive/archive_page.dart';
 import 'features/characters/characters_page.dart';
@@ -107,6 +108,7 @@ class _AppShellState extends State<AppShell> {
     widget.vm.local ??= _local;
     widget.vm.poses ??= _poses;
     widget.vm.archive ??= _archive;
+    widget.vm.notebooks ??= _notebooks;
     _layoutChat.local ??= _local;
     _layoutChat.poses ??= _poses;
     _mangaChat.local ??= _local;
@@ -437,6 +439,16 @@ class _NavRail extends StatelessWidget {
             ),
           ],
           const Spacer(),
+          // 模型日志:自动换接口、出错、截断、停止都记在这里。
+          LlmLogButton(
+            button: (onTap) => _RailButton(
+              icon: Icons.receipt_long_outlined,
+              tooltip: tr('模型日志'),
+              selected: false,
+              onTap: onTap,
+            ),
+          ),
+          const SizedBox(height: 6),
           _RailButton(
             icon: Icons.settings_outlined,
             tooltip: tr('设置'),

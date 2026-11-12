@@ -17,6 +17,9 @@ import '../../../core/harness/local/local_tools.dart';
 import '../../../core/harness/manga/manga_gacha.dart';
 import '../../../core/harness/manga/manga_poses.dart';
 import '../../../core/harness/manga/manga_script.dart';
+import '../../../core/harness/notebook_tags.dart';
+import '../../../core/harness/llm_log.dart';
+import '../../../core/harness/piercing_document.dart';
 import '../../../core/harness/providers/grok_auth.dart';
 import '../../../core/harness/providers/llm_router.dart';
 import '../../../core/harness/providers/openai_provider.dart';
@@ -27,6 +30,7 @@ import '../../../data/models/app_config.dart';
 import '../../../data/services/archive_store.dart';
 import '../../../data/services/character_store.dart';
 import '../../../data/services/config_service.dart';
+import '../../../data/services/notebook_store.dart';
 import '../../../data/services/skill_store.dart';
 import '../../../data/services/translate_chain.dart';
 import '../../../data/services/translate_engines.dart';
@@ -48,12 +52,15 @@ part 'studio_comfy.dart';
 part 'studio_context.dart';
 part 'studio_draft.dart';
 part 'studio_history.dart';
+part 'studio_ideas.dart';
 part 'studio_layout_pages.dart';
 part 'studio_manga.dart';
 part 'studio_meter.dart';
+part 'studio_notebook.dart';
 part 'studio_page_batch.dart';
 part 'studio_pages.dart';
 part 'studio_poses.dart';
+part 'studio_prompts.dart';
 part 'studio_rewrite.dart';
 part 'studio_series_refs.dart';
 part 'studio_skills.dart';
@@ -176,6 +183,7 @@ class StudioViewModel extends ChangeNotifier {
     this.layoutOnly = false,
     ComfyRunner? comfy,
     this.manga,
+    this.ideas = false,
   }) : comfy = comfy ?? ComfyRunner(config),
        _blocks = List.unmodifiable(blocks),
        _messages = List.unmodifiable(messages) {
@@ -217,6 +225,10 @@ class StudioViewModel extends ChangeNotifier {
   /// 同 [local] 建好之后才接上。
   ArchiveStore? archive;
 
+  /// 记事本:Agent 写 `<read-notebook>` 能读、`<save-note>` 能存([StudioNotebook])。
+  /// 同 [local] 建好之后才接上。
+  NotebookStore? notebooks;
+
   /// 区域控制工作台的那场对话(`layoutOnly`)。主工作区的 Agent 写 `<ask-layout>` 时,
   /// 把活转给它,等它把布局放到画板上,再把 JSON 拿回主工作区的新系列。
   /// 和 [local] 一样建好之后才接上;没有就由主工作区的 Agent 自己写 `<layout>`。
@@ -242,6 +254,12 @@ class StudioViewModel extends ChangeNotifier {
 
   /// 漫画分镜工作台那场对话的分镜作品;有它时这场对话只写分镜(见 [StudioManga])。
   final MangaBoard? manga;
+
+  /// 新对话的空白处要不要摆创作点子([StudioIdeas]);测试里不给,免得占掉假模型的回复。
+  final bool ideas;
+  List<String>? _ideas;
+  bool _ideasBusy = false;
+  int _ideasRun = 0;
 
   /// 布局页右边那场对话用的:系统提示只讲布局,回复里的 `<layout>` 放到 [layout] 上,
   /// 不往成稿里送。界面和工作台的对话是同一个 `ChatPane`。

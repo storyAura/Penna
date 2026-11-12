@@ -81,6 +81,9 @@ class ChatMessage {
     int? replyAt,
     LlmCut? cut,
     List<String>? images,
+
+    /// 为真时去掉 [cut](接着写的时候:这条又在写了)。
+    bool uncut = false,
   }) => ChatMessage(
     fromUser: fromUser,
     text: text ?? this.text,
@@ -97,7 +100,7 @@ class ChatMessage {
     usage: usage ?? this.usage,
     otherReplies: otherReplies ?? this.otherReplies,
     replyAt: replyAt ?? this.replyAt,
-    cut: cut ?? this.cut,
+    cut: uncut ? null : cut ?? this.cut,
     images: images ?? this.images,
   );
 
@@ -168,6 +171,22 @@ class ChatMessage {
     cut: LlmCut.values.asNameMap()[j['cut']],
     images: List.unmodifiable(((j['images'] as List?) ?? const []).cast()),
   );
+}
+
+/// 一条回复只写了半截(到了上限、被拦、断线、中途出错、写到一半被停了):返回写好的那部分,
+/// 「接着写」时原样发回去,只让模型写后面的(2026-11-13 用户要求)。不是这种时是 null。
+String? partialReply(ChatMessage m) {
+  if (m.fromUser || m.tool) return null;
+  if (m.cut == null && !m.failed && !m.stopped) return null;
+  var text = m.text;
+  if (m.failed) {
+    // 出错时原因接在文字后面(换行加「[出错] …」),去掉它。
+    final mark = tr('{0}\n[出错] {1}', ['', '']);
+    final at = text.lastIndexOf(mark);
+    if (at < 0) return null;
+    text = text.substring(0, at);
+  }
+  return text.trim().isEmpty ? null : text;
 }
 
 /// 重新回复时从哪条消息后面重来:最后一条查询结果也算,查过的资料不用再查一遍

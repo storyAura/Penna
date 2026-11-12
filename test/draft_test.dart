@@ -144,33 +144,38 @@ void main() {
     });
   });
 
-  test('一个接口填了几个模型:按先后试,回复上标出是哪个模型', () async {
+  test('一个接口填了几个模型:先用选中的那个,失败了跳过同一家直接换下一家', () async {
     final asked = <String>[];
     final vm = StudioViewModel(
       config: tempConfig()
         ..update(
-          const AppConfig().putLlm(
-            LlmProfile(
-              id: 'a',
-              name: 'A',
-              baseUrl: 'http://x',
-              model: 'm1, m2',
-            ),
-          ),
+          const AppConfig()
+              .putLlm(
+                LlmProfile(
+                  id: 'a',
+                  name: 'A',
+                  baseUrl: 'http://x',
+                  model: 'm1, m2, m3',
+                ),
+              )
+              .putLlm(
+                LlmProfile(id: 'b', name: 'B', baseUrl: 'http://y', model: 'n'),
+              )
+              .copyWith(activeLlmId: () => 'a', activeModel: () => 'm2'),
         ),
       streamChat: (req) {
         asked.add(req.model);
-        return req.model == 'm1'
-            ? Stream.error(const LlmException('挂了'))
-            : Stream.value('好');
+        return req.model == 'n'
+            ? Stream.value('好')
+            : Stream.error(const LlmException('挂了'));
       },
     );
 
     vm.send('你好');
     await pumpEventQueue();
 
-    expect(asked, ['m1', 'm2']);
-    expect(vm.messages.last.by, 'A · m2');
+    expect(asked, ['m2', 'n']);
+    expect(vm.messages.last.by, 'B');
   });
 
   group('只改几段的成稿按标注并进去', () {

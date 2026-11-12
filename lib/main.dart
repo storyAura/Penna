@@ -89,6 +89,7 @@ Future<void> main() async {
   final vm = StudioViewModel(
     config: config,
     streamChat: streamChat,
+    ideas: true,
     skills: skills,
     tagDictionary: tagDictionary,
     tagSearch: tagSearcher(() => config.config, tagDictionary),
@@ -102,6 +103,7 @@ Future<void> main() async {
   final layoutChat = StudioViewModel(
     config: config,
     streamChat: streamChat,
+    ideas: true,
     skills: skills,
     tagDictionary: tagDictionary,
     tagSearch: tagSearcher(() => config.config, tagDictionary),
@@ -119,6 +121,7 @@ Future<void> main() async {
   final mangaChat = StudioViewModel(
     config: config,
     streamChat: streamChat,
+    ideas: true,
     skills: skills,
     tagDictionary: tagDictionary,
     tagSearch: tagSearcher(() => config.config, tagDictionary),
@@ -147,6 +150,7 @@ Future<void> main() async {
   vm.local = local;
   vm.poses = poses;
   vm.archive = archive;
+  vm.notebooks = notebooks;
   // 区域控制那场对话同样能本地反推、附姿势参考(两个工作台本是同一类)。
   layoutChat.local = local;
   layoutChat.poses = poses;

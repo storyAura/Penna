@@ -1,12 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show debugPrint;
-
 import '../../../data/models/app_config.dart';
 import 'cli_provider.dart';
 import 'gemini_provider.dart';
 import 'openai_provider.dart';
 import 'responses_provider.dart';
+import '../llm_log.dart';
 import '../web_search.dart';
 import '../../../l10n/l10n.dart';
 
@@ -33,7 +32,11 @@ Future<List<String>> listModels({
   return models.toSet().toList()..sort();
 }
 
-/// 按 [chain] 的顺序请求模型:某个模型还没吐出任何内容就失败,换下一个;
+/// 给人看的错误:认得的说原因,认不出的只报类型(原文可能带着 Key)。
+String _brief(Object error) =>
+    error is LlmException ? error.message : '${error.runtimeType}';
+
+/// 按 [chain] 的顺序请求模型:某个模型还没吐出任何内容就失败,换下一家的模型;
 /// 已经开始回复后再出错,就把错误原样抛出(不能接着另一个模型的话往下说)。
 /// [onTrying] 在开始问某个模型时调用,[onAnswering] 在它开始回复时调用,都告知名字。
 ///
@@ -77,21 +80,34 @@ Stream<String> streamWithFailover(
     return (started, error);
   }
 
+  // 同一家(协议、地址、Key 都一样)的一个模型没出字就失败了,这家剩下的模型不再试,
+  // 直接换下一家(2026-11-12 用户要求)。
+  String vendor(LlmRequest r) => '${r.protocol}|${r.baseUrl}|${r.apiKey}';
+
   Future<void> run() async {
     final failures = <String>[];
+    final failed = <String>{};
     for (final (name, request) in chain) {
       if (cancelled) return;
+      if (failed.contains(vendor(request))) continue;
       onTrying?.call(name);
       final (started, error) = await runOne(name, request);
       if (cancelled) return;
       if (started) {
-        if (error != null) out.addError(error);
+        if (error != null) {
+          llmLog.add(LlmEventKind.error, name, _brief(error));
+          out.addError(error);
+        }
         return out.close();
       }
+      failed.add(vendor(request));
       failures.add('$name:${error ?? '没有返回内容'}');
-      // 后面的模型接上了,这条原因就不会显示出来;记进 error.log 好查为什么换了。
-      // ponytail: 只记日志,界面上不提示;要提示时在回复上加一行「X 失败,换成 Y」。
-      debugPrint('换下一个模型:${failures.last}');
+      // 后面的模型接上了,这条原因就不会显示在回复上:记进模型日志(左侧栏能看)。
+      llmLog.add(
+        LlmEventKind.failover,
+        name,
+        error == null ? tr('模型没有返回内容') : _brief(error),
+      );
     }
     out.addError(
       LlmException(failures.isEmpty ? tr('没有可用的模型') : failures.join('\n')),

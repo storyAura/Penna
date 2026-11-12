@@ -69,7 +69,8 @@ class _SettingsPageState extends State<SettingsPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
-          width: 180,
+          // 英文的「Parameters & tools」「Local Interrogate」要这么宽(2026-11-13 用户反馈溢出)。
+          width: 212,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: PennaColors.card,
@@ -101,9 +102,13 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Align(
               alignment: Alignment.topLeft,
               child: ConstrainedBox(
-                // 软件设置在右边另有一栏,放宽一些。
+                // API 管理、软件设置在右边另有一栏,放宽一些。
                 constraints: BoxConstraints(
-                  maxWidth: _tab == _tabs.length - 1 ? appSectionMaxWidth : 760,
+                  maxWidth: switch (_tab) {
+                    0 => llmSectionMaxWidth,
+                    _ when _tab == _tabs.length - 1 => appSectionMaxWidth,
+                    _ => 760,
+                  },
                 ),
                 // 换分区时新内容弹入;key 不变时(同一分区内的改动)不重播。
                 child: PopIn(
@@ -162,12 +167,16 @@ class _TabItem extends StatelessWidget {
                 children: [
                   Icon(tab.icon, size: 16, color: color),
                   const SizedBox(width: 8),
-                  Text(
-                    tab.label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: color,
+                  Expanded(
+                    child: Text(
+                      tab.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: color,
+                      ),
                     ),
                   ),
                 ],

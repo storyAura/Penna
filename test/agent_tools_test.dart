@@ -1036,17 +1036,32 @@ void main() {
   });
 
   group('联网搜索', () {
-    test('能搜的接口才进搜索链;指定的排第一;关掉就没有', () {
+    test('能搜的接口才进搜索链;勾选了就只用勾选的、按勾选的先后;关掉就没有', () {
       final cfg = const AppConfig(llms: [_deepseek, _grok, _gemini]);
       expect([for (final l in webSearchChain(cfg)) l.id], ['gk', 'gm']);
       expect(
         [
+          for (final l in webSearchChain(cfg.copyWith(webSearchLlmIds: ['gm'])))
+            l.id,
+        ],
+        ['gm'],
+      );
+      expect(
+        [
           for (final l in webSearchChain(
-            cfg.copyWith(webSearchLlmId: () => 'gm'),
+            cfg.copyWith(webSearchLlmIds: ['gm', 'ds', 'gk']),
           ))
             l.id,
         ],
         ['gm', 'gk'],
+      );
+      // 删掉的接口从勾选里去掉。
+      expect(
+        cfg
+            .copyWith(webSearchLlmIds: ['gm', 'gk'])
+            .removeLlm('gm')
+            .webSearchLlmIds,
+        ['gk'],
       );
       // 自动时优先用 Agent 对话那个。
       expect(
@@ -1094,7 +1109,7 @@ void main() {
           const AppConfig(
             llms: [_deepseek, _gemini],
             activeLlmId: 'ds',
-            webSearchLlmId: 'gm',
+            webSearchLlmIds: ['gm'],
           ),
         );
       final vm = StudioViewModel(
@@ -1512,13 +1527,13 @@ void main() {
     );
     expect(find.text('退出登录'), findsOneWidget);
     expect(find.text('Base URL'), findsNothing);
-    expect(find.text('API Key'), findsNothing);
+    expect(find.widgetWithText(PennaField, 'API Key'), findsNothing);
     expect(find.text('联网搜索'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(PennaChip, 'OpenAI'));
+    await tester.tap(find.widgetWithText(PennaChip, 'OpenAI 兼容'));
     await tester.pump();
     expect(find.text('Base URL'), findsOneWidget);
-    await tester.tap(find.text('保存'));
+    // 换协议立即存。
     await tester.runAsync(pumpEventQueue);
     await tester.pump();
 

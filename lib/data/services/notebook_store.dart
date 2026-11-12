@@ -77,6 +77,23 @@ class NotebookStore extends ChangeNotifier {
     );
   }
 
+  /// Agent 存一条:按名字找本子(没有就新建),本子里有同名的条目就换内容,
+  /// 没有(或 [title] 空着)就接在最后。名字比的时候不分大小写、不看首尾空白。
+  void putNote(String bookName, String title, String text) {
+    String key(String s) => s.trim().toLowerCase();
+    final book =
+        _books.where((b) => key(b.name) == key(bookName)).firstOrNull?.id ??
+        addBook(bookName);
+    final notes = _books.firstWhere((b) => b.id == book).notes;
+    final same = title.trim().isEmpty
+        ? null
+        : notes.where((n) => key(n.title) == key(title)).firstOrNull;
+    // 新建的本子自带一条空的:先用它。
+    final blank = notes.where((n) => n.title.isEmpty && n.text.isEmpty);
+    final id = same?.id ?? blank.firstOrNull?.id ?? addNote(book);
+    updateNote(book, id, title: title.trim(), text: text);
+  }
+
   void removeNote(String book, String note) => _edit(
     book,
     (b) => (

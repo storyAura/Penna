@@ -316,7 +316,10 @@ class _RightBarState extends State<RightBar> {
             selected: piercing,
             onTap: () {
               widget.config.update(cfg.copyWith(piercing: !piercing));
-              if (!piercing && cfg.piercingPrompt.trim().isEmpty) {
+              // 文档模式不填内容也能用。
+              if (!piercing &&
+                  !cfg.piercingDocument &&
+                  cfg.piercingPrompt.trim().isEmpty) {
                 showToast(context, tr('穿甲弹内容为空,在设置 → Preset 里填写'), warn: true);
               }
             },

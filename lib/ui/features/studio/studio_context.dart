@@ -38,6 +38,8 @@ extension StudioContext on StudioViewModel {
     final pose = _poseRefs(prose);
     // 要别的系列(工作区的、档案库的)每页的全文。
     final reads = layoutOnly || mangaOnly ? null : _readSeries(prose);
+    // 要记事本里某个本子的内容。
+    final notes = layoutOnly || mangaOnly ? null : _readNotebook(prose);
     if (queries.isEmpty &&
             names.isEmpty &&
             calls.isEmpty &&
@@ -46,6 +48,7 @@ extension StudioContext on StudioViewModel {
             loads.isEmpty &&
             pose == null &&
             reads == null &&
+            notes == null &&
             !peek ||
         _toolRounds >= _maxToolRounds) {
       return false;
@@ -92,6 +95,7 @@ extension StudioContext on StudioViewModel {
             if (ran.isNotEmpty) _localResults(ran),
             ?pose?.text,
             ?reads?.text,
+            ?notes?.text,
           ].join('\n\n'),
           attachments: pose?.images ?? const [],
           time: time,
@@ -104,6 +108,7 @@ extension StudioContext on StudioViewModel {
             for (final r in ran) r.note,
             ?pose?.note,
             ?reads?.note,
+            ?notes?.note,
           ].join(' · '),
           toolDetails: [
             for (final MapEntry(key: query, value: found) in results.entries)
@@ -426,6 +431,7 @@ extension StudioContext on StudioViewModel {
       ],
       _siblingPages,
       _seriesRefPrompt,
+      _notebookPrompt,
       // 副聊天说过话才提:模型知道有这么个地方、怎么去看。
       if (side?.messages.isNotEmpty ?? false) sideNoteForMain,
       _namingNote('draft'),
@@ -490,13 +496,18 @@ extension StudioContext on StudioViewModel {
     Map<int, List<LlmImage>> images = const {},
     String? piercing,
     bool webSearch = false,
+    bool document = false,
     void Function(LlmUsage)? onUsage,
     void Function(LlmCut)? onCut,
   }) {
     // 穿甲弹:开着时接在系统提示最前面。对话、润色、反推都经过这里,
     // 它们的第一条都是系统提示。副聊天有自己的开关([piercing])。
+    // 文档模式只给对话:[document] 是这场对话的穿甲弹开关。润色、反推要的是原样的结果,
+    // 不走文档模式。穿甲弹的文字照旧接在系统提示前面,不写进文档。
     final pierce = piercing ?? cfg.piercingText;
-    final sent = pierce.isEmpty || messages.first['role'] != 'system'
+    final system = messages.isNotEmpty && messages.first['role'] == 'system';
+    final asDocument = document && system && cfg.piercingDocument;
+    final sent = pierce.isEmpty || !system
         ? messages
         : [
             {
@@ -505,31 +516,54 @@ extension StudioContext on StudioViewModel {
             },
             ...messages.skip(1),
           ];
+    // Google 接口能把文档当文件收;别的接口收不了文本文件,文档包进消息里。
+    final asFile = documentRequest(sent, images, asFile: true);
+    final inText = documentRequest(sent, images, asFile: false);
+    final plain = (messages: sent, images: images);
+    // 一个接口填了好几个模型时,每个模型各算一个,名字后面带上模型名好区分。
+    String nameOf(LlmProfile llm, String model) =>
+        llm.models.length > 1 ? '${llm.name} · $model' : llm.name;
+    LlmRequest request(LlmProfile llm, String model) {
+      final body = !asDocument
+          ? plain
+          : llm.protocol == protocolGoogle
+          ? asFile
+          : inText;
+      return LlmRequest(
+        protocol: llm.protocol,
+        baseUrl: llm.baseUrl,
+        model: model,
+        apiKey: cfg.llmKey(llm.id),
+        temperature: preset.temperature,
+        topP: preset.topP,
+        messages: body.messages,
+        images: body.images,
+        webSearch: webSearch,
+        onUsage: onUsage,
+        // 写到一半没写完:记进模型日志。
+        onCut: onCut == null
+            ? null
+            : (cut) {
+                llmLog.add(
+                  LlmEventKind.cut,
+                  nameOf(llm, model),
+                  cutReason(cut),
+                );
+                onCut(cut);
+              },
+        // 搜索只是查资料,用不着多想。
+        effort: webSearch ? null : cfg.thinking,
+        serviceTier: llm.protocol == protocolGoogle ? llm.serviceTier : '',
+        token: llm.protocol == protocolGrok
+            ? () => grokAccessToken(config, llm.id)
+            : null,
+      );
+    }
+
     return [
       for (final llm in chain)
-        // 一个接口填了好几个模型时,每个模型各算一个,名字后面带上模型名好区分。
         for (final model in llm.models)
-          (
-            llm.models.length > 1 ? '${llm.name} · $model' : llm.name,
-            LlmRequest(
-              protocol: llm.protocol,
-              baseUrl: llm.baseUrl,
-              model: model,
-              apiKey: cfg.llmKey(llm.id),
-              temperature: preset.temperature,
-              topP: preset.topP,
-              messages: sent,
-              images: images,
-              webSearch: webSearch,
-              onUsage: onUsage,
-              onCut: onCut,
-              // 搜索只是查资料,用不着多想。
-              effort: webSearch ? null : cfg.thinking,
-              token: llm.protocol == protocolGrok
-                  ? () => grokAccessToken(config, llm.id)
-                  : null,
-            ),
-          ),
+          (nameOf(llm, model), request(llm, model)),
     ];
   }
 
@@ -578,7 +612,10 @@ extension StudioContext on StudioViewModel {
           },
       ],
       images: _imagesOf(sent),
-      piercing: cfg.sidePiercing ? cfg.piercingPrompt.trim() : '',
+      piercing: cfg.sidePiercing && !cfg.piercingDocument
+          ? cfg.piercingPrompt.trim()
+          : '',
+      document: cfg.sidePiercing,
       onUsage: onUsage,
       onCut: onCut,
     );
@@ -636,61 +673,6 @@ extension StudioContext on StudioViewModel {
     return _withSkills(message, text, alreadySent);
   }
 }
-
-/// 写新提示词之前先问,是默认的做法;模型自己挑技能时常常跳过这一步,所以单独钉一条。
-const _planFirstPrompt =
-    '【先规划再写】这一条优先于上面各个技能里"直接写"的做法。'
-    '用户要一条新的提示词(一张图、一组图都算),而画面还没有讲细时——只说了谁、在哪、做什么这样一两句,'
-    '例如"给小绿画一张在厨房做饭的半身图"——不要直接写,先照「画面规划」那个技能用一张问卷把画面定下来:'
-    '挑几项没定的,写进 <options form>,一次问齐,这条回复里不输出 <draft>。'
-    '先查了角色库、查了标签的,拿到结果之后也是先问,不要查完就写。'
-    '你自己替他补全的方案不算数:不要列一个"画面方案"然后接着就写,要问他。'
-    '只有这几种情况直接写:用户说了"直接写""你定""不用问";他已经把主体、场景、构图、光线都讲清楚了;'
-    '他给了参考图要照着写;或者这次只是修改、润色、翻译、转写【当前成稿】。'
-    '问过的不要再问;他中途说"够了"就马上写。';
-
-/// 主工作区的 Agent 怎么把排布局的活转给区域控制工作台的 Agent(`<ask-layout>`)。
-const _askLayoutPrompt =
-    '【区域控制】用户要按位置安排画面——说了"区域控制""布局""画框""bbox",'
-    '或要把提示词"转成 JSON"(MOSS-Image 布局 JSON)——时,不要自己写 JSON,也不要写 <layout>:'
-    '交给区域控制工作台的 Agent。这条回复只输出一个标签,不写 <draft>:\n'
-    '<ask-layout name="两到六个字的系列名">任务说明</ask-layout>\n'
-    '任务说明要写全,它看不到这边的对话和成稿:要排的画面内容(转 JSON 时把【当前成稿】的提示词原样贴进去)、'
-    '用户对哪样东西放在哪、画面里要写什么字的要求;用户说了横构图、竖构图也要写上。'
-    '用户发了参考图就写"照参考图",图会一起转过去,画布会照图的横竖自动对调。'
-    '程序会等它排好,把 JSON 放进成稿区新建的系列,再把结果告诉你。';
-
-/// 布局页对话的系统提示开头:它只排布局,不写成稿。
-const _layoutAgentPrompt =
-    '你是 Penna 的布局助手,只做一件事:和用户一起在布局画板上排 MOSS-Image 的布局——'
-    '画面里有哪些块、各叫什么、各放在哪、每一块写什么。你写的 <layout> 会直接换掉画板上的布局。\n'
-    '- 用户说了想要什么画面,就直接排出一份完整的布局放进 <layout>,不用先问;'
-    '只有连主体是什么都没说时才问一句。\n'
-    '- 用户要改,就在【布局画板】现有的布局上改:没提到的块位置、大小、描述都不动。'
-    '他用名字说"哪一块"时,对照 name 找。\n'
-    '- 排位置前先定好主次、分组和前后,再选队形;"随便排"是换一种合理的新队形,不是随机撒点。\n'
-    '- <layout> 默认写进眼前这一页、换掉它。用户要另一张画(换了参考图、换了角色、要另一版)时'
-    '不要盖掉眼前这页,在这个系列里新开一页:<layout page="新" name="两到四个字的页名">;'
-    '只有用户明说要新建系列、另起一组时才写 <layout page="新系列" name="页名" series="系列名">'
-    '(程序会另起一个系列,对话跟着过去);改眼前这页时不写 page,'
-    '这页还没名字(【当前系列】里看)就加 name="两到六个字",概括画的是什么(用户存进档案库时当名称)。\n'
-    '- 要先查角色库、查标签时,那条回复只写查询的标签,不写 <layout>:那条里的布局不会放到画板上,查完再写。\n'
-    '- 上文里〔程序注:…〕是程序替你省略的记号,不要照抄。要改画板就写出完整的 <layout>;'
-    '只说话不写布局,画板不会变。\n'
-    '- 用户要横构图、竖构图时,<layout> 的 width / height 把【布局画板】的宽高对调着写,画布会跟着对调,'
-    '不用让用户自己去改;框照技能里横构图那一条重新排。只能对调,不能换别的比例。\n'
-    '- 要用户在几种排法里挑时,先用一两句中文说明每种的区别,在回复最后加 <options>,里面一行一个选项'
-    '(每个不超过 12 个字),这条回复不写 <layout>。\n'
-    '- 用户发了参考图时,先照技能里「位置关系」那一节把图里的前后遮挡、裁切、机位看清再排框;'
-    '描述里照【位置关系】把这些写成句子。\n'
-    '- 用户发了参考图,而图里看得出透视时,照技能里说的估出地平线和消失点,写 <perspective> 调好画板上的透视线,'
-    '不用等用户开口。\n'
-    '- 每一块的描述都照技能里「怎么写描述」那一节写足:英文句子、写看得见的细节,'
-    '字的块写清排版。只写一两个词的描述等于没写。\n'
-    '- 用户让你估体块,或说镜头换了角度、要照新视角改描述时,写完整的 <layout>:'
-    'bbox、layer 照【布局画板】原样抄,只改他说的那样(body 或描述)。\n'
-    '- 描述和角色卡全用英文,不夹中文名和括号注释(不写 Si (小葱));要画出来的字才写中文。\n'
-    '- 不写 <draft>,不写负面词,正文里不贴 JSON。';
 
 /// 系统提示里最多列出几个用户自己存的角色名。
 const _maxCharacterNames = 60;

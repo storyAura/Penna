@@ -35,6 +35,7 @@ part 'context_ring.dart';
 part 'thinking_picker.dart';
 part 'chat_header.dart';
 part 'side_chat_panel.dart';
+part 'chat_ideas.dart';
 
 // 模型菜单里两个不是模型的选项;真实模型 id 是纯数字,不会撞上。
 const _byOrder = '#order';
@@ -354,6 +355,15 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
         : DraftStatus.ready;
   }
 
+  void _continue() {
+    final problem = widget.vm.continueReply();
+    if (problem != null) {
+      showToast(context, problem, warn: true);
+      return;
+    }
+    _follow = true;
+  }
+
   void _retry() {
     final problem = widget.vm.regenerate();
     if (problem != null) {
@@ -434,6 +444,10 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
         onRetry: !widget.vm.isStreaming && last && !message.fromUser
             ? _retry
             : null,
+        onContinue:
+            !widget.vm.isStreaming && last && partialReply(message) != null
+            ? _continue
+            : null,
         pager: last && !message.fromUser ? replyPager(messages) : null,
         onShowReply: widget.vm.showReplyAt,
         isLast: last,
@@ -468,59 +482,69 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
     _toBottom();
   }
 
-  Widget _list(List<ChatMessage> messages, List<ChatRow> rows) =>
-      messages.isEmpty
-      ? Center(
-          child: Text(
-            tr('描述画面,或贴上要改的提示词'),
-            style: TextStyle(fontSize: 13, color: PennaColors.slate400),
-          ),
-        )
-      : Stack(
-          children: [
-            NotificationListener<ScrollNotification>(
-              onNotification: _onScroll,
-              child: ListView.separated(
-                controller: _scroll,
-                // ponytail: 整场对话都排好版,总高度是量出来的而不是估的;
-                // 只排看得见的那几条时,底下的成稿卡片很高,估出的总高度偏差大,
-                // 拖滚动条会一下跳很远。上限是一场对话约 100 万像素高。
-                scrollCacheExtent: const ScrollCacheExtent.pixels(1e6),
-                padding: const EdgeInsets.all(24),
-                itemCount: rows.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 24),
-                itemBuilder: (_, row) => _row(messages, rows[row]),
+  /// 点了一条点子:填进输入框,用户改一改再发。
+  void _useIdea(String idea) {
+    widget.input.value = TextEditingValue(
+      text: idea,
+      selection: TextSelection.collapsed(offset: idea.length),
+    );
+    widget.inputFocus.requestFocus();
+  }
+
+  Widget _list(List<ChatMessage> messages, List<ChatRow> rows) {
+    if (messages.isEmpty) {
+      widget.vm.wantIdeas();
+    } else {
+      widget.vm.forgetIdeas();
+    }
+    return messages.isEmpty
+        ? _ChatIdeas(vm: widget.vm, onPick: _useIdea)
+        : Stack(
+            children: [
+              NotificationListener<ScrollNotification>(
+                onNotification: _onScroll,
+                child: ListView.separated(
+                  controller: _scroll,
+                  // ponytail: 整场对话都排好版,总高度是量出来的而不是估的;
+                  // 只排看得见的那几条时,底下的成稿卡片很高,估出的总高度偏差大,
+                  // 拖滚动条会一下跳很远。上限是一场对话约 100 万像素高。
+                  scrollCacheExtent: const ScrollCacheExtent.pixels(1e6),
+                  padding: const EdgeInsets.all(24),
+                  itemCount: rows.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 24),
+                  itemBuilder: (_, row) => _row(messages, rows[row]),
+                ),
               ),
-            ),
-            Positioned(
-              right: 18,
-              bottom: 12,
-              child: IgnorePointer(
-                ignoring: !_away,
-                child: AnimatedScale(
-                  scale: _away ? 1 : 0,
-                  duration: Motion.base,
-                  curve: Curves.easeOutBack,
-                  child: Tooltip(
-                    message: tr('回到底部'),
-                    child: Material(
-                      color: PennaColors.card,
-                      elevation: 3,
-                      shape: CircleBorder(
-                        side: BorderSide(color: PennaColors.border),
-                      ),
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: () {
-                          _follow = true;
-                          _toBottom();
-                        },
-                        child: Padding(
-                          padding: EdgeInsets.all(7),
-                          child: Icon(
-                            Icons.arrow_downward,
-                            size: 16,
-                            color: PennaColors.slate700,
+              Positioned(
+                right: 18,
+                bottom: 12,
+                child: IgnorePointer(
+                  ignoring: !_away,
+                  child: AnimatedScale(
+                    scale: _away ? 1 : 0,
+                    duration: Motion.base,
+                    curve: Curves.easeOutBack,
+                    child: Tooltip(
+                      message: tr('回到底部'),
+                      child: Material(
+                        color: PennaColors.card,
+                        elevation: 3,
+                        shape: CircleBorder(
+                          side: BorderSide(color: PennaColors.border),
+                        ),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () {
+                            _follow = true;
+                            _toBottom();
+                          },
+                          child: Padding(
+                            padding: EdgeInsets.all(7),
+                            child: Icon(
+                              Icons.arrow_downward,
+                              size: 16,
+                              color: PennaColors.slate700,
+                            ),
                           ),
                         ),
                       ),
@@ -528,9 +552,9 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
                   ),
                 ),
               ),
-            ),
-          ],
-        );
+            ],
+          );
+  }
 
   Widget _build(List<ChatMessage> messages) {
     final rows = foldLookups(messages);

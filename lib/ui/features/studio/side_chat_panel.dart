@@ -161,14 +161,14 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
     final pinned = chain.any((l) => l.id == cfg.sideLlmId)
         ? cfg.sideLlmId
         : null;
-    PopupMenuItem<String> item(String value, String name, bool selected) =>
-        PopupMenuItem(
-          value: value,
-          height: 34,
-          padding: EdgeInsets.zero,
-          child: _PresetMenuRow(name: name, selected: selected),
-        );
-    String nameOf(LlmProfile l) => l.name.trim().isEmpty ? tr('未命名') : l.name;
+    // 读最新的设置:菜单开着时可能已经换过一次接口。
+    void pick(String v) {
+      final (id, model) = _llmPick(v);
+      config.update(
+        config.config.copyWith(sideLlmId: () => id, sideModel: () => model),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
       child: Row(
@@ -185,23 +185,17 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
               popUpAnimationStyle: Motion.menu(context),
               tooltip: tr('副聊天使用的模型'),
               position: PopupMenuPosition.under,
-              onSelected: (id) => id == _manageModels
-                  ? widget.onOpenSettings()
-                  : config.update(
-                      cfg.copyWith(sideLlmId: () => id == _byOrder ? null : id),
-                    ),
-              itemBuilder: (_) => [
-                item(_byOrder, tr('按顺序'), pinned == null),
-                for (final l in chain) item(l.id, nameOf(l), pinned == l.id),
-                const PopupMenuDivider(height: 8),
-                item(_manageModels, tr('管理模型…'), false),
-              ],
+              onSelected: (v) {
+                if (v == _manageModels) return widget.onOpenSettings();
+                pick(v);
+              },
+              itemBuilder: (_) => _llmMenu(chain, pinned, pick),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Flexible(
                     child: Text(
-                      chain.isEmpty ? tr('未连接模型') : nameOf(chain.first),
+                      chain.isEmpty ? tr('未连接模型') : _llmLabel(chain.first),
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,

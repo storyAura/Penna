@@ -475,7 +475,14 @@ void main() {
 
       expect(find.text('from m1'), findsOneWidget);
       expect(find.text('from m2'), findsOneWidget);
-      expect(find.text('A · m1'), findsOneWidget);
+      // 对话顶栏也写着「A · m1」,只看本地反推这一页。
+      expect(
+        find.descendant(
+          of: find.byType(LocalPage),
+          matching: find.text('A · m1'),
+        ),
+        findsOneWidget,
+      );
     });
   });
 }

@@ -147,6 +147,29 @@ class _ComfySectionState extends State<ComfySection> {
         ),
         gap,
         PennaCard(
+          padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(tr('系列连续出图'), style: titleStyle),
+                    Text(tr('Agent 一次写了几页时按顺序全部出图'), style: hintStyle),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _service.config.seriesGenerate,
+                onChanged: (v) => _service.update(
+                  _service.config.copyWith(seriesGenerate: v),
+                ),
+              ),
+            ],
+          ),
+        ),
+        gap,
+        PennaCard(
           padding: const EdgeInsets.all(14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

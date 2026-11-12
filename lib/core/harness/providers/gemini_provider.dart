@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../llm_log.dart';
 import 'llm_http.dart';
 import 'responses_provider.dart' show sourcesText;
 import '../../../l10n/l10n.dart';
@@ -63,8 +64,84 @@ Map<String, Object?> geminiBody(LlmRequest req) {
       'tools': [
         {'google_search': <String, Object>{}},
       ],
+    // 用量档位:Developer API 放在请求体最外层;Vertex 走请求头(见 [geminiHeaders])。
+    if (req.serviceTier.isNotEmpty &&
+        geminiTransport(req.baseUrl) == GeminiTransport.developer)
+      'service_tier': req.serviceTier,
   };
 }
+
+/// Google 接口走哪条线。三条线的认证、地址、档位写法都不一样,不能混用
+/// (2026-11-13 用户给的《Gemini 用量方案与 Penna 适配》)。
+enum GeminiTransport {
+  /// AI Studio 的 Gemini API(generativelanguage.googleapis.com),API Key。
+  developer,
+
+  /// Vertex Express:aiplatform.googleapis.com 不带项目的路径,API Key。
+  vertexExpress,
+
+  /// Vertex 项目路径(带 `/projects/{项目}/locations/{地区}`),认 OAuth 令牌。
+  vertexProject,
+}
+
+GeminiTransport geminiTransport(String baseUrl) {
+  final uri = Uri.tryParse(geminiBase(baseUrl));
+  if (uri == null || !_isVertex(uri)) return GeminiTransport.developer;
+  return uri.path.contains('/projects/')
+      ? GeminiTransport.vertexProject
+      : GeminiTransport.vertexExpress;
+}
+
+/// 这条线能不能选档位:Vertex Express 官方没写 Flex / Priority,不传。
+bool geminiTierSupported(String baseUrl) =>
+    geminiTransport(baseUrl) != GeminiTransport.vertexExpress;
+
+/// 请求头:Key 放头里(不进网址);Vertex 项目路径填的是 OAuth 令牌(`ya29.` 开头,
+/// `gcloud auth print-access-token` 给的)时用 Bearer。档位在 Vertex 项目路径上走头:
+/// 先用已买的 Provisioned Throughput,溢出再按选的档位(不加 `Request-Type: shared`,
+/// 免得跳过已买的容量)。
+// ponytail: 没做「只用 PayGo」开关和 Vertex 的 OAuth 登录,令牌一小时过期要重填。
+Map<String, String> geminiHeaders(LlmRequest req) {
+  final key = req.apiKey.trim();
+  final transport = geminiTransport(req.baseUrl);
+  final project = transport == GeminiTransport.vertexProject;
+  final tier = req.serviceTier;
+  return {
+    if (key.isNotEmpty && project && key.startsWith('ya29.'))
+      'authorization': 'Bearer $key'
+    else if (key.isNotEmpty)
+      'x-goog-api-key': key,
+    if (project && (tier == 'flex' || tier == 'priority'))
+      'X-Vertex-AI-LLM-Shared-Request-Type': tier,
+    // 服务端最多排队多久(秒),官方建议 Flex 给 600。
+    if (project && tier == 'flex') 'X-Server-Timeout': '600',
+  };
+}
+
+/// 一行 SSE 里接口说的实际档位(standard、flex、priority);这一行没写是 null。
+/// Developer API 看 `usageMetadata.serviceTier`,Vertex 看 `usageMetadata.trafficType`。
+String? parseGeminiTier(String line) {
+  final json = sseJson(line);
+  final usage = json is Map ? json['usageMetadata'] : null;
+  if (usage is! Map) return null;
+  final tier = usage['serviceTier'];
+  if (tier is String) {
+    final t = tier.toLowerCase().replaceFirst('service_tier_', '');
+    return geminiTierNames.contains(t) ? t : null;
+  }
+  return switch (usage['trafficType']) {
+    'ON_DEMAND_PRIORITY' => 'priority',
+    'ON_DEMAND_FLEX' => 'flex',
+    'ON_DEMAND' => 'standard',
+    _ => null,
+  };
+}
+
+const geminiTierNames = {'standard', 'flex', 'priority'};
+
+/// Flex 排不上(429 / 503)时同一档位最多再试几次,每次等的时间翻倍。
+const _flexRetries = 3;
+const _flexBackoff = Duration(seconds: 5);
 
 /// Gemini 2.x 按 token 数给思考预算,更新的模型按档位给;两个字段不能同时给。
 /// 没有「极高」这一档,按最高的算。
@@ -214,30 +291,61 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     geminiBase(req.baseUrl),
     '/models/$model:streamGenerateContent',
   ).replace(queryParameters: {'alt': 'sse'});
-  final apiKey = req.apiKey.trim();
-  // Key 放请求头而不是网址里,免得出现在任何报错或日志中。
-  final lines = postForLines(
-    client,
-    uri,
-    {if (apiKey.isNotEmpty) 'x-goog-api-key': apiKey},
-    geminiBody(req),
-    stall: llmStallFor(req),
-  );
-
   var yielded = false;
   String? finish;
+  String? served;
   final sources = <String, String>{};
-  await for (final line in lines) {
-    final delta = parseGeminiLine(line);
-    reportUsage(req, sseJson(line));
-    finish = parseGeminiFinish(line) ?? finish;
-    if (req.webSearch) sources.addAll(parseGeminiSources(line));
-    if (delta != null && delta.isNotEmpty) {
-      yielded = true;
-      yield delta;
+  for (var attempt = 0; ; attempt++) {
+    // Key 放请求头而不是网址里,免得出现在任何报错或日志中。
+    final lines = postForLines(
+      client,
+      uri,
+      geminiHeaders(req),
+      geminiBody(req),
+      stall: llmStallFor(req),
+    );
+    try {
+      await for (final line in lines) {
+        final delta = parseGeminiLine(line);
+        reportUsage(req, sseJson(line));
+        finish = parseGeminiFinish(line) ?? finish;
+        served = parseGeminiTier(line) ?? served;
+        if (req.webSearch) sources.addAll(parseGeminiSources(line));
+        if (delta != null && delta.isNotEmpty) {
+          yielded = true;
+          yield delta;
+        }
+      }
+      break;
+    } on LlmException catch (e) {
+      // Flex 容量不够(503)、限速(429):还是用 Flex 退避重试,不换成 Standard(会涨价)。
+      final busy = e.status == 429 || e.status == 503;
+      if (yielded ||
+          !busy ||
+          req.serviceTier != 'flex' ||
+          attempt >= _flexRetries) {
+        rethrow;
+      }
+      final wait = _flexBackoff * (1 << attempt);
+      llmLog.add(
+        LlmEventKind.retry,
+        req.model,
+        tr('Flex 排不上({0}),{1} 秒后再试', [e.status!, wait.inSeconds]),
+      );
+      await Future<void>.delayed(wait);
     }
   }
   if (!yielded) throw LlmException(tr('模型没有返回内容'));
+  // 实际档位和选的不一样(比如 Priority 被降成 Standard,按 Standard 计费):记一笔。
+  if (req.serviceTier.isNotEmpty &&
+      served != null &&
+      served != req.serviceTier) {
+    llmLog.add(
+      LlmEventKind.tier,
+      req.model,
+      tr('选的是 {0},实际按 {1} 处理', [req.serviceTier, served]),
+    );
+  }
   if (geminiCut(finish) case final cut?) req.onCut?.call(cut);
   if (sources.isNotEmpty) yield sourcesText(sources);
 }

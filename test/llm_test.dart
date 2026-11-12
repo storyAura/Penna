@@ -14,8 +14,8 @@ import 'package:penna/ui/features/studio/studio_view_model.dart';
 
 import 'fixtures.dart';
 
-LlmRequest _req(String model) => LlmRequest(
-  baseUrl: 'http://x',
+LlmRequest _req(String model, {String? host}) => LlmRequest(
+  baseUrl: 'http://${host ?? model}',
   model: model,
   apiKey: '',
   messages: const [],
@@ -264,6 +264,26 @@ void main() {
       expect(out, '你好');
       expect(trying, ['A', 'B']);
       expect(answering, ['B']);
+    });
+
+    test('同一家的一个模型失败了,跳过这家剩下的,直接换下一家', () async {
+      final asked = <String>[];
+      final out = await streamWithFailover(
+        [
+          ('G · a', _req('a', host: 'g')),
+          ('G · b', _req('b', host: 'g')),
+          ('D', _req('d')),
+        ],
+        (r) {
+          asked.add(r.model);
+          return r.model == 'd'
+              ? Stream.value('好')
+              : Stream.error(const LlmException('404'));
+        },
+      ).join();
+
+      expect(out, '好');
+      expect(asked, ['a', 'd']);
     });
 
     test('已经开始回答后出错,不换模型,直接报错', () async {
@@ -529,18 +549,20 @@ void main() {
       config.update(config.config.putLlm(llm.copyWith(model: 'm1, m2')));
       await tester.pump();
       await tester.tap(find.text('测试连接'));
-      for (var i = 0; i < 100 && find.text('连接正常').evaluate().isEmpty; i++) {
+      // 通了带上每个模型的速度:「连接正常 · m1:12 ms · m2:8 ms」。
+      final ok = find.textContaining(RegExp(r'^连接正常 · m1:\d+ ms · m2:'));
+      for (var i = 0; i < 100 && ok.evaluate().isEmpty; i++) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 20)),
         );
         await tester.pump();
       }
 
-      expect(find.text('连接正常'), findsOneWidget);
+      expect(ok, findsOneWidget);
       expect(asked, ['m1', 'm2']);
     });
 
-    testWidgets('拉取后点一行,就勾选并填进模型名称;点保存才写进设置', (tester) async {
+    testWidgets('拉取后点一行就勾选并立即存;手填回车也能加', (tester) async {
       late HttpServer server;
       await tester.runAsync(() async {
         server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -584,38 +606,37 @@ void main() {
         );
         await tester.pump();
       }
+      // 列表展开有动画,等它撑开再点。
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('gpt-b'));
       await tester.tap(find.text('gpt-b'));
       await tester.pump();
 
-      expect(config.config.llms.single.model, '');
-      expect(find.text('未保存'), findsOneWidget);
-      expect(find.widgetWithText(TextField, 'gpt-b'), findsOneWidget);
+      // 勾选立即存,不用点保存。
+      expect(config.config.llms.single.model, 'gpt-b');
+      expect(find.text('1 · gpt-b'), findsOneWidget);
       expect(find.byIcon(Icons.check_box), findsOneWidget);
 
-      // 再勾一个:两个都留着,按勾选的先后排;已选的列在列表上面。
+      // 再勾一个:两个都留着,按勾选的先后排。
       await tester.ensureVisible(find.text('gpt-a'));
       await tester.tap(find.text('gpt-a'));
       await tester.pump();
 
-      expect(find.text('1 · gpt-b'), findsOneWidget);
       expect(find.text('2 · gpt-a'), findsOneWidget);
-
-      await tester.ensureVisible(find.text('保存'));
-      // 写盘在假时钟里等不到;内存里的设置是立即更新的。
-      await tester.tap(find.text('保存'));
-      await tester.pump();
-
-      expect(config.config.llms.single.model, 'gpt-b, gpt-a');
       expect(config.config.llms.single.models, ['gpt-b', 'gpt-a']);
-      expect(find.text('未保存'), findsNothing);
+
+      // 手填:回车加进去,已经有的不重复。
+      await tester.enterText(find.byType(TextField).last, 'gpt-c, gpt-a');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(config.config.llms.single.models, ['gpt-b', 'gpt-a', 'gpt-c']);
     });
 
-    testWidgets('放弃:改过的名称回到已保存的值', (tester) async {
+    testWidgets('打字停手后自动存;收起后标题一行看得到名字和模型', (tester) async {
       final config = tempConfig();
       config.update(
         const AppConfig().putLlm(
-          const LlmProfile(id: 'a', name: 'A', baseUrl: '', model: ''),
+          const LlmProfile(id: 'a', name: 'A', baseUrl: '', model: 'm1, m2'),
         ),
       );
       tester.view.physicalSize = const Size(1000, 1000);
@@ -637,11 +658,13 @@ void main() {
       await tester.enterText(find.widgetWithText(TextField, 'A'), 'B');
       await tester.pump();
       expect(config.config.llms.single.name, 'A');
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(config.config.llms.single.name, 'B');
 
-      await tester.tap(find.text('放弃'));
-      await tester.pump();
-      expect(find.widgetWithText(TextField, 'A'), findsOneWidget);
-      expect(find.text('未保存'), findsNothing);
+      await tester.tap(find.byIcon(Icons.expand_more).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Base URL'), findsNothing);
+      expect(find.text('m1 · m2'), findsOneWidget);
     });
   });
 }

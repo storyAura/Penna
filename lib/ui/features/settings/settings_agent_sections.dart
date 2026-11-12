@@ -257,39 +257,72 @@ class _PiercingCardState extends State<_PiercingCard> {
             ],
           ),
           gap,
-          PennaField(
-            key: ValueKey('piercing-$_imports'),
-            label: tr('提示词'),
-            maxLines: 6,
-            value: _draft,
-            onChanged: (v) => setState(() => _draft = v),
-          ),
-          gap,
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
+          // 提示词模式:下面这段话接在系统提示前面。文档模式:不用这段话,用户的每条话写成
+          // 文档传过去、要求回复也写成文档,所以输入框藏起来(2026-11-13 用户要求)。
+          Row(
             children: [
-              PennaButton(
-                label: tr('保存'),
-                icon: Icons.check,
-                background: _dirty ? PennaColors.primary : PennaColors.slate100,
-                foreground: _dirty ? Colors.white : null,
-                onPressed: _dirty ? _save : null,
-              ),
-              PennaButton(
-                label: tr('导入'),
-                icon: Icons.file_open_outlined,
-                background: PennaColors.slate100,
-                onPressed: _import,
-              ),
-              PennaButton(
-                label: tr('导出'),
-                icon: Icons.save_alt,
-                background: PennaColors.slate100,
-                onPressed: _export,
+              for (final (document, label) in [
+                (false, tr('提示词模式')),
+                (true, tr('文档模式')),
+              ]) ...[
+                PennaChip(
+                  label: label,
+                  selected: cfg.piercingDocument == document,
+                  onTap: () => service.update(
+                    service.config.copyWith(piercingDocument: document),
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+              Expanded(
+                child: Text(
+                  cfg.piercingDocument
+                      ? tr('用户的话写成文档传过去,回复也写成文档')
+                      : tr('接在系统提示最前面'),
+                  overflow: TextOverflow.ellipsis,
+                  style: hintStyle,
+                ),
               ),
             ],
           ),
+          if (!cfg.piercingDocument) ...[
+            gap,
+            PennaField(
+              key: ValueKey('piercing-$_imports'),
+              label: tr('提示词'),
+              maxLines: 6,
+              value: _draft,
+              onChanged: (v) => setState(() => _draft = v),
+            ),
+            gap,
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                PennaButton(
+                  label: tr('保存'),
+                  icon: Icons.check,
+                  background: _dirty
+                      ? PennaColors.primary
+                      : PennaColors.slate100,
+                  foreground: _dirty ? Colors.white : null,
+                  onPressed: _dirty ? _save : null,
+                ),
+                PennaButton(
+                  label: tr('导入'),
+                  icon: Icons.file_open_outlined,
+                  background: PennaColors.slate100,
+                  onPressed: _import,
+                ),
+                PennaButton(
+                  label: tr('导出'),
+                  icon: Icons.save_alt,
+                  background: PennaColors.slate100,
+                  onPressed: _export,
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

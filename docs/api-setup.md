@@ -21,16 +21,17 @@
 Penna 左侧图标栏最下方的齿轮 →「设置」→「**API 管理**」。
 
 - 页面顶部的「**Agent 对话**」「**润色**」两行用来指定各自优先使用哪个接口;选「按顺序」则按下方列表的先后使用。
-- 下方每张卡片是一个接口。点「**添加模型**」新建一张空白卡片;点「**常用服务**」选一家,新建一张已填好名称、Base URL 和模型的卡片,只需再填 API Key。
-- 卡片左上角的把手可以拖动调整先后;右上角是删除按钮和启用开关。
+- 下方每张卡片是一个接口。点「**添加接口**」新建一张空白卡片;点「**常用服务**」选一家,新建一张已填好名称、Base URL 和模型的卡片,只需再填 API Key。
+- 卡片收起时一行显示名称、协议和模型,点一下展开编辑。
+- 卡片左边的把手可以拖动调整先后;右边是删除按钮和启用开关。
 
 ## 需要填写的字段
 
 | 字段 | 说明 |
 | --- | --- |
-| 协议 | 卡片顶部的「OpenAI」「Google」「Grok 账号」「Claude 订阅」或「Codex 订阅」。绝大多数服务(含国内服务和本地程序)选 **OpenAI**;Google Gemini 官方接口与 Vertex AI 选 **Google**;用 Grok 账号登录选 **Grok 账号**;用 Claude Pro / Max 或 ChatGPT 订阅选 **Claude 订阅** / **Codex 订阅**(后三种都不填 Base URL 和 Key,见下文)。 |
+| 协议 | 卡片展开后的两行:「API Key」一行是「OpenAI 兼容」「Google」,「账号登录」一行是「Grok 账号」「Claude 订阅」「Codex 订阅」。绝大多数服务(含国内服务和本地程序)选 **OpenAI 兼容**;Google Gemini 官方接口与 Vertex AI 选 **Google**;用 Grok 账号登录选 **Grok 账号**;用 Claude Pro / Max 或 ChatGPT 订阅选 **Claude 订阅** / **Codex 订阅**(后三种都不填 Base URL 和 Key,见下文)。 |
 | 显示名称 | 自己起的名字,只用于界面显示,例如「DeepSeek」。 |
-| 模型名称 | 服务商规定的模型 ID。可以填多个,用英文逗号隔开,例如 `model-a, model-b`;前一个失败时自动换下一个。 |
+| 模型 | 服务商规定的模型 ID,在「模型」一行末尾的输入框里填,回车添加(用逗号隔开可一次加几个)。可以添加多个,按排列的先后使用,前一个失败时自动换下一个;点模型旁的叉去掉。 |
 | Base URL | 接口地址,写到版本号那一层为止(通常以 `/v1` 结尾)。**不要**带 `/chat/completions` 或 `/models`,Penna 会自动拼上。 |
 | API Key | 服务商后台生成的密钥。本地程序通常不需要,留空即可。 |
 | 上下文上限(K) | 选填,单位是千 token,例如 `1000`。留空时按模型名自动识别;认不出的模型圆环不显示占比。 |
@@ -39,7 +40,7 @@ Penna 左侧图标栏最下方的齿轮 →「设置」→「**API 管理**」�
 
 1. 点「**拉取模型**」:向接口请求模型列表,列表中点击即可勾选,勾选的先后就是使用顺序。
 2. 点「**测试连接**」:向每个模型发一句话,收到回应即显示「连接正常」。
-3. 点「**保存**」:改动在点保存后才生效,并提示「已保存」;点「**放弃**」恢复为已保存的内容。
+3. 改动自动保存:输入停下约半秒后写入;选协议、添加或去掉模型立即写入。
 
 #### Claude 订阅与 Codex 订阅
 
@@ -47,7 +48,7 @@ Penna 左侧图标栏最下方的齿轮 →「设置」→「**API 管理**」�
 
 ### Grok 账号登录
 
-协议选「Grok 账号」后,点「登录 Grok」:Penna 显示一个代码并打开 xAI 的确认页,在浏览器里确认即可。之后 token 自动续期,加密保存在本机。账号需要有 SuperGrok 或 X Premium 这类订阅,是否开放 API 权限由 xAI 决定;没有权限时会提示 `这个 Grok 账号没有 API 权限`,此时可以改用 xAI 的 API Key(协议选 OpenAI,Base URL 填 `https://api.x.ai/v1`)。
+协议选「Grok 账号」后,点「登录 Grok」:Penna 显示一个代码并打开 xAI 的确认页,在浏览器里确认即可。之后 token 自动续期,加密保存在本机。账号需要有 SuperGrok 或 X Premium 这类订阅,是否开放 API 权限由 xAI 决定;没有权限时会提示 `这个 Grok 账号没有 API 权限`,此时可以改用 xAI 的 API Key(协议选 OpenAI 兼容,Base URL 填 `https://api.x.ai/v1`)。
 
 ### 联网搜索
 
@@ -60,6 +61,8 @@ Penna 左侧图标栏最下方的齿轮 →「设置」→「**API 管理**」�
 - OpenAI 协议:对话请求发往 `Base URL + /chat/completions`,模型列表来自 `Base URL + /models`,Key 以 `Authorization: Bearer <Key>` 发送。
 - Google 协议:请求发往 `Base URL + /models/<模型>:streamGenerateContent`,Key 以请求头 `x-goog-api-key` 发送。
 - Base URL 的主机是 `aiplatform.googleapis.com`(含地区前缀)时视为 Vertex AI,Penna 自动补上 `/publishers/google`。Vertex AI 不提供模型列表,模型名称需手动填写。
+- Google 接口分三条线:AI Studio(`generativelanguage.googleapis.com`,API Key)、Vertex Express(`https://aiplatform.googleapis.com/v1`,不带项目,API Key)、Vertex 项目路径(`https://aiplatform.googleapis.com/v1/projects/项目/locations/global`,Key 填 `gcloud auth print-access-token` 给的令牌,`ya29.` 开头,以 Bearer 发送,一小时后过期)。
+- 「用量档位」:自动(不传,按标准)/ Standard / Flex / Priority。AI Studio 写进请求体的 `service_tier`;Vertex 项目路径写进请求头 `X-Vertex-AI-LLM-Shared-Request-Type`(Flex 另带 `X-Server-Timeout: 600`),先用已买的预配吞吐量;Vertex Express 不能选。Flex 便宜一半但要排队,Penna 最多等 15 分钟,遇到 429 / 503 时仍用 Flex 退避重试 3 次,不会换成更贵的档位;实际档位和选的不一样时(如 Priority 被降成 Standard)记在「模型日志」里。
 
 ## 常见服务的 Base URL
 
@@ -114,10 +117,9 @@ Penna 左侧图标栏最下方的齿轮 →「设置」→「**API 管理**」�
 
 ## 核对清单(请 AI 在最后给出)
 
-- [ ] 协议选择正确(OpenAI / Google / Grok 账号 / Claude 订阅 / Codex 订阅)
+- [ ] 协议选择正确(OpenAI 兼容 / Google / Grok 账号 / Claude 订阅 / Codex 订阅)
 - [ ] Base URL 写到版本层,没有多余路径
-- [ ] 模型名称与服务商一致,多个时用英文逗号隔开
+- [ ] 模型名称与服务商一致,多个时逐个回车添加
 - [ ] API Key 已由用户本人填入 Penna(本地程序留空)
 - [ ] 「测试连接」显示「连接正常」
-- [ ] 已点击「保存」
 - [ ] 「Agent 对话」「润色」两行选择了希望使用的接口

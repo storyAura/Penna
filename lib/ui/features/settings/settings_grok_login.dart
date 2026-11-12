@@ -183,7 +183,7 @@ class _GrokLoginDialogState extends State<_GrokLoginDialog> {
   }
 }
 
-/// 「API 管理」顶上那一行:联网搜索关着、自动选,或指定用哪个能搜的接口。
+/// 「API 管理」顶上那一行:联网搜索关着、自动,或勾选哪几个能搜的接口轮换(按勾选的先后)。
 class WebSearchPicker extends StatelessWidget {
   const WebSearchPicker({super.key, required this.service});
 
@@ -196,11 +196,22 @@ class WebSearchPicker extends StatelessWidget {
       for (final l in cfg.llms)
         if (l.enabled && canWebSearch(l)) l,
     ];
-    final pinned = usable.any((l) => l.id == cfg.webSearchLlmId)
-        ? cfg.webSearchLlmId
-        : null;
-    void pick({required bool on, String? id}) => service.update(
-      service.config.copyWith(webSearch: on, webSearchLlmId: () => id),
+    // 勾过又关掉、删掉的不算。
+    final picked = [
+      for (final id in cfg.webSearchLlmIds)
+        if (usable.any((l) => l.id == id)) id,
+    ];
+    void put({required bool on, List<String> ids = const []}) => service.update(
+      service.config.copyWith(webSearch: on, webSearchLlmIds: ids),
+    );
+    void toggle(String id) => put(
+      on: true,
+      ids: picked.contains(id)
+          ? [
+              for (final p in picked)
+                if (p != id) p,
+            ]
+          : [...picked, id],
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,14 +220,15 @@ class WebSearchPicker extends StatelessWidget {
           children: [
             Text(tr('联网搜索'), style: titleStyle),
             const SizedBox(width: 8),
-            if (usable.isEmpty)
-              Expanded(
-                child: Text(
-                  tr('需要 Gemini、Grok、OpenAI、智谱、百炼或 OpenRouter 的接口'),
-                  overflow: TextOverflow.ellipsis,
-                  style: hintStyle,
-                ),
+            Expanded(
+              child: Text(
+                usable.isEmpty
+                    ? tr('需要 Gemini、Grok、OpenAI、智谱、百炼或 OpenRouter 的接口')
+                    : tr('可多选,按勾选的先后轮换'),
+                overflow: TextOverflow.ellipsis,
+                style: hintStyle,
               ),
+            ),
           ],
         ),
         const SizedBox(height: 6),
@@ -227,19 +239,40 @@ class WebSearchPicker extends StatelessWidget {
             PennaChip(
               label: tr('不联网'),
               selected: !cfg.webSearch,
-              onTap: () => pick(on: false),
+              onTap: () => put(on: false),
             ),
             PennaChip(
               label: tr('自动'),
-              selected: cfg.webSearch && pinned == null,
-              onTap: () => pick(on: true),
+              selected: cfg.webSearch && picked.isEmpty,
+              onTap: () => put(on: true),
             ),
             for (final llm in usable)
               PennaChip(
-                label: llm.name.trim().isEmpty ? tr('未命名') : llm.name,
-                selected: cfg.webSearch && pinned == llm.id,
-                onTap: () => pick(on: true, id: llm.id),
+                label: [
+                  if (cfg.webSearch &&
+                      picked.length > 1 &&
+                      picked.contains(llm.id))
+                    '${picked.indexOf(llm.id) + 1}',
+                  llm.name.trim().isEmpty ? tr('未命名') : llm.name,
+                ].join(' · '),
+                selected: cfg.webSearch && picked.contains(llm.id),
+                onTap: () => toggle(llm.id),
               ),
+            // 没有搜索工具的也列出来(灰的、选不了),免得以为它不见了(2026-11-13 用户反馈)。
+            for (final llm in cfg.llms)
+              if (llm.enabled && !canWebSearch(llm))
+                Tooltip(
+                  message: tr('这个接口没有联网搜索工具'),
+                  child: Opacity(
+                    opacity: 0.45,
+                    child: PennaChip(
+                      label: llm.name.trim().isEmpty ? tr('未命名') : llm.name,
+                      selected: false,
+                      onTap: () =>
+                          showToast(context, tr('这个接口没有联网搜索工具'), warn: true),
+                    ),
+                  ),
+                ),
           ],
         ),
       ],

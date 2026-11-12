@@ -172,13 +172,7 @@ class _CutNote extends StatelessWidget {
         children: [
           Icon(Icons.content_cut, size: 13, color: PennaColors.amber),
           const SizedBox(width: 4),
-          Flexible(
-            child: Text(switch (cut) {
-              LlmCut.length => tr('没写完:到了输出上限'),
-              LlmCut.blocked => tr('没写完:被接口拦下了'),
-              LlmCut.broken => tr('没写完:连接提前结束了'),
-            }, style: style),
-          ),
+          Flexible(child: Text(cutReason(cut), style: style)),
         ],
       ),
     );

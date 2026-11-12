@@ -353,17 +353,17 @@ class _ChatOptions extends StatelessWidget {
         ),
         gap,
         _toggle(
+          tr('对话建议'),
+          tr('新对话里给几条创作点子'),
+          cfg.chatIdeas,
+          (v) => service.update(service.config.copyWith(chatIdeas: v)),
+        ),
+        gap,
+        _toggle(
           tr('自动审批'),
           tr('成稿的改动直接采纳'),
           cfg.autoApprove,
           (v) => service.update(service.config.copyWith(autoApprove: v)),
-        ),
-        gap,
-        _toggle(
-          tr('系列连续出图'),
-          tr('Agent 一次写了几页时按顺序全部出图'),
-          cfg.seriesGenerate,
-          (v) => service.update(service.config.copyWith(seriesGenerate: v)),
         ),
         gap,
         PennaCard(

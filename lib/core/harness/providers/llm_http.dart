@@ -31,7 +31,11 @@ class LlmRequest {
     this.onUsage,
     this.effort,
     this.onCut,
+    this.serviceTier = '',
   });
+
+  /// Google 接口的用量档位:空串是自动(不传);standard、flex、priority 见 `gemini_provider.dart`。
+  final String serviceTier;
 
   /// 已经出了字,但这条回复没写完时调用。
   final void Function(LlmCut cut)? onCut;
@@ -54,6 +58,27 @@ class LlmRequest {
     onUsage: onUsage,
     effort: effort,
     onCut: onCut,
+    serviceTier: serviceTier,
+  );
+
+  /// 换掉消息(测试连接用);[webSearch] 不给就照旧。
+  LlmRequest copyWithMessages(
+    List<Map<String, String>> messages, {
+    bool? webSearch,
+  }) => LlmRequest(
+    baseUrl: baseUrl,
+    model: model,
+    apiKey: apiKey,
+    messages: messages,
+    temperature: temperature,
+    topP: topP,
+    protocol: protocol,
+    token: token,
+    webSearch: webSearch ?? this.webSearch,
+    onUsage: onUsage,
+    effort: effort,
+    onCut: onCut,
+    serviceTier: serviceTier,
   );
 
   /// 接口报了用量时调用;一条回复里可能报好几次,最后一次为准。
@@ -207,8 +232,10 @@ const llmStallTimeout = Duration(seconds: 60);
 
 /// 这个请求等多久。用户把思考强度调高时,模型可能好几分钟不说话。
 // ponytail: 5 分钟是估的;调高强度后模型真卡住,要等这么久才换下一个模型。
-Duration llmStallFor(LlmRequest req) =>
-    req.effort == 'high' || req.effort == 'xhigh'
+Duration llmStallFor(LlmRequest req) => req.serviceTier == 'flex'
+    // Google 的 Flex 要排队,官方说延迟 1–15 分钟、客户端至少等 10 分钟。
+    ? const Duration(minutes: 15)
+    : req.effort == 'high' || req.effort == 'xhigh'
     ? const Duration(minutes: 5)
     : llmStallTimeout;
 

@@ -166,6 +166,22 @@ void main() {
       }
     });
 
+    test('指定接口里的某个模型时它排第一,只在用到的那条链上', () {
+      const b = LlmProfile(id: 'b', name: 'B', baseUrl: '', model: 'x, y, z');
+      final cfg = AppConfig.fromJson(
+        const AppConfig(
+          llms: [b],
+          activeLlmId: 'b',
+          activeModel: 'z',
+          sideLlmId: 'b',
+          sideModel: 'gone',
+        ).toJson(),
+      );
+      expect(cfg.agentChain.single.models, ['z', 'x', 'y']);
+      expect(cfg.sideChain.single.models, ['x', 'y', 'z']);
+      expect(cfg.llms.single.model, 'x, y, z');
+    });
+
     test('删除模型会连同它的 Key 一起清掉', () async {
       final service = tempConfig();
       service.update(

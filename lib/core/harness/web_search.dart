@@ -1,9 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show debugPrint;
-
 import '../../data/models/app_config.dart';
 import '../../l10n/l10n.dart';
+import 'llm_log.dart';
 import 'providers/llm_http.dart';
 
 // 联网搜索:写回复的模型只写 `<web-search>`,程序找一个能搜的接口用它自家的搜索工具查好,
@@ -127,7 +126,11 @@ Future<WebResult> searchInTurn(
         '${llm.name}:${e is LlmException ? e.message : '${e.runtimeType}'}',
       );
     }
-    debugPrint('联网搜索换下一个接口:${failures.last}');
+    llmLog.add(
+      LlmEventKind.search,
+      llm.name,
+      failures.last.substring(llm.name.length + 1),
+    );
   }
   return (text: failures.join('\n'), failed: true);
 }
