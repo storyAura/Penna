@@ -18,6 +18,7 @@ import '../../core/motion.dart';
 import '../../core/pane_splitter.dart';
 import '../../core/scroll_strip.dart';
 import '../../core/theme.dart';
+import '../../core/tour_spot.dart';
 import '../../core/widgets.dart';
 import '../archive/archive_page.dart';
 import '../settings/settings_sections.dart';
@@ -245,15 +246,32 @@ class _MangaWorkbenchState extends State<MangaWorkbench> {
                           color: PennaColors.bg,
                           border: Border(right: side),
                         ),
-                        child: MangaInspector(board: board),
+                        child: TourSpot(
+                          'manga.inspector',
+                          child: MangaInspector(board: board),
+                        ),
                       ),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _SeriesStrip(board: board),
-                            Expanded(child: MangaCanvas(board: board)),
-                            _GachaBar(board: board),
+                            Expanded(
+                              child: TourSpot(
+                                'manga.canvas',
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    _SeriesStrip(board: board),
+                                    Expanded(child: MangaCanvas(board: board)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            TourSpot(
+                              'manga.gacha',
+                              child: _GachaBar(board: board),
+                            ),
                           ],
                         ),
                       ),
@@ -277,13 +295,16 @@ class _MangaWorkbenchState extends State<MangaWorkbench> {
                             widget.chat,
                             widget.config,
                           ]),
-                          builder: (context, _) => ChatPane(
-                            vm: widget.chat,
-                            config: widget.config,
-                            input: _input,
-                            inputFocus: _inputFocus,
-                            onQuickAction: _appendInput,
-                            onOpenSettings: widget.onOpenSettings,
+                          builder: (context, _) => TourSpot(
+                            'manga.chat',
+                            child: ChatPane(
+                              vm: widget.chat,
+                              config: widget.config,
+                              input: _input,
+                              inputFocus: _inputFocus,
+                              onQuickAction: _appendInput,
+                              onOpenSettings: widget.onOpenSettings,
+                            ),
                           ),
                         ),
                       ),

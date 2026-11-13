@@ -171,6 +171,7 @@ Future<void> main() async {
       notebooks: notebooks,
       local: local,
       poses: poses,
+      showTutorial: !config.config.tutorialSeen,
     ),
   );
 }
@@ -266,7 +267,10 @@ class PennaApp extends StatefulWidget {
     required this.notebooks,
     required this.local,
     required this.poses,
+    this.showTutorial = false,
   });
+
+  final bool showTutorial;
 
   final StudioViewModel layoutChat;
 
@@ -389,6 +393,7 @@ class _PennaAppState extends State<PennaApp> with WindowListener {
             local: widget.local,
             poses: widget.poses,
             checkUpdates: kReleaseMode,
+            showTutorial: widget.showTutorial,
           ),
         );
       },

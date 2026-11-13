@@ -137,6 +137,26 @@ void main() {
       expect(await fresh().downloadTagger(gated), contains('Token'));
     });
 
+    test('检查完整性:文件夹里找到的打标模型按位置对上 HuggingFace 的大小和 SHA256', () async {
+      for (final f in ['model.onnx', 'selected_tags.csv']) {
+        File('${tmp.path}/tag/SmilingWolf/wd-vit-tagger-v3/$f')
+          ..createSync(recursive: true)
+          ..writeAsStringSync('x');
+      }
+      final model = fresh()..addFolder('${tmp.path}/tag');
+      while (model.scanning) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      model.pickTagger('SmilingWolf/wd-vit-tagger-v3');
+      final files = model.taggerCheckFiles;
+      expect(
+        [for (final f in files) fileName(f.path)],
+        ['model.onnx', 'selected_tags.csv'],
+      );
+      expect(files.first.size, 378536310);
+      expect(files.first.sha256, startsWith('35f23693'));
+    });
+
     test('文件夹里有别的量化档、NLapt 放的 Florence-2:都直接能用', () async {
       for (final p in [
         'nl/gemma4-e4b/gemma-4-E4B-it-Q8_0.gguf',
@@ -227,6 +247,21 @@ void main() {
       expect(again.taggerRepo, taggerModels[2].id);
       expect(again.character, 0.7);
       expect(again.port, 9100);
+    });
+
+    test('检查完整性:自己选的 GGUF 按文件名对清单,同名不止一种的不校验', () {
+      final model = LocalModel(
+        dir: tmp,
+        streamChat: (_) => const Stream.empty(),
+      );
+      model.useGguf(
+        '${tmp.path}/gemma-4-E2B-it-Q4_K_M.gguf',
+        '${tmp.path}/mmproj-F16.gguf',
+      );
+      final files = model.captionCheckFiles;
+      expect(files.first.sha256, startsWith('740185b2'));
+      expect(files.first.size, 3106738272);
+      expect(files.last.sha256, isNull);
     });
 
     test('起了服务才能看图写描述,图带在请求里', () async {

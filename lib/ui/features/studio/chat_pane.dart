@@ -19,6 +19,7 @@ import '../../../data/services/config_service.dart';
 import '../../core/scroll_strip.dart';
 import '../../core/smooth_scroll.dart';
 import '../../core/theme.dart';
+import '../../core/tour_spot.dart';
 import '../../core/widgets.dart';
 import '../../../data/services/skill_store.dart';
 import 'attachment_view.dart';
@@ -57,7 +58,11 @@ class ChatPane extends StatefulWidget {
     this.onOpenLayout,
     this.onImage,
     this.attach,
+    this.tour,
   });
+
+  /// 教程里顶栏、输入框的 id 前缀(`<tour>.header`、`<tour>.composer`);三个工作台各给一个。
+  final String? tour;
 
   final StudioViewModel vm;
   final ConfigService config;
@@ -558,14 +563,24 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
 
   Widget _build(List<ChatMessage> messages) {
     final rows = foldLookups(messages);
+    Widget spot(String part, Widget child) => widget.tour == null
+        ? child
+        : TourSpot('${widget.tour}.$part', child: child);
     return Column(
       children: [
-        _Header(
-          vm: widget.vm,
-          config: widget.config,
-          onOpenSettings: widget.onOpenSettings,
+        spot(
+          'header',
+          Column(
+            children: [
+              _Header(
+                vm: widget.vm,
+                config: widget.config,
+                onOpenSettings: widget.onOpenSettings,
+              ),
+              ChatTabs(vm: widget.vm),
+            ],
+          ),
         ),
-        ChatTabs(vm: widget.vm),
         Expanded(
           child: Stack(
             children: [
@@ -597,73 +612,80 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
             ],
           ),
         ),
-        _Composer(
-          meter: widget.vm.contextMeter,
-          trailing: widget.vm.side == null
-              ? null
-              : _SideToggle(
-                  open: _sideOpen,
-                  onTap: () => setState(() => _sideOpen = !_sideOpen),
+        spot(
+          'composer',
+          _Composer(
+            meter: widget.vm.contextMeter,
+            trailing: widget.vm.side == null
+                ? null
+                : _SideToggle(
+                    open: _sideOpen,
+                    onTap: () => setState(() => _sideOpen = !_sideOpen),
+                  ),
+            input: widget.input,
+            inputFocus: widget.inputFocus,
+            quickActions: widget.config.config.quickActions,
+            onQuickAction: widget.onQuickAction,
+            onKey: _onKey,
+            onPaste: _pasteAttachments,
+            onSend: _send,
+            onStop: widget.vm.isStreaming ? widget.vm.stop : null,
+            picker: _mention == null
+                ? null
+                : MentionList(
+                    skills: _mentionMatches,
+                    selected: _mentionIndex,
+                    onPick: _pickMention,
+                  ),
+            onAttach: _pickFiles,
+            autoApprove: widget.config.config.autoApprove,
+            onAutoApprove: (on) => widget.config.update(
+              widget.config.config.copyWith(autoApprove: on),
+            ),
+            thinking: widget.config.config.thinking,
+            onThinking: (level) => widget.config.update(
+              widget.config.config.copyWith(thinking: level),
+            ),
+            dragging: _dragging,
+            queued: [
+              for (final (i, m) in widget.vm.outbox.indexed)
+                _QueuedRow(
+                  text: m.text.isEmpty
+                      ? tr('{0} 个附件', [m.attachments.length])
+                      : m.text.replaceAll('\n', ' '),
+                  onSendNow: () {
+                    final problem = widget.vm.sendQueuedNow(i);
+                    if (problem != null) {
+                      showToast(context, problem, warn: true);
+                    }
+                    _follow = true;
+                  },
+                  onRemove: () => widget.vm.unqueue(i),
                 ),
-          input: widget.input,
-          inputFocus: widget.inputFocus,
-          quickActions: widget.config.config.quickActions,
-          onQuickAction: widget.onQuickAction,
-          onKey: _onKey,
-          onPaste: _pasteAttachments,
-          onSend: _send,
-          onStop: widget.vm.isStreaming ? widget.vm.stop : null,
-          picker: _mention == null
-              ? null
-              : MentionList(
-                  skills: _mentionMatches,
-                  selected: _mentionIndex,
-                  onPick: _pickMention,
+            ],
+            chips: [
+              if (widget.vm.quote != null)
+                MentionChip(
+                  name: sectionTitle(widget.vm.quote!),
+                  prefix: widget.vm.layoutOnly ? tr('块 · ') : tr('段 · '),
+                  onRemove: () => widget.vm.quoteSection(null),
                 ),
-          onAttach: _pickFiles,
-          autoApprove: widget.config.config.autoApprove,
-          onAutoApprove: (on) => widget.config.update(
-            widget.config.config.copyWith(autoApprove: on),
+              for (final (i, attachment) in _attachments.indexed)
+                AttachmentChip(
+                  attachment: attachment,
+                  onRemove: () => _removeAttachment(i),
+                ),
+              for (final (i, name) in _namesOf(_mentioned).indexed)
+                MentionChip(
+                  name: name,
+                  onRemove: () => setState(() {
+                    _mentioned = List.unmodifiable(
+                      [..._mentioned]..removeAt(i),
+                    );
+                  }),
+                ),
+            ],
           ),
-          thinking: widget.config.config.thinking,
-          onThinking: (level) => widget.config.update(
-            widget.config.config.copyWith(thinking: level),
-          ),
-          dragging: _dragging,
-          queued: [
-            for (final (i, m) in widget.vm.outbox.indexed)
-              _QueuedRow(
-                text: m.text.isEmpty
-                    ? tr('{0} 个附件', [m.attachments.length])
-                    : m.text.replaceAll('\n', ' '),
-                onSendNow: () {
-                  final problem = widget.vm.sendQueuedNow(i);
-                  if (problem != null) showToast(context, problem, warn: true);
-                  _follow = true;
-                },
-                onRemove: () => widget.vm.unqueue(i),
-              ),
-          ],
-          chips: [
-            if (widget.vm.quote != null)
-              MentionChip(
-                name: sectionTitle(widget.vm.quote!),
-                prefix: widget.vm.layoutOnly ? tr('块 · ') : tr('段 · '),
-                onRemove: () => widget.vm.quoteSection(null),
-              ),
-            for (final (i, attachment) in _attachments.indexed)
-              AttachmentChip(
-                attachment: attachment,
-                onRemove: () => _removeAttachment(i),
-              ),
-            for (final (i, name) in _namesOf(_mentioned).indexed)
-              MentionChip(
-                name: name,
-                onRemove: () => setState(() {
-                  _mentioned = List.unmodifiable([..._mentioned]..removeAt(i));
-                }),
-              ),
-          ],
         ),
       ],
     );

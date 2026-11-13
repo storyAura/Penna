@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'llm_http.dart';
+import '../attachment.dart';
 import '../web_search.dart';
 import '../../../l10n/l10n.dart';
 
@@ -69,7 +70,39 @@ List<Map<String, Object?>> openAiMessages(LlmRequest req) => [
 
 /// 调用 OpenAI 兼容的 `/chat/completions`,逐段吐出回复文本。
 Stream<String> streamOpenAiChat(LlmRequest req) =>
+    _isLocal(req.baseUrl) && req.images.values.any((l) => l.any(_unreadable))
+    ? Stream.fromFuture(localReadable(req)).asyncExpand(_stream)
+    : _stream(req);
+
+Stream<String> _stream(LlmRequest req) =>
     runLlmStream((client) => effortFallback(req, (r) => _chat(client, r)));
+
+bool _isLocal(String baseUrl) => const {
+  '127.0.0.1',
+  'localhost',
+  '::1',
+}.contains(Uri.tryParse(baseUrl.trim())?.host);
+
+bool _unreadable(LlmImage i) => i.mime != 'image/png' && i.mime != 'image/jpeg';
+
+/// 本机的服务(llama.cpp、LM Studio 这类)读图只认 PNG、JPEG 这些,WebP 会被悄悄丢掉,
+/// 模型当没图,乱编或出乱码(2026-11-13 用户反馈本地反推出乱码;「压缩大图」开着时大图都是
+/// WebP)。发给本机地址时别的格式先转成 PNG(转不了的照原样);云端的接口都认,不动。
+Future<LlmRequest> localReadable(LlmRequest req) async {
+  if (!_isLocal(req.baseUrl)) return req;
+  return req.withImages({
+    for (final MapEntry(:key, :value) in req.images.entries)
+      key: [
+        for (final i in value)
+          _unreadable(i)
+              ? (
+                  mime: 'image/png',
+                  bytes: await pngOf(i.mime, i.bytes) ?? i.bytes,
+                )
+              : i,
+      ],
+  });
+}
 
 /// 写进 `reasoning_effort` 的值。DeepSeek 官方只有 low、high、max。
 String? openAiEffort(LlmRequest req) =>

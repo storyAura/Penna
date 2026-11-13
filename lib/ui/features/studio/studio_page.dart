@@ -4,6 +4,8 @@ import '../../../core/harness/attachment.dart';
 import '../../../data/services/archive_store.dart';
 import '../../../data/services/config_service.dart';
 import '../../core/pane_splitter.dart';
+import '../../core/tour_spot.dart';
+import '../tour/mascot_perch.dart';
 import 'activity_bar.dart';
 import 'right_bar.dart';
 import 'chat_pane.dart';
@@ -135,15 +137,22 @@ class _StudioPageState extends State<StudioPage> {
                       }),
                     ),
                     Expanded(
-                      child: ChatPane(
-                        vm: widget.vm,
-                        config: widget.config,
-                        input: _input,
-                        inputFocus: _inputFocus,
-                        onQuickAction: _appendInput,
-                        onOpenSettings: widget.onOpenSettings,
-                        onOpenLayout: widget.onOpenLayout,
-                        attach: _attach,
+                      child: TourSpot(
+                        'studio.chat',
+                        child: MascotRoom(
+                          width: widget.config.config.mascot ? mascotRoom : 0,
+                          child: ChatPane(
+                            tour: 'studio',
+                            vm: widget.vm,
+                            config: widget.config,
+                            input: _input,
+                            inputFocus: _inputFocus,
+                            onQuickAction: _appendInput,
+                            onOpenSettings: widget.onOpenSettings,
+                            onOpenLayout: widget.onOpenLayout,
+                            attach: _attach,
+                          ),
+                        ),
                       ),
                     ),
                     // 给右边的侧栏留出窄边;展开时它盖在对话栏上。
@@ -155,18 +164,32 @@ class _StudioPageState extends State<StudioPage> {
                 left: 0,
                 top: 0,
                 bottom: 0,
-                child: ActivityBar(vm: widget.vm),
+                child: TourSpot(
+                  'studio.activity',
+                  child: ActivityBar(vm: widget.vm),
+                ),
               ),
               Positioned(
                 right: 0,
                 top: 0,
                 bottom: 0,
-                child: RightBar(
-                  vm: widget.vm,
-                  runner: widget.vm.comfy,
-                  config: widget.config,
+                child: TourSpot(
+                  'studio.right',
+                  child: RightBar(
+                    vm: widget.vm,
+                    runner: widget.vm.comfy,
+                    config: widget.config,
+                  ),
                 ),
               ),
+              // 召唤出来的吉祥物坐在输入区的上沿。
+              if (widget.config.config.mascot)
+                Positioned.fill(
+                  child: MascotPerch(
+                    anchor: tourKey('studio.composer'),
+                    chat: widget.vm,
+                  ),
+                ),
             ],
           ),
         );

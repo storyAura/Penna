@@ -440,6 +440,8 @@ class AppConfig {
     this.layoutSnap = defaultLayoutSnap,
     this.compressImages = true,
     this.chatIdeas = true,
+    this.tutorialSeen = false,
+    this.mascot = false,
     this.autoApprove = false,
     this.contextPages = defaultContextPages,
     this.seriesGenerate = false,
@@ -529,6 +531,9 @@ class AppConfig {
           .toInt(),
       compressImages: m['compressImages'] as bool? ?? true,
       chatIdeas: m['chatIdeas'] as bool? ?? true,
+      // 旧设置里没有这一项:用过的人不再自动弹教程。
+      tutorialSeen: m['tutorialSeen'] as bool? ?? true,
+      mascot: m['mascot'] as bool? ?? false,
       autoApprove: m['autoApprove'] as bool? ?? false,
       contextPages: contextPageChoices.contains(m['contextPages'])
           ? m['contextPages'] as int
@@ -707,6 +712,12 @@ class AppConfig {
   /// 新对话里没说话时,用 Agent 的模型想几条创作点子摆在空白处。
   final bool chatIdeas;
 
+  /// 看过(或跳过)新手教程;新装时为 false,启动时自动弹一次。
+  final bool tutorialSeen;
+
+  /// 吉祥物召唤出来了:坐在工作台的对话框上。
+  final bool mascot;
+
   /// 成稿的待确认改动一出来就自动采纳,不用用户点。
   final bool autoApprove;
 
@@ -773,6 +784,8 @@ class AppConfig {
     'layoutSnap': layoutSnap,
     'compressImages': compressImages,
     'chatIdeas': chatIdeas,
+    'tutorialSeen': tutorialSeen,
+    'mascot': mascot,
     'autoApprove': autoApprove,
     'contextPages': contextPages,
     'seriesGenerate': seriesGenerate,
@@ -865,6 +878,8 @@ class AppConfig {
     int? layoutSnap,
     bool? compressImages,
     bool? chatIdeas,
+    bool? tutorialSeen,
+    bool? mascot,
     bool? autoApprove,
     int? contextPages,
     bool? seriesGenerate,
@@ -914,6 +929,8 @@ class AppConfig {
     layoutSnap: layoutSnap ?? this.layoutSnap,
     compressImages: compressImages ?? this.compressImages,
     chatIdeas: chatIdeas ?? this.chatIdeas,
+    tutorialSeen: tutorialSeen ?? this.tutorialSeen,
+    mascot: mascot ?? this.mascot,
     autoApprove: autoApprove ?? this.autoApprove,
     contextPages: contextPages ?? this.contextPages,
     seriesGenerate: seriesGenerate ?? this.seriesGenerate,

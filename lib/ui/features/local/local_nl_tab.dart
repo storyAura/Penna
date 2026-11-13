@@ -162,6 +162,7 @@ class _NlTab extends StatelessWidget {
               onClear: () => model.useGguf(model.modelPath, ''),
             ),
           ],
+          _IntegrityCheck(files: model.captionCheckFiles),
         ],
       ),
     );

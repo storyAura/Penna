@@ -114,15 +114,44 @@ extension LocalTagger on LocalModel {
       '${m.id.replaceAll(RegExp(r'[/:]'), '__')}';
 
   /// 要下载的文件(在自己的模型文件夹里只留文件名,外部权重 model.onnx.data 要和模型放在一起)。
+  /// 大小和 SHA256 取 `tagger_hashes.dart`,下载时校验、断了接着下。
   List<RemoteFile> taggerFiles(TaggerModel m) => [
     for (final f in m.files)
       (
         url: hfFileUrl(m.repo, f),
         path: '${_taggerFolder(m)}$_sep${fileName(f)}',
-        size: null,
-        sha256: null,
+        size: taggerFileInfo['${m.repo}/$f']?.size,
+        sha256: taggerFileInfo['${m.repo}/$f']?.sha256,
       ),
   ];
+
+  /// 眼前用的打标模型的文件,带 HuggingFace 上的大小和 SHA256,检查完整性用。
+  /// 文件夹里找到的按位置对:第一个是模型、标签表对标签表,其余和模型放在一起;
+  /// 自己加的(`local:`)没有校验值。
+  List<CheckFile> get taggerCheckFiles {
+    final m = tagger;
+    final paths = taggerPaths(m);
+    if (paths == null) return const [];
+    if (m.files.isEmpty) {
+      return [
+        (path: paths.model, size: null, sha256: null),
+        (path: paths.labels, size: null, sha256: null),
+      ];
+    }
+    final dir = File(paths.model).parent.path;
+    return [
+      for (final f in m.files)
+        (
+          path: f == m.files.first
+              ? paths.model
+              : f == m.labels
+              ? paths.labels
+              : '$dir$_sep${fileName(f)}',
+          size: taggerFileInfo['${m.repo}/$f']?.size,
+          sha256: taggerFileInfo['${m.repo}/$f']?.sha256,
+        ),
+    ];
+  }
 
   /// 打标模型在文件夹里找到的模型文件;自己下载过的不算。
   String? foundTagger(TaggerModel m) => m.id.startsWith(_local)

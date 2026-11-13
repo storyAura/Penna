@@ -220,7 +220,12 @@ Future<Attachment> compressImage(Attachment a) async {
 Future<Uint8List?> toPng(Attachment a) async {
   final bytes = a.bytes;
   if (bytes == null || bytes.isEmpty) return null;
-  if (a.mime == 'image/png') return bytes;
+  return pngOf(a.mime, bytes);
+}
+
+/// 同 [toPng],直接给格式和内容。
+Future<Uint8List?> pngOf(String? mime, Uint8List bytes) async {
+  if (mime == 'image/png') return bytes;
   return Isolate.run(() {
     final image = img.decodeImage(bytes);
     return image == null ? null : img.encodePng(image);

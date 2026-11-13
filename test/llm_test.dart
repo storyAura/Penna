@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:penna/core/harness/providers/gemini_provider.dart';
 import 'package:penna/core/harness/providers/llm_router.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
@@ -33,6 +35,34 @@ void main() {
   // 文件里有 testWidgets,Flutter 的测试环境一开始就启用并拦掉真实的网络请求;
   // 这里好几条测试要连本机的假服务。
   setUp(() => HttpOverrides.global = null);
+
+  test('发给本机的接口(llama.cpp)时 WebP 先转成 PNG,云端的照原样', () async {
+    final webp = img.encodeWebP(img.Image(width: 4, height: 4), lossless: true);
+    LlmRequest at(String url) => LlmRequest(
+      baseUrl: url,
+      model: 'm',
+      apiKey: '',
+      messages: const [
+        {'role': 'user', 'content': 'hi'},
+      ],
+      images: {
+        0: [
+          (mime: 'image/webp', bytes: webp),
+          (mime: 'image/jpeg', bytes: Uint8List.fromList([1, 2])),
+        ],
+      },
+    );
+    final local = await localReadable(at('http://127.0.0.1:8091/v1'));
+    expect(
+      [for (final i in local.images[0]!) i.mime],
+      ['image/png', 'image/jpeg'],
+    );
+    expect(img.decodePng(local.images[0]!.first.bytes)!.width, 4);
+    expect(local.messages, at('').messages);
+
+    final cloud = await localReadable(at('https://api.openai.com/v1'));
+    expect(cloud.images[0]!.first.mime, 'image/webp');
+  });
 
   group('Google 协议', () {
     test('请求体:system 单列,assistant 改叫 model,连续同一方合并', () {

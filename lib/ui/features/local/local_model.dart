@@ -10,11 +10,13 @@ import '../../../core/harness/attachment.dart';
 import '../../../core/harness/local/caption_catalog.dart';
 import '../../../core/harness/local/download.dart';
 import '../../../core/harness/local/florence.dart';
+import '../../../core/harness/local/integrity.dart';
 import '../../../core/harness/local/llama_server.dart';
 import '../../../core/harness/local/local_tools.dart';
 import '../../../core/harness/local/model_scan.dart';
 import '../../../core/harness/local/model_sources.dart';
 import '../../../core/harness/local/tagger.dart';
+import '../../../core/harness/local/tagger_hashes.dart';
 import '../../../core/harness/providers/llm_http.dart';
 import '../../../data/services/florence_engine.dart';
 import '../../../data/services/onnx_model.dart';
@@ -310,6 +312,8 @@ class LocalModel extends ChangeNotifier {
           f,
           cancel: cancel,
           headers: headers,
+          // 加速站把要 Token 的文件转回官方,Token 要跟过去。
+          headerHosts: headers.isEmpty ? const {} : const {'huggingface.co'},
           urls: _urlsOf(f, gated: headers.isNotEmpty),
           onProgress: (got, all) {
             _downloads[key] = (

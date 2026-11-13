@@ -44,20 +44,26 @@ class _TagTab extends StatelessWidget {
         _Block(
           title: tr('模型'),
           trailing: _AddFolder(model: model),
-          child: _GroupedModelList(
-            current: current.series,
-            groups: [
-              for (final g in model.taggerGroups)
-                (
-                  series: g.series,
-                  ids: [for (final m in g.items) m.id],
-                  rows: [
-                    for (final m in g.items)
-                      _taggerRow(m, selected: m.id == current.id),
-                  ],
-                ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _GroupedModelList(
+                current: current.series,
+                groups: [
+                  for (final g in model.taggerGroups)
+                    (
+                      series: g.series,
+                      ids: [for (final m in g.items) m.id],
+                      rows: [
+                        for (final m in g.items)
+                          _taggerRow(m, selected: m.id == current.id),
+                      ],
+                    ),
+                ],
+                onMove: model.moveTagger,
+              ),
+              _IntegrityCheck(files: model.taggerCheckFiles),
             ],
-            onMove: model.moveTagger,
           ),
         ),
         _Block(

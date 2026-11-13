@@ -215,6 +215,46 @@ extension LocalCaption on LocalModel {
     _changed();
   }
 
+  // —— 检查完整性 ——
+
+  /// 眼前用的模型的文件,带清单里的大小和 SHA256。选的是清单模型时只对它自己的文件;
+  /// 自己选的 GGUF 按文件名对整个清单,对上不止一种(好几家都叫 mmproj-F16.gguf)就不校验。
+  List<CheckFile> get captionCheckFiles {
+    final m = pickedCaption;
+    if (m == null) {
+      return [
+        for (final p in [modelPath, mmprojPath])
+          if (p.isNotEmpty) _known(p, captionModels),
+      ];
+    }
+    final paths = captionPaths(m);
+    if (paths == null) return const [];
+    final used = m.florence
+        ? [
+            for (final f in [quantOf(m).file, ...m.extra])
+              '${paths.model}$_sep${fileName(f.path)}',
+          ]
+        : [paths.model, if (paths.mmproj.isNotEmpty) paths.mmproj];
+    return [
+      for (final p in used) _known(p, [m]),
+    ];
+  }
+
+  CheckFile _known(String path, List<CaptionModel> models) {
+    final name = fileName(path).toLowerCase();
+    final hits = {
+      for (final m in models)
+        for (final f in [
+          for (final q in m.quants) q.file,
+          ?m.mmproj,
+          ...m.extra,
+        ])
+          if (fileName(f.path).toLowerCase() == name) f,
+    };
+    final f = hits.length == 1 ? hits.single : null;
+    return (path: path, size: f?.size, sha256: f?.sha256);
+  }
+
   // —— 看图写描述 ——
 
   /// 看图写一段描述:选的是 Florence-2 就在程序里跑,否则交给跑着的 llama-server。

@@ -6,6 +6,7 @@ import '../../../core/harness/draft_block.dart';
 import '../../../data/services/archive_store.dart';
 import '../../core/theme.dart';
 import '../../core/smooth_scroll.dart';
+import '../../core/tour_spot.dart';
 import '../../core/widgets.dart';
 import '../archive/archive_page.dart';
 import '../settings/settings_sections.dart';
@@ -75,13 +76,19 @@ class PromptPane extends StatelessWidget {
         children: [
           Expanded(
             flex: 14,
-            child: _DraftSection(
-              vm: vm,
-              archive: archive,
-              onDiscuss: onDiscuss,
+            child: TourSpot(
+              'studio.draft',
+              child: _DraftSection(
+                vm: vm,
+                archive: archive,
+                onDiscuss: onDiscuss,
+              ),
             ),
           ),
-          Expanded(flex: 10, child: _SummarySection(vm: vm)),
+          Expanded(
+            flex: 10,
+            child: TourSpot('studio.summary', child: _SummarySection(vm: vm)),
+          ),
         ],
       ),
     );

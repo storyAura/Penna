@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../data/services/config_service.dart';
 import '../../core/smooth_scroll.dart';
 import '../../core/theme.dart';
+import '../../core/tour_spot.dart';
 import '../../core/widgets.dart';
 import '../../../data/services/skill_store.dart';
 import '../local/local_model.dart';
@@ -40,7 +41,11 @@ class SettingsPage extends StatefulWidget {
     required this.skills,
     required this.local,
     required this.comfy,
+    this.onTutorial,
   });
+
+  /// 左下角「教程」:从头走一遍新手教程。
+  final VoidCallback? onTutorial;
 
   final ConfigService service;
   final SkillStore skills;
@@ -86,12 +91,38 @@ class _SettingsPageState extends State<SettingsPage> {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 ),
               ),
-              for (var i = 0; i < _tabs.length; i++)
-                _TabItem(
-                  tab: _tabs[i],
-                  selected: i == _tab,
-                  onTap: () => setState(() => _tab = i),
+              TourSpot(
+                'settings.tabs',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < _tabs.length; i++)
+                      _TabItem(
+                        tab: _tabs[i],
+                        selected: i == _tab,
+                        onTap: () => setState(() => _tab = i),
+                      ),
+                  ],
                 ),
+              ),
+              const Spacer(),
+              if (widget.onTutorial case final start?)
+                TourSpot(
+                  'settings.tutorial',
+                  child: _TabItem(
+                    tab: (icon: Icons.emoji_people_outlined, label: tr('教程')),
+                    selected: false,
+                    onTap: start,
+                  ),
+                ),
+              // 选中着就是召唤出来了,再点一下收回去。
+              _TabItem(
+                tab: (icon: Icons.auto_awesome_outlined, label: tr('召唤故事')),
+                selected: service.config.mascot,
+                onTap: () => service.update(
+                  service.config.copyWith(mascot: !service.config.mascot),
+                ),
+              ),
             ],
           ),
         ),

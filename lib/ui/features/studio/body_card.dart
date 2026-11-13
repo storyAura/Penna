@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart';
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../core/theme.dart';
+import '../../core/tour_spot.dart';
 import '../../core/widgets.dart';
 import '../layout/layout_json_view.dart';
 import 'page_strip.dart';
@@ -545,7 +546,14 @@ class BodyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PageStrip(vm: vm, onArchive: onArchiveSeries, generate: true),
+          TourSpot(
+            'studio.pages',
+            child: PageStrip(
+              vm: vm,
+              onArchive: onArchiveSeries,
+              generate: true,
+            ),
+          ),
           ...columns,
         ],
       ),

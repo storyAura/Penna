@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/local/caption_catalog.dart';
 import 'package:penna/core/harness/local/download.dart';
 import 'package:penna/core/harness/local/gguf.dart';
+import 'package:penna/core/harness/local/integrity.dart';
 import 'package:penna/core/harness/local/llama_server.dart';
 import 'package:penna/core/harness/local/model_scan.dart';
 import 'package:penna/core/harness/local/model_sources.dart';
@@ -322,6 +323,42 @@ void main() {
     });
   });
 
+  group('完整性', () {
+    test('不在、大小不对、SHA256 不对、没有校验值的 GGUF 看开头', () async {
+      final good = [1, 2, 3, 4];
+      File('${tmp.path}/good.bin').writeAsBytesSync(good);
+      File('${tmp.path}/short.bin').writeAsBytesSync([1, 2]);
+      File('${tmp.path}/bad.bin').writeAsBytesSync([9, 9, 9, 9]);
+      File('${tmp.path}/own.gguf').writeAsBytesSync(_gguf('llama', 'L', 4096));
+      File('${tmp.path}/junk.gguf').writeAsStringSync('not a gguf at all');
+      File('${tmp.path}/x.onnx').writeAsBytesSync(good);
+      final sum = '${sha256.convert(good)}';
+      final checks = await checkFiles([
+        (path: '${tmp.path}/good.bin', size: 4, sha256: sum),
+        (path: '${tmp.path}/gone.bin', size: 4, sha256: sum),
+        (path: '${tmp.path}/short.bin', size: 4, sha256: sum),
+        (path: '${tmp.path}/bad.bin', size: 4, sha256: sum),
+        (path: '${tmp.path}/own.gguf', size: null, sha256: null),
+        (path: '${tmp.path}/junk.gguf', size: null, sha256: null),
+        (path: '${tmp.path}/x.onnx', size: null, sha256: null),
+        (path: '${tmp.path}/x.onnx', size: 4, sha256: null),
+      ]);
+      expect(
+        [for (final c in checks) c.health],
+        [
+          FileHealth.ok,
+          FileHealth.missing,
+          FileHealth.wrongSize,
+          FileHealth.badHash,
+          FileHealth.ok,
+          FileHealth.unreadable,
+          FileHealth.unchecked,
+          FileHealth.sizeOk,
+        ],
+      );
+    });
+  });
+
   group('下载', () {
     // 这个文件里有 testWidgets,Flutter 会拦掉真实的网络请求;这组要连本机的假服务器。
     setUp(() => HttpOverrides.global = null);
@@ -340,6 +377,17 @@ void main() {
           request.response.statusCode = 404;
         } else if (request.uri.path == '/forbidden') {
           request.response.statusCode = 403;
+        } else if (request.uri.path == '/hop') {
+          // 加速站把要 Token 的文件转回官方:换了一个主机。
+          request.response.statusCode = 308;
+          request.response.headers.set(
+            HttpHeaders.locationHeader,
+            'http://localhost:${http.port}/gated',
+          );
+        } else if (request.uri.path == '/gated' &&
+            request.headers.value(HttpHeaders.authorizationHeader) !=
+                'Bearer t') {
+          request.response.statusCode = 401;
         } else if (request.uri.path == '/cut') {
           // 下到一半连接断了。
           request.response.contentLength = body.length;
@@ -506,6 +554,30 @@ void main() {
       await expectLater(
         downloadFile(model, urls: [refused.url]),
         says(allOf(contains('403'), contains('登录'))),
+      );
+    });
+
+    test('转到别的主机:Token 只带给 headerHosts 里的', () async {
+      final f = file(path: '/hop');
+      const token = {'Authorization': 'Bearer t'};
+      await downloadFile(
+        f,
+        urls: [f.url],
+        headers: token,
+        headerHosts: const {'localhost'},
+      );
+      expect(File(f.path).readAsBytesSync(), body);
+
+      File(f.path).deleteSync();
+      await expectLater(
+        downloadFile(f, urls: [f.url], headers: token),
+        throwsA(
+          isA<DownloadException>().having(
+            (e) => e.message,
+            'm',
+            contains('401'),
+          ),
+        ),
       );
     });
 

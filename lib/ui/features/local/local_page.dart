@@ -1,10 +1,12 @@
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/local/caption_catalog.dart';
 import '../../../core/harness/local/download.dart';
 import '../../../core/harness/local/florence.dart';
+import '../../../core/harness/local/integrity.dart';
 import '../../../core/harness/local/model_scan.dart';
 import '../../../core/harness/local/tagger.dart';
 import '../../../core/harness/providers/llm_http.dart';
@@ -20,6 +22,7 @@ import 'local_model.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
 
+part 'local_integrity.dart';
 part 'local_llm_tab.dart';
 part 'local_nl_tab.dart';
 part 'local_tag_tab.dart';

@@ -11,6 +11,7 @@ import '../../../data/services/config_service.dart';
 import '../../core/pane_splitter.dart';
 import '../../core/smooth_scroll.dart';
 import '../../core/theme.dart';
+import '../../core/tour_spot.dart';
 import '../../core/widgets.dart';
 import '../archive/archive_page.dart';
 import '../settings/settings_sections.dart';
@@ -307,91 +308,97 @@ class _LayoutPageState extends State<LayoutPage> {
                             color: PennaColors.bg,
                             border: Border(right: side),
                           ),
-                          child: _Properties(
-                            board: board,
-                            config: widget.config,
-                            onDiscuss: _discuss,
-                            onToDraft: _toDraft,
-                            cardKey: _cardKey,
-                            fieldFocus: _fieldFocus,
-                            isOpen: _open.contains,
-                            onToggle: _toggle,
-                            onMove: _move,
-                            onDelete: _delete,
+                          child: TourSpot(
+                            'layout.props',
+                            child: _Properties(
+                              board: board,
+                              config: widget.config,
+                              onDiscuss: _discuss,
+                              onToDraft: _toDraft,
+                              cardKey: _cardKey,
+                              fieldFocus: _fieldFocus,
+                              isOpen: _open.contains,
+                              onToggle: _toggle,
+                              onMove: _move,
+                              onDelete: _delete,
+                            ),
                           ),
                         ),
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // 各系列、各页,同工作台的成稿区;每页是一张布局。
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  24,
-                                  16,
-                                  24,
-                                  0,
-                                ),
-                                child: ListenableBuilder(
-                                  listenable: widget.chat,
-                                  builder: (context, _) => PageStrip(
-                                    vm: widget.chat,
-                                    label: tr('布局'),
-                                    tips: false,
+                          child: TourSpot(
+                            'layout.canvas',
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // 各系列、各页,同工作台的成稿区;每页是一张布局。
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    24,
+                                    16,
+                                    24,
+                                    0,
+                                  ),
+                                  child: ListenableBuilder(
+                                    listenable: widget.chat,
+                                    builder: (context, _) => PageStrip(
+                                      vm: widget.chat,
+                                      label: tr('布局'),
+                                      tips: false,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              Expanded(
-                                child: Stack(
-                                  children: [
-                                    Positioned.fill(
-                                      child: Padding(
-                                        padding: const EdgeInsets.fromLTRB(
-                                          24,
-                                          48,
-                                          24,
-                                          24,
+                                Expanded(
+                                  child: Stack(
+                                    children: [
+                                      Positioned.fill(
+                                        child: Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            24,
+                                            48,
+                                            24,
+                                            24,
+                                          ),
+                                          child: _canvasArea(),
                                         ),
-                                        child: _canvasArea(),
                                       ),
-                                    ),
-                                    // 形状工具、自由摄像机、全屏。
-                                    Positioned(
-                                      top: 6,
-                                      left: 24,
-                                      right: 0,
-                                      child: CanvasTools(
-                                        board: board,
-                                        scene: _scene,
-                                        onScene: () =>
-                                            setState(() => _scene = !_scene),
-                                        onFullscreen: () => showFullCanvas(
-                                          context,
-                                          board: board,
-                                          onToggle3D: _toggle3D,
-                                        ),
-                                        onHandOver: _handOver,
-                                      ),
-                                    ),
-                                    if (_stale)
+                                      // 形状工具、自由摄像机、全屏。
                                       Positioned(
-                                        left: 16,
-                                        right: 16,
-                                        bottom: 12,
-                                        child: Center(
-                                          child: _StaleViewNote(
-                                            onHandOver: _handOver,
-                                            onLater: () => setState(
-                                              () => _answered =
-                                                  board.layout.camera,
+                                        top: 6,
+                                        left: 24,
+                                        right: 0,
+                                        child: CanvasTools(
+                                          board: board,
+                                          scene: _scene,
+                                          onScene: () =>
+                                              setState(() => _scene = !_scene),
+                                          onFullscreen: () => showFullCanvas(
+                                            context,
+                                            board: board,
+                                            onToggle3D: _toggle3D,
+                                          ),
+                                          onHandOver: _handOver,
+                                        ),
+                                      ),
+                                      if (_stale)
+                                        Positioned(
+                                          left: 16,
+                                          right: 16,
+                                          bottom: 12,
+                                          child: Center(
+                                            child: _StaleViewNote(
+                                              onHandOver: _handOver,
+                                              onLater: () => setState(
+                                                () => _answered =
+                                                    board.layout.camera,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                         // 3D 视图的摄像机一栏贴在画布右边,不盖住画布。
@@ -416,14 +423,17 @@ class _LayoutPageState extends State<LayoutPage> {
                               widget.chat,
                               widget.config,
                             ]),
-                            builder: (context, _) => ChatPane(
-                              vm: widget.chat,
-                              config: widget.config,
-                              input: _input,
-                              inputFocus: _inputFocus,
-                              onQuickAction: _appendInput,
-                              onOpenSettings: widget.onOpenSettings,
-                              onImage: _matchImage,
+                            builder: (context, _) => TourSpot(
+                              'layout.chat',
+                              child: ChatPane(
+                                vm: widget.chat,
+                                config: widget.config,
+                                input: _input,
+                                inputFocus: _inputFocus,
+                                onQuickAction: _appendInput,
+                                onOpenSettings: widget.onOpenSettings,
+                                onImage: _matchImage,
+                              ),
                             ),
                           ),
                         ),

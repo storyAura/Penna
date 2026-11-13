@@ -51,7 +51,7 @@ Each page is a separate prompt, and pages can be grouped into series. There can 
 Drop in, choose or paste an image from the clipboard, and a model turns it back into tags or a prompt. There are three kinds:
 
 - **Tag Interrogate**: 20 built-in ONNX taggers in four families (WD14, PixAI, CL and OppaiOracle) produce Danbooru tags. Character and general tags each have their own threshold, and results are re-filtered instantly when it changes. Tags in the result can be toggled one by one and are all selected by default.
-- **NL Interrogate**: 15 built-in vision models, covering Gemma 4 (E2B to 31B), Gemma 4 Heretic, ToriiGate, JoyCaption and Florence-2, each with a choice of quantization. GGUF models run on llama.cpp, and a running server can be added to API Management for the Agent and Polish to use. Florence-2 runs inside the app and outputs tags, captions at several levels of detail, or a composition analysis.
+- **NL Interrogate**: 15 built-in vision models, covering Gemma 4 (E2B to 31B), Gemma 4 Heretic, ToriiGate, JoyCaption and Florence-2, each with a choice of quantization. GGUF models run on llama.cpp, and a running server can be added to API Management for the Agent and Polish to use. Florence-2 runs inside the app and outputs tags, captions at several levels of detail, or a composition analysis. **Check integrity** verifies the size and SHA256 of the current model files to find incomplete or corrupted downloads; it is also available for Tag Interrogate.
 - **LLM Analysis**: pick one or two enabled models from API Management; they interrogate at the same time and the results are shown side by side for comparison. The writing style follows the current Preset.
 - With **Compress large images** on, large images are shrunk and converted to WebP when added.
 - Both kinds of models are grouped by family; families and models can be dragged to reorder.
@@ -180,6 +180,8 @@ Penna uses ComfyUI as its image generation backend, talking to ComfyUI's built-i
 - **Language**: 简体中文, 繁體中文, English and 日本語, applied immediately. In Chinese and Japanese interfaces, section translations and machine translation use that language; the English interface shows the English text directly.
 - **Dark mode**: follow the system, always on, always off, or custom hours (overnight included), with the new colors expanding in a circle.
 - **Fonts and avatars**: Latin and CJK fonts can be a built-in font or any installed font; the Agent and user avatars can be replaced with your own pictures.
+- **Tutorial**: on first launch, the mascot Story walks through every area of the three workbenches and their advanced features, then introduces the other pages. Each area is highlighted with a text box explaining it; use ← → to move back and forth, or skip at any time. **Tutorial** at the bottom left of Settings replays it.
+- **Mascot Story**: a tsundere pixel-art character who changes expression and pose at each tutorial step (waving, pointing, hands on hips, thinking, taking notes with a quill, cheering, and more). **Summon Story** at the bottom left of Settings seats her, dozing, on the top edge of the Workbench chat input; she watches while the Agent writes a reply, flashes a peace sign when it finishes, and panics on errors; she hugs her knees and pouts when hovered, and covers her head, hops and mutters a line when clicked. Click the button again to send her back.
 
 ## Updates
 

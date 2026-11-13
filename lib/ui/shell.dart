@@ -30,6 +30,8 @@ import 'features/update/update_flow.dart';
 import '../l10n/l10n.dart';
 import 'core/motion.dart';
 import 'core/nav_pages.dart';
+import 'core/tour_spot.dart';
+import 'features/tour/tour_overlay.dart';
 
 export 'core/version.dart';
 
@@ -69,7 +71,11 @@ class AppShell extends StatefulWidget {
     this.local,
     this.poses,
     this.checkUpdates = false,
+    this.showTutorial = false,
   });
+
+  /// 一打开就走一遍新手教程(新装第一次启动)。
+  final bool showTutorial;
 
   /// 姿势图库;不给就用一个只在内存里、装不上的(测试用)。
   final PoseLibrary? poses;
@@ -129,6 +135,27 @@ class _AppShellState extends State<AppShell> {
   }
 
   int _page = _studio;
+
+  /// 教程开着;关掉时回到开始前那一页。
+  late bool _touring = widget.showTutorial;
+  int _tourFrom = _studio;
+
+  void _startTour() => setState(() {
+    _tourFrom = _page;
+    _touring = true;
+  });
+
+  void _endTour() {
+    setState(() {
+      _touring = false;
+      _page = _tourFrom;
+    });
+    final cfg = widget.config.config;
+    if (!cfg.tutorialSeen) {
+      widget.config.update(cfg.copyWith(tutorialSeen: true));
+    }
+  }
+
   late final _archive = widget.archive ?? ArchiveStore();
   late final _notebooks = widget.notebooks ?? NotebookStore();
   late final _poses = widget.poses ?? PoseLibrary();
@@ -204,140 +231,158 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: ListenableBuilder(
-        listenable: widget.config,
-        builder: (context, _) => Column(
-          children: [
-            if (widget.config.lastError != null)
-              _ErrorBanner(message: widget.config.lastError!),
-            Expanded(
-              child: Row(
-                children: [
-                  _NavRail(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          _body(),
+          if (_touring)
+            TourOverlay(
+              onPage: (id) => _go(id == 'settings' ? _settings : _pageOf[id]!),
+              onClose: _endTour,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _body() {
+    return ListenableBuilder(
+      listenable: widget.config,
+      builder: (context, _) => Column(
+        children: [
+          if (widget.config.lastError != null)
+            _ErrorBanner(message: widget.config.lastError!),
+          Expanded(
+            child: Row(
+              children: [
+                TourSpot(
+                  'nav',
+                  child: _NavRail(
                     page: _page,
                     order: widget.config.config.navOrder,
                     onSelect: _go,
                   ),
-                  Expanded(
-                    // 几页都一直留着,切去设置时工作台的输入和滚动位置不丢。
-                    child: Stack(
-                      children: [
-                        _Page(
-                          active: _page == _studio,
-                          child: StudioPage(
-                            vm: widget.vm,
-                            config: widget.config,
-                            archive: _archive,
-                            onOpenSettings: () => _go(_settings),
-                            onOpenLayout: () => _go(_layoutPage),
-                            inbox: _toChat,
-                          ),
+                ),
+                Expanded(
+                  // 几页都一直留着,切去设置时工作台的输入和滚动位置不丢。
+                  child: Stack(
+                    children: [
+                      _Page(
+                        active: _page == _studio,
+                        child: StudioPage(
+                          vm: widget.vm,
+                          config: widget.config,
+                          archive: _archive,
+                          onOpenSettings: () => _go(_settings),
+                          onOpenLayout: () => _go(_layoutPage),
+                          inbox: _toChat,
                         ),
-                        _Page(
-                          active: _page == _archivePage,
-                          child: ArchivePage(
-                            archive: _archive,
-                            vm: widget.vm,
-                            board: _layout,
-                            onOpenStudio: () => _go(_studio),
-                            onOpenLayout: () => _go(_layoutPage),
-                            onOpenManga: (project) {
-                              final problem = _mangaChat.manga!.addSeries(
-                                project,
-                              );
-                              if (problem == null) _go(_mangaPage);
-                              return problem;
-                            },
-                          ),
+                      ),
+                      _Page(
+                        active: _page == _archivePage,
+                        child: ArchivePage(
+                          archive: _archive,
+                          vm: widget.vm,
+                          board: _layout,
+                          onOpenStudio: () => _go(_studio),
+                          onOpenLayout: () => _go(_layoutPage),
+                          onOpenManga: (project) {
+                            final problem = _mangaChat.manga!.addSeries(
+                              project,
+                            );
+                            if (problem == null) _go(_mangaPage);
+                            return problem;
+                          },
                         ),
-                        _Page(
-                          active: _page == _charactersPage,
-                          child: CharactersPage(
-                            store: _characters,
-                            dict: widget.vm.characterDict,
-                          ),
+                      ),
+                      _Page(
+                        active: _page == _charactersPage,
+                        child: CharactersPage(
+                          store: _characters,
+                          dict: widget.vm.characterDict,
                         ),
-                        _Page(
-                          active: _page == _localPage,
-                          child: LocalPage(
-                            model: _local,
-                            config: widget.config,
-                            vm: widget.vm,
-                            onOpenStudio: () => _go(_studio),
-                            onSendToAgent: (text) {
-                              _go(_studio);
-                              _toChat.value = (text: text, image: null);
-                            },
-                          ),
+                      ),
+                      _Page(
+                        active: _page == _localPage,
+                        child: LocalPage(
+                          model: _local,
+                          config: widget.config,
+                          vm: widget.vm,
+                          onOpenStudio: () => _go(_studio),
+                          onSendToAgent: (text) {
+                            _go(_studio);
+                            _toChat.value = (text: text, image: null);
+                          },
                         ),
-                        _Page(
-                          active: _page == _posesPage,
-                          child: PosesPage(
-                            library: _poses,
-                            onSend: (image, text) {
-                              _go(_studio);
-                              _toChat.value = (text: text, image: image);
-                            },
-                          ),
+                      ),
+                      _Page(
+                        active: _page == _posesPage,
+                        child: PosesPage(
+                          library: _poses,
+                          onSend: (image, text) {
+                            _go(_studio);
+                            _toChat.value = (text: text, image: image);
+                          },
                         ),
-                        _Page(
-                          active: _page == _layoutPage,
-                          child: LayoutPage(
-                            board: _layout,
-                            vm: widget.vm,
-                            chat: _layoutChat,
-                            archive: _archive,
-                            config: widget.config,
-                            onOpenStudio: () => _go(_studio),
-                            onOpenSettings: () => _go(_settings),
-                          ),
+                      ),
+                      _Page(
+                        active: _page == _layoutPage,
+                        child: LayoutPage(
+                          board: _layout,
+                          vm: widget.vm,
+                          chat: _layoutChat,
+                          archive: _archive,
+                          config: widget.config,
+                          onOpenStudio: () => _go(_studio),
+                          onOpenSettings: () => _go(_settings),
                         ),
-                        _Page(
-                          active: _page == _mangaPage,
-                          child: MangaWorkbench(
-                            board: _mangaChat.manga!,
-                            chat: _mangaChat,
-                            config: widget.config,
-                            onOpenSettings: () => _go(_settings),
-                            archive: _archive,
-                            onToLayout: _mangaToLayout,
-                            onToStudio: _mangaToStudio,
-                          ),
+                      ),
+                      _Page(
+                        active: _page == _mangaPage,
+                        child: MangaWorkbench(
+                          board: _mangaChat.manga!,
+                          chat: _mangaChat,
+                          config: widget.config,
+                          onOpenSettings: () => _go(_settings),
+                          archive: _archive,
+                          onToLayout: _mangaToLayout,
+                          onToStudio: _mangaToStudio,
                         ),
-                        _Page(
-                          active: _page == _notebookPage,
-                          child: NotebookPage(store: _notebooks),
+                      ),
+                      _Page(
+                        active: _page == _notebookPage,
+                        child: NotebookPage(store: _notebooks),
+                      ),
+                      _Page(
+                        active: _page == _settings,
+                        child: SettingsPage(
+                          service: widget.config,
+                          skills: widget.skills,
+                          local: _local,
+                          comfy: widget.vm.comfy,
+                          onTutorial: _startTour,
                         ),
-                        _Page(
-                          active: _page == _settings,
-                          child: SettingsPage(
-                            service: widget.config,
-                            skills: widget.skills,
-                            local: _local,
-                            comfy: widget.vm.comfy,
-                          ),
-                        ),
-                        Positioned(
-                          right: 8,
-                          bottom: 3,
-                          child: IgnorePointer(
-                            child: Text(
-                              'v$appVersion',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: PennaColors.slate400,
-                              ),
+                      ),
+                      Positioned(
+                        right: 8,
+                        bottom: 3,
+                        child: IgnorePointer(
+                          child: Text(
+                            'v$appVersion',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: PennaColors.slate400,
                             ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -431,21 +476,27 @@ class _NavRail extends StatelessWidget {
                         child: Divider(height: 1, color: PennaColors.border),
                       ),
                     ),
-            _RailButton(
-              icon: p.icon,
-              tooltip: navName(p.id),
-              selected: page == _pageOf[p.id],
-              onTap: () => onSelect(_pageOf[p.id]!),
+            TourSpot(
+              'nav.${p.id}',
+              child: _RailButton(
+                icon: p.icon,
+                tooltip: navName(p.id),
+                selected: page == _pageOf[p.id],
+                onTap: () => onSelect(_pageOf[p.id]!),
+              ),
             ),
           ],
           const Spacer(),
           // 模型日志:自动换接口、出错、截断、停止都记在这里。
-          LlmLogButton(
-            button: (onTap) => _RailButton(
-              icon: Icons.receipt_long_outlined,
-              tooltip: tr('模型日志'),
-              selected: false,
-              onTap: onTap,
+          TourSpot(
+            'nav.log',
+            child: LlmLogButton(
+              button: (onTap) => _RailButton(
+                icon: Icons.receipt_long_outlined,
+                tooltip: tr('模型日志'),
+                selected: false,
+                onTap: onTap,
+              ),
             ),
           ),
           const SizedBox(height: 6),

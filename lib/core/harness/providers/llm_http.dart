@@ -61,6 +61,24 @@ class LlmRequest {
     serviceTier: serviceTier,
   );
 
+  /// 只换图片的一份。
+  LlmRequest withImages(Map<int, List<LlmImage>> images) => LlmRequest(
+    baseUrl: baseUrl,
+    model: model,
+    apiKey: apiKey,
+    messages: messages,
+    images: images,
+    temperature: temperature,
+    topP: topP,
+    protocol: protocol,
+    token: token,
+    webSearch: webSearch,
+    onUsage: onUsage,
+    effort: effort,
+    onCut: onCut,
+    serviceTier: serviceTier,
+  );
+
   /// 换掉消息(测试连接用);[webSearch] 不给就照旧。
   LlmRequest copyWithMessages(
     List<Map<String, String>> messages, {

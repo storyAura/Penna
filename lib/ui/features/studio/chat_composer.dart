@@ -89,9 +89,13 @@ class _Composer extends StatelessWidget {
               ],
             ),
           ),
-          if (quickActions.isNotEmpty || trailing != null) ...[
+          if (quickActions.isNotEmpty ||
+              trailing != null ||
+              MascotRoom.of(context) > 0) ...[
             Row(
               children: [
+                // 吉祥物的腿垂在这里。
+                SizedBox(width: MascotRoom.of(context)),
                 Expanded(
                   child: _QuickActions(
                     actions: quickActions,

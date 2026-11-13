@@ -65,11 +65,13 @@ bool isDownloaded(RemoteFile f) {
 /// 接着下(接错了校验得出来,删掉后再换下一个从头下),没有的从头下(不同服务器给的半截
 /// 不一定接得上,又校验不出来)。都不行报最后一个的错,`.part` 留着,再点一次接着下。
 /// 停下([cancel])时抛 [DownloadException],`.part` 留着。
+/// [headers] 发给每个地址的主机和它同主机的跳转;跳到别的主机时只发给 [headerHosts] 里的。
 Future<void> downloadFile(
   RemoteFile f, {
   DownloadProgress? onProgress,
   DownloadCancel? cancel,
   Map<String, String> headers = const {},
+  Set<String> headerHosts = const {},
   List<String>? urls,
 }) async {
   if (isDownloaded(f)) return;
@@ -86,6 +88,7 @@ Future<void> downloadFile(
         onProgress,
         cancel,
         headers,
+        headerHosts,
       );
     } on DownloadException {
       if ((cancel?.cancelled ?? false) || i == tries.length - 1) rethrow;
@@ -103,6 +106,7 @@ Future<void> _downloadFrom(
   DownloadProgress? onProgress,
   DownloadCancel? cancel,
   Map<String, String> headers,
+  Set<String> headerHosts,
 ) async {
   var have = part.existsSync() ? part.lengthSync() : 0;
   if (f.size != null && have > f.size!) {
@@ -124,6 +128,7 @@ Future<void> _downloadFrom(
         onProgress,
         cancel,
         headers,
+        headerHosts,
       );
     }
   } on Object catch (e) {
@@ -156,6 +161,32 @@ Future<void> _downloadFrom(
 /// 等响应、等两段数据之间最多这么久,卡住就算这个地址下不了。
 const _stall = Duration(seconds: 30);
 
+/// 请求 [uri],自己跟跳转(最多 10 次)。Dart 自己跟时,跳到别的主机就丢掉 Authorization:
+/// hf-mirror 把要 Token 的文件 308 转回 huggingface.co,到那边成了没 Token 的 401
+/// (2026-11-13 用户反馈:填了 Token、有权限,下载还是中断)。
+/// [headers] 发给起始的主机和 [headerHosts] 里的主机,别处(CDN 的签名地址)不发。
+Future<HttpClientResponse> _open(
+  HttpClient client,
+  Uri uri,
+  int have,
+  Map<String, String> headers,
+  Set<String> headerHosts,
+) async {
+  final first = uri.host;
+  for (var hops = 0; ; hops++) {
+    final request = (await client.getUrl(uri))..followRedirects = false;
+    if (uri.host == first || headerHosts.contains(uri.host)) {
+      headers.forEach(request.headers.set);
+    }
+    if (have > 0) request.headers.set(HttpHeaders.rangeHeader, 'bytes=$have-');
+    final response = await request.close().timeout(_stall);
+    final location = response.headers.value(HttpHeaders.locationHeader);
+    if (!response.isRedirect || location == null || hops == 10) return response;
+    await response.drain<void>();
+    uri = uri.resolve(location);
+  }
+}
+
 /// 从第 [have] 个字节接着下到 [part],返回下完后一共有多少字节。
 Future<int> _fetch(
   HttpClient client,
@@ -166,11 +197,15 @@ Future<int> _fetch(
   DownloadProgress? onProgress,
   DownloadCancel? cancel,
   Map<String, String> headers,
+  Set<String> headerHosts,
 ) async {
-  final request = await client.getUrl(Uri.parse(url));
-  headers.forEach(request.headers.set);
-  if (have > 0) request.headers.set(HttpHeaders.rangeHeader, 'bytes=$have-');
-  final response = await request.close().timeout(_stall);
+  final response = await _open(
+    client,
+    Uri.parse(url),
+    have,
+    headers,
+    headerHosts,
+  );
   final status = response.statusCode;
   // 416 也可能是分片比远端文件更长,只有远端明确给出的长度一致才算下完。
   if (status == HttpStatus.requestedRangeNotSatisfiable) {
@@ -181,7 +216,17 @@ Future<int> _fetch(
     await response.drain<void>();
     if (have > 0 && range != null && int.parse(range[1]!) == have) return have;
     if (have > 0) {
-      return _fetch(client, url, f, part, 0, onProgress, cancel, headers);
+      return _fetch(
+        client,
+        url,
+        f,
+        part,
+        0,
+        onProgress,
+        cancel,
+        headers,
+        headerHosts,
+      );
     }
     throw DownloadException(tr('下载失败(HTTP {0})', [status]));
   }
