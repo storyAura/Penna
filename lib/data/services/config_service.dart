@@ -15,9 +15,13 @@ import '../../l10n/l10n.dart';
 /// Windows 以外的平台没有 DPAPI,机密改放系统钥匙串(libsecret / Secret Service),
 /// 同样是「只有本机本用户能解开」,也不落 `keys.dat`。
 class ConfigService extends ChangeNotifier {
-  ConfigService({required this.dir, this.legacyFile});
+  ConfigService({required this.dir, this.legacyFile, this.locale});
 
   final Directory dir;
+
+  /// 系统的语言环境(见 [systemLocale]):全新安装时界面语言照它定。
+  /// null 时(测试)照旧用简体中文。
+  final String? locale;
 
   // ponytail: 旧版把设置放在 %APPDATA%\Penna、Key 放在系统凭据里;这里只在
   // 新位置还没有设置时搬一次。等没人再用旧版了,连同 flutter_secure_storage 一起删。
@@ -26,6 +30,17 @@ class ConfigService extends ChangeNotifier {
 
   File get file => File('${dir.path}${Platform.pathSeparator}config.json');
   File get keysFile => File('${dir.path}${Platform.pathSeparator}keys.dat');
+
+  /// 系统的语言环境:Linux 上照 LC_ALL、LC_MESSAGES、LANG 的先后,
+  /// 都没有(Windows)用系统报的。
+  static String systemLocale() {
+    final env = Platform.environment;
+    for (final key in const ['LC_ALL', 'LC_MESSAGES', 'LANG']) {
+      final v = env[key];
+      if (v != null && v.isNotEmpty && v != 'C' && v != 'POSIX') return v;
+    }
+    return Platform.localeName;
+  }
 
   /// 旧版的设置文件:%APPDATA%\Penna\config.json
   static File? defaultLegacyFile() {
@@ -55,6 +70,9 @@ class ConfigService extends ChangeNotifier {
     try {
       if (await file.exists()) {
         loaded = AppConfig.fromJson(jsonDecode(await file.readAsString()));
+      } else if (locale case final l?) {
+        // 全新安装:界面语言跟着系统,中日文以外的系统用英文。
+        loaded = loaded.copyWith(language: languageForLocale(l));
       }
     } on Object catch (e) {
       _loadError = tr('读取设置失败,已改用默认设置:{0}', [e]);

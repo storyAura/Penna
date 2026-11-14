@@ -11,6 +11,8 @@ import 'package:penna/core/harness/local/model_sources.dart';
 import 'package:penna/core/harness/local/tagger_catalog.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/archive_store.dart';
+import 'package:penna/data/services/config_service.dart';
+import 'package:penna/l10n/l10n.dart';
 import 'package:penna/l10n/l10n_en.dart';
 import 'package:penna/l10n/l10n_ja.dart';
 import 'package:penna/l10n/l10n_zh_hant.dart';
@@ -87,5 +89,27 @@ void main() {
       final missing = texts.where((t) => !table.containsKey(t)).toList();
       expect(missing, isEmpty, reason: '$lang 缺:$missing');
     }
+  });
+
+  test('全新安装的界面语言跟着系统:中日文以外用英文', () {
+    expect(languageForLocale('en_US.UTF-8'), 'en');
+    expect(languageForLocale('de-DE'), 'en');
+    expect(languageForLocale('zh_CN.UTF-8'), 'zh-Hans');
+    expect(languageForLocale('zh-Hans-CN'), 'zh-Hans');
+    expect(languageForLocale('zh_TW.UTF-8'), 'zh-Hant');
+    expect(languageForLocale('zh-Hant-HK'), 'zh-Hant');
+    expect(languageForLocale('ja_JP.UTF-8'), 'ja');
+  });
+
+  test('有设置文件的不看系统语言', () async {
+    final dir = Directory.systemTemp.createTempSync('penna_lang');
+    final fresh = ConfigService(dir: dir, locale: 'en_US.UTF-8');
+    await fresh.load();
+    expect(fresh.config.language, 'en');
+    File('${dir.path}/config.json')
+        .writeAsStringSync('{"language": "zh-Hans"}');
+    final old = ConfigService(dir: dir, locale: 'en_US.UTF-8');
+    await old.load();
+    expect(old.config.language, 'zh-Hans');
   });
 }

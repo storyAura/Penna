@@ -28,6 +28,17 @@ String get currentLanguage => _language;
 void useLanguage(String code) =>
     _language = _tables.containsKey(code) ? code : 'zh-Hans';
 
+/// 系统语言环境(`zh_CN.UTF-8`、`zh-Hant-TW`、`en-US` 这类)对应的界面语言:
+/// 中文分简繁(台湾、香港、澳门和写明 Hant 的算繁体),日文用日文,其余都用英文。
+String languageForLocale(String locale) {
+  final l = locale.toLowerCase().replaceAll('_', '-');
+  if (l.startsWith('zh')) {
+    return RegExp(r'hant|-(tw|hk|mo)\b').hasMatch(l) ? 'zh-Hant' : 'zh-Hans';
+  }
+  if (l.startsWith('ja')) return 'ja';
+  return 'en';
+}
+
 final _slot = RegExp(r'\{(\d+)\}');
 
 /// 把简体中文原文 [zh] 换成当前语言。原文里的 `{0}`、`{1}` 按顺序填 [args]

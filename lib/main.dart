@@ -47,6 +47,7 @@ Future<void> main() async {
   final config = ConfigService(
     dir: home,
     legacyFile: ConfigService.defaultLegacyFile(),
+    locale: ConfigService.systemLocale(),
   );
   _logErrors(
     ErrorLog(
