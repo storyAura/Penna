@@ -370,6 +370,7 @@ class _TopBar extends StatelessWidget {
           tooltip: tr('纸张'),
           position: PopupMenuPosition.under,
           onSelected: (k) {
+            if (k.isEmpty) return board.setDefaultPaper();
             final (w, h) = mangaPapers[k]!;
             board.setPaper(mmToUm(w), mmToUm(h));
           },
@@ -380,10 +381,20 @@ class _TopBar extends StatelessWidget {
                 checked: k == paper,
                 height: 34,
                 child: Text(
-                  '$k  $w×$h mm',
+                  '$k  $w×$h mm'
+                  '${board.defaultPaper == (width: mmToUm(w), height: mmToUm(h)) ? ' · ${tr('默认')}' : ''}',
                   style: const TextStyle(fontSize: 12.5),
                 ),
               ),
+            const PopupMenuDivider(),
+            PopupMenuItem(
+              value: '',
+              height: 34,
+              enabled:
+                  board.defaultPaper !=
+                  (width: page.width, height: page.height),
+              child: Text(tr('设为新页默认'), style: const TextStyle(fontSize: 12.5)),
+            ),
           ],
           child: PennaChip(
             label: paper ?? '${page.width ~/ 1000}×${page.height ~/ 1000} mm',

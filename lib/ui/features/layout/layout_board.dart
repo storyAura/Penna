@@ -33,6 +33,7 @@ class LayoutBoard extends ChangeNotifier {
 
   Layout _layout = const Layout();
   List<LayoutSize> _sizes = List.unmodifiable(_defaultSizes);
+  LayoutSize _defaultSize = _defaultSizes.first;
   int? _selected;
 
   /// 框的文字被整个换掉(Agent 放进来、删了框)时加一:输入框靠它重建。
@@ -57,6 +58,9 @@ class LayoutBoard extends ChangeNotifier {
 
   Layout get layout => _layout;
   List<LayoutSize> get sizes => _sizes;
+
+  /// 新开的空白页用的画布尺寸(用户在分辨率面板里设的)。
+  LayoutSize get defaultSize => _defaultSize;
   int? get selected => _selected;
   int get revision => _revision;
   String get json => exportJson(_layout);
@@ -312,6 +316,13 @@ class LayoutBoard extends ChangeNotifier {
     notifyListeners();
     _scheduleSave();
     return true;
+  }
+
+  /// 眼下的画布尺寸设为新页默认。
+  void setDefaultSize() {
+    _defaultSize = (width: _layout.width, height: _layout.height);
+    notifyListeners();
+    _scheduleSave();
   }
 
   /// 最多存几个常用的画布尺寸(分辨率面板里两排)。
@@ -722,6 +733,7 @@ class LayoutBoard extends ChangeNotifier {
             'sizes': [
               for (final s in _sizes) [s.width, s.height],
             ],
+            'default': [_defaultSize.width, _defaultSize.height],
           }),
           flush: true,
         )
@@ -747,6 +759,10 @@ class LayoutBoard extends ChangeNotifier {
               _validSide(s[1]))
             (width: s[0] as int, height: s[1] as int),
       ]);
+      if (j['default'] case [final int w, final int h]
+          when _validSide(w) && _validSide(h)) {
+        _defaultSize = (width: w, height: h);
+      }
       _revision++;
       notifyListeners();
     } on Object {

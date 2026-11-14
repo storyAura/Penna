@@ -1649,4 +1649,6 @@ const en = <String, String>{
   '没改成出图参数:{0}': 'Generation settings not changed: {0}',
   '导入工作流': 'Import workflow',
   'ComfyUI 保存或「导出 (API)」的 JSON': 'JSON saved or exported (API) from ComfyUI',
+  '设为新页默认': 'Set as default for new pages',
+  '新页默认': 'Default for new pages',
 };

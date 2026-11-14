@@ -132,6 +132,9 @@ class _SizePanelState extends State<_SizePanel> {
       width: board.layout.width,
       height: board.layout.height,
     ));
+    final isDefault =
+        board.defaultSize ==
+        (width: board.layout.width, height: board.layout.height);
     final label = TextStyle(fontSize: 11, color: PennaColors.slate500);
     final value = const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700);
     return Padding(
@@ -222,6 +225,14 @@ class _SizePanelState extends State<_SizePanel> {
                 Text(tr('常用尺寸'), style: label),
                 const Spacer(),
                 IconButton(
+                  tooltip: tr('设为新页默认'),
+                  iconSize: 16,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(isDefault ? Icons.star : Icons.star_outline),
+                  color: isDefault ? PennaColors.primary : null,
+                  onPressed: isDefault ? null : board.setDefaultSize,
+                ),
+                IconButton(
                   tooltip: tr('存下这个尺寸'),
                   iconSize: 16,
                   visualDensity: VisualDensity.compact,
@@ -243,6 +254,7 @@ class _SizePanelState extends State<_SizePanel> {
                     selected:
                         size.width == board.layout.width &&
                         size.height == board.layout.height,
+                    isDefault: size == board.defaultSize,
                     onTap: () => board.setSize(size.width, size.height),
                     onDelete: () => board.removeSize(size),
                   ),
@@ -321,10 +333,14 @@ class _SizeTile extends StatefulWidget {
     required this.selected,
     required this.onTap,
     required this.onDelete,
+    this.isDefault = false,
   });
 
   final LayoutSize size;
   final bool selected;
+
+  /// 新页默认用的尺寸:左上角标一颗星。
+  final bool isDefault;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
@@ -400,6 +416,15 @@ class _SizeTileState extends State<_SizeTile> {
               ),
             ),
           ),
+          if (widget.isDefault)
+            Positioned(
+              top: 3,
+              left: 4,
+              child: Tooltip(
+                message: tr('新页默认'),
+                child: Icon(Icons.star, size: 10, color: PennaColors.primary),
+              ),
+            ),
           if (_hover)
             Positioned(
               top: -5,

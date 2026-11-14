@@ -36,6 +36,9 @@ class MangaBoard extends ChangeNotifier {
 
   List<MangaProject> _shelf = [MangaProject.blank()];
   int _series = 0;
+
+  /// 新开的页用的纸张(微米,用户在纸张菜单里设的);默认 A5。
+  ({int width, int height}) _paper = (width: 148000, height: 210000);
   int _page = 0;
   String? _selected;
   List<_Snapshot> _undo = const [], _redo = const [];
@@ -195,7 +198,7 @@ class MangaBoard extends ChangeNotifier {
   /// 加一个系列([project] 不给就是空白的)并换过去;满了返回原因。
   String? addSeries([MangaProject? from]) {
     if (seriesFull) return tr('最多 {0} 个系列,先删掉不用的', [mangaMaxSeries]);
-    _commitShelf([..._shelf, from ?? MangaProject.blank()]);
+    _commitShelf([..._shelf, from ?? _blankProject()]);
     showSeries(_shelf.length - 1);
     return null;
   }
@@ -206,7 +209,7 @@ class MangaBoard extends ChangeNotifier {
     if (_series >= i && _series > 0) _series--;
     _page = 0;
     _clearDraw();
-    _commitShelf(rest.isEmpty ? [MangaProject.blank()] : rest);
+    _commitShelf(rest.isEmpty ? [_blankProject()] : rest);
   }
 
   void showPage(int i) {
@@ -217,11 +220,34 @@ class MangaBoard extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 在眼前这页后面加一张空白页(纸张、方向照眼前这页)并换过去。
+  /// 新开的空白作品:那一页用新页默认的纸张。
+  MangaProject _blankProject() {
+    final p = MangaProject.blank();
+    return p.withPage(
+      0,
+      p.pages.first.copyWith(width: _paper.width, height: _paper.height),
+    );
+  }
+
+  /// 新页默认的纸张(微米)。
+  ({int width, int height}) get defaultPaper => _paper;
+
+  /// 眼前这页的纸张设为新页默认。
+  void setDefaultPaper() {
+    _paper = (width: page.width, height: page.height);
+    notifyListeners();
+    _scheduleSave();
+  }
+
+  /// 在眼前这页后面加一张空白页(纸张用新页默认的,方向照眼前这页)并换过去。
   void addPage() {
     final (ids, p) = project.newIds('page', 2);
+    final blank = blankMangaPage(ids[0], ids[1], like: page);
     final pages = [...p.pages]
-      ..insert(_page + 1, blankMangaPage(ids[0], ids[1], like: page));
+      ..insert(
+        _page + 1,
+        blank.copyWith(width: _paper.width, height: _paper.height),
+      );
     _commit(p.copyWith(pages: pages));
     showPage(_page + 1);
   }
@@ -504,6 +530,7 @@ class MangaBoard extends ChangeNotifier {
             'shelf': [for (final p in _shelf) p.toJson()],
             'series': _series,
             'page': _page,
+            'paper': [_paper.width, _paper.height],
           }),
           flush: true,
         )
@@ -538,6 +565,9 @@ class MangaBoard extends ChangeNotifier {
       read = _read(j);
       series = j['series'] is int ? j['series'] as int : 0;
       at = j['page'] is int ? j['page'] as int : 0;
+      if (j['paper'] case [final int w, final int h] when w > 0 && h > 0) {
+        _paper = (width: w, height: h);
+      }
     } on Object {
       read = null;
     }

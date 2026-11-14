@@ -17,7 +17,8 @@ extension StudioLayoutPages on StudioViewModel {
     if (text == _boardText) return;
     if (_boardText == null && text.trim().isEmpty) return _pullBoard();
     _boardText = text;
-    board.replace(_layoutOf(text, board.layout));
+    final d = board.defaultSize;
+    board.replace(_layoutOf(text, Layout(width: d.width, height: d.height)));
   }
 
   /// 画板 → 页:画板变了就写进眼前这页。只在页从空变成有、或从有变成空、
@@ -28,7 +29,10 @@ extension StudioLayoutPages on StudioViewModel {
     final board = layout!;
     final action = board.takeAction();
     final l = board.layout;
-    final text = l.isEmpty ? '' : jsonEncode(l.toJson());
+    final d = board.defaultSize;
+    // 空白页只在是默认尺寸时存成空串;改过尺寸的空白页也记着它的尺寸。
+    final blank = l.isEmpty && l.width == d.width && l.height == d.height;
+    final text = blank ? '' : jsonEncode(l.toJson());
     if (text == _boardText) return;
     _boardText = text;
     final was = _pageText;
@@ -42,7 +46,7 @@ extension StudioLayoutPages on StudioViewModel {
     _scheduleSave();
   }
 
-  /// 一页存着的布局;空白页(或读不了)是一张空画布,尺寸沿用 [now] 的。
+  /// 一页存着的布局;空白页(或读不了)是一张空画布,尺寸用 [now] 的(新页默认尺寸)。
   static Layout _layoutOf(String text, Layout now) {
     final blank = Layout(width: now.width, height: now.height);
     if (text.trim().isEmpty) return blank;

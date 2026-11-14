@@ -212,4 +212,42 @@ void main() {
     await tester.pump();
     expect(board.selectedPanel!.framing, '中景');
   });
+
+  test('区域控制各页记着自己的画布尺寸,新开的页用默认尺寸', () {
+    final layout = LayoutBoard();
+    final chat = StudioViewModel(
+      config: tempConfig(),
+      streamChat: (_) => const Stream.empty(),
+      layout: layout,
+      layoutOnly: true,
+    );
+    layout.setSize(1216, 832);
+    layout.setDefaultSize();
+    // 第一页:画了东西,竖版。
+    layout.setSize(832, 1216);
+    layout.addBox(const LayoutBox(left: 0, top: 0, right: 99, bottom: 99));
+    expect(chat.addPage(), isNull);
+    // 新页用默认的横版。
+    expect([layout.layout.width, layout.layout.height], [1216, 832]);
+    // 第二页什么都没画,只换了尺寸:也记着。
+    layout.setSize(1024, 1024);
+    expect(chat.openPage(0), isNull);
+    expect([layout.layout.width, layout.layout.height], [832, 1216]);
+    expect(chat.openPage(1), isNull);
+    expect([layout.layout.width, layout.layout.height], [1024, 1024]);
+    // 默认尺寸的空白页还是空白页。
+    layout.setSize(1216, 832);
+    expect(chat.body, isEmpty);
+  });
+
+  test('漫画分镜:新页和新系列用默认纸张,各页记着自己的纸张', () {
+    final board = MangaBoard();
+    board.setPaper(mmToUm(182), mmToUm(257));
+    board.setDefaultPaper();
+    board.setPaper(mmToUm(210), mmToUm(297));
+    board.addPage();
+    expect([board.page.width, board.page.height], [mmToUm(182), mmToUm(257)]);
+    board.showPage(0);
+    expect(board.page.width, mmToUm(210));
+  });
 }
