@@ -239,8 +239,11 @@ class ChatMessageView extends StatelessWidget {
     final generate = splitGenerate(stripDocumentMarks(m.text));
     // 换工作流的标签也由程序做,结果记在回复的记录上。
     final model = splitToolTag(
-      splitToolTag(generate.prose, storyboardTag).prose,
-      comfyWorkflowTag,
+      splitToolTag(
+        splitToolTag(generate.prose, storyboardTag).prose,
+        comfyWorkflowTag,
+      ).prose,
+      comfySetTag,
     );
     // 记事本的两个标签:读的走工具循环,存的说完才存,都不显示。
     final peeked = splitToolTag(

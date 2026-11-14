@@ -643,7 +643,12 @@ class _TopBar extends StatelessWidget {
           tooltip: tr('用 ComfyUI 出图'),
           background: PennaColors.primary,
           foreground: Colors.white,
-          onPressed: l.isEmpty ? null : () => comfy.generate(board.json),
+          onPressed: l.isEmpty
+              ? null
+              : () => comfy.generate(
+                  board.json,
+                  size: (width: l.width, height: l.height),
+                ),
         ),
         const SizedBox(width: 6),
         PennaButton(

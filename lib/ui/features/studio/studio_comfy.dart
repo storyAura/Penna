@@ -3,6 +3,9 @@ part of 'studio_view_model.dart';
 /// Agent 换工作流时写的标签。
 const comfyWorkflowTag = 'comfy-workflow';
 
+/// Agent 改画面大小、采样器参数时写的标签。
+const comfySetTag = 'comfy-set';
+
 /// Agent 出图:回复里写了 `<generate-image>`,程序交给 ComfyUI,出的图贴回那条回复;
 /// 写了 `<comfy-workflow>` 就先换工作流(用户要换模型时,换成用那个模型的工作流)。
 extension StudioComfy on StudioViewModel {
@@ -22,6 +25,12 @@ extension StudioComfy on StudioViewModel {
   /// 出图用的提示词:区域控制那边是画板交出去的 MOSS JSON,工作台是最终提示词。
   String get comfyPrompt => layoutOnly ? (layout?.json ?? '') : finalPrompt;
 
+  /// 出图的宽高:区域控制那边是画板尺寸,工作台照工作流里写的(null)。
+  ComfySize? get comfySize => switch (layoutOnly ? layout?.layout : null) {
+    final l? => (width: l.width, height: l.height),
+    null => null,
+  };
+
   /// 有哪些工作流、各用什么模型;没连上就只说一句。
   String get _comfyFlowNote {
     final status = comfy.status;
@@ -33,7 +42,13 @@ extension StudioComfy on StudioViewModel {
         '用户要换模型、换工作流时,写 <$comfyWorkflowTag>工作流名字</$comfyWorkflowTag>,'
         '换成用那个模型的工作流,换工作流和出图可以写在同一条回复里。'
         '没有哪个工作流用他说的模型,或者对得上好几个时,不写这个标签,'
-        '用 <options> 列出现有的工作流问他用哪个。';
+        '用 <options> 列出现有的工作流问他用哪个。\n'
+        '【出图参数】眼前的工作流:${comfy.settingsForAgent}。'
+        '用户要换图像比例、尺寸、步数这些时,写 <$comfySetTag>键=值 …</$comfySetTag>,'
+        '${layoutOnly ? '这里的图像大小跟着画板的画布尺寸走,不写 size;' : 'size 写宽x高(832x1216)或比例(3:4、16:9),'}'
+        '还能写 steps、cfg、sampler、scheduler、denoise;'
+        '和换工作流、出图可以写在同一条回复里(先换工作流再改参数)。'
+        '用户没提的参数不要改。';
   }
 
   /// 写给副聊天的系统提示也带上(副聊天同样能出图、换工作流)。
@@ -96,6 +111,16 @@ extension StudioComfy on StudioViewModel {
       );
       if (done.flow == null) return;
     }
+    final sets = splitToolTag(prose, comfySetTag).queries;
+    if (sets.isNotEmpty) {
+      final done = comfy.applySet(sets.join(' '));
+      _noteOn(
+        update,
+        done.problem == null
+            ? tr('已改出图参数:{0}', [done.changed.join(tr('、'))])
+            : tr('没改成出图参数:{0}', [done.problem]),
+      );
+    }
     if (!splitGenerate(prose).asked) return;
     if (written.length > 1) {
       if (!config.config.seriesGenerate) {
@@ -136,7 +161,7 @@ extension StudioComfy on StudioViewModel {
             ? stripSectionLabels(asked.prompt)
             : comfyPrompt);
     unawaited(() async {
-      final done = await comfy.generate(text, owner: at);
+      final done = await comfy.generate(text, owner: at, size: comfySize);
       if (_disposed) return;
       if (done.error != null) {
         _noteOn(update, tr('出图失败:{0}', [done.error]));

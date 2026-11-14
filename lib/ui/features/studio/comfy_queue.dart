@@ -13,6 +13,7 @@ class ComfyJob {
     required this.id,
     required this.prompt,
     required this.queued,
+    this.size,
     this.owner,
     this.started,
     this.finished,
@@ -23,6 +24,9 @@ class ComfyJob {
 
   final int id;
   final String prompt;
+
+  /// 按什么宽高出(区域控制的画板尺寸);null 是照工作流里写的。
+  final ComfySize? size;
 
   /// 谁要的(对话里那条回复的时刻;工作台的按钮是 null)。不存盘。
   final Object? owner;
@@ -49,6 +53,7 @@ class ComfyJob {
   }) => ComfyJob(
     id: id,
     prompt: prompt,
+    size: size,
     owner: owner,
     queued: queued,
     started: started ?? this.started,
@@ -61,6 +66,7 @@ class ComfyJob {
   Map<String, dynamic> toJson() => {
     'id': id,
     'prompt': prompt,
+    if (size case final s?) 'size': [s.width, s.height],
     'queued': queued.toIso8601String(),
     if (started != null) 'started': started!.toIso8601String(),
     if (finished != null) 'finished': finished!.toIso8601String(),
@@ -75,6 +81,10 @@ class ComfyJob {
     return ComfyJob(
       id: (j['id'] as num).toInt(),
       prompt: '${j['prompt'] ?? ''}',
+      size: switch (j['size']) {
+        [final num w, final num h] => (width: w.toInt(), height: h.toInt()),
+        _ => null,
+      },
       queued: at('queued') ?? DateTime(2000),
       started: at('started'),
       finished: at('finished'),
@@ -95,7 +105,12 @@ const _maxJobs = 100;
 
 extension ComfyQueue on ComfyRunner {
   /// 排进队列,轮到时出图;等它出完再返回。前面没有在出的就马上出。
-  Future<ComfyResult> generate(String prompt, {Object? owner}) {
+  /// [size] 给了就按这个宽高出(区域控制的画板尺寸)。
+  Future<ComfyResult> generate(
+    String prompt, {
+    Object? owner,
+    ComfySize? size,
+  }) {
     if (prompt.trim().isEmpty) {
       return Future.value((
         images: const <GeneratedImage>[],
@@ -105,6 +120,7 @@ extension ComfyQueue on ComfyRunner {
     final job = ComfyJob(
       id: ++_jobSeq,
       prompt: prompt,
+      size: size,
       owner: owner,
       queued: DateTime.now(),
     );
@@ -169,7 +185,11 @@ extension ComfyQueue on ComfyRunner {
       next.id,
       (j) => j.copyWith(state: ComfyJobState.running, started: DateTime.now()),
     );
-    final result = await _execute(next.prompt, owner: next.owner);
+    final result = await _execute(
+      next.prompt,
+      owner: next.owner,
+      size: next.size,
+    );
     _setJob(
       next.id,
       (j) => j.copyWith(

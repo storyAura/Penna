@@ -15,6 +15,46 @@ extension ComfyFlows on ComfyRunner {
 
   List<String> get loraOptions => _options[_loraOptions] ?? const [];
 
+  /// [type] 节点的 [key] 能选哪些(模型、采样器、调度器),问过一次就记着;
+  /// 换一台或刷新时清掉。连不上返回空的。
+  Future<List<String>> optionsFor(String type, String key) async {
+    final cached = _options['$type/$key'];
+    if (cached != null) return cached;
+    try {
+      final got = await _client.options(type, key);
+      _options = {..._options, '$type/$key': got};
+      return got;
+    } on ComfyException {
+      return const [];
+    }
+  }
+
+  /// Agent 写的 `<comfy-set>`:改画面大小、采样器参数,存进眼前的工作流。
+  /// 返回改了哪些,或改不成的原因。
+  ({List<String> changed, String? problem}) applySet(String spec) {
+    var changed = const <String>[];
+    final problem = edit((wf) {
+      final done = applyComfySet(wf, spec);
+      changed = done.changed;
+      return done.workflow;
+    });
+    return (changed: changed, problem: problem);
+  }
+
+  /// Agent 看的:眼前工作流的画面大小和采样器参数。
+  String get settingsForAgent {
+    final wf = workflow;
+    if (wf == null) return '';
+    final size = latentSize(wf);
+    final sampler = samplerSlots(wf).firstOrNull;
+    return [
+      if (size != null) 'size=${size.width}x${size.height}',
+      if (sampler != null)
+        for (final MapEntry(:key, :value) in sampler.values.entries)
+          '$key=$value',
+    ].join(' ');
+  }
+
   ComfyWorkflow? _parse(String text) {
     try {
       return parseApiWorkflow(text);

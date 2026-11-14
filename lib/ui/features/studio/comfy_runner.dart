@@ -189,7 +189,11 @@ class ComfyRunner extends ChangeNotifier {
   /// 用 [prompt] 出一张,返回出的图和出错的原因(停止了两个都是空的)。
   /// 只由队列([ComfyQueue.generate])调,同一时间只有一张。
   /// [owner] 记着是谁要的,出图时界面据此显示进度。
-  Future<ComfyResult> _execute(String prompt, {Object? owner}) async {
+  Future<ComfyResult> _execute(
+    String prompt, {
+    Object? owner,
+    ComfySize? size,
+  }) async {
     const none = <GeneratedImage>[];
     final run = ++_run;
     _running = true;
@@ -205,6 +209,7 @@ class ComfyRunner extends ChangeNotifier {
         // 空的是内置文生图。
         config.config.comfy.flow?.text ?? '',
         prompt,
+        size: size,
         canceled: () => run != _run,
         onProgress: (p) {
           if (run != _run) return;

@@ -178,9 +178,9 @@ class _ComfySectionState extends State<ComfySection> {
                 children: [
                   Expanded(child: Text(tr('工作流'), style: titleStyle)),
                   PennaButton(
-                    label: tr('导入 (API)'),
+                    label: tr('导入工作流'),
                     icon: Icons.file_open_outlined,
-                    tooltip: tr('ComfyUI 里「导出 (API)」的 JSON'),
+                    tooltip: tr('ComfyUI 保存或「导出 (API)」的 JSON'),
                     borderColor: PennaColors.border,
                     onPressed: _import,
                   ),

@@ -173,7 +173,8 @@ class _JobTile extends StatelessWidget {
               // 重新生成是同一条提示词再排一单,种子会重摇。
               onTap: active
                   ? () => runner.cancel(job.id)
-                  : () => unawaited(runner.generate(job.prompt)),
+                  : () =>
+                        unawaited(runner.generate(job.prompt, size: job.size)),
               child: Padding(
                 padding: const EdgeInsets.all(2),
                 child: Icon(

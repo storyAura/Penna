@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import '../../l10n/l10n.dart';
 import 'attachment.dart';
+import 'comfy_canvas.dart';
 import 'comfyui_progress.dart';
 
 export 'comfyui_progress.dart' show ComfyProgress;
@@ -68,8 +69,8 @@ typedef ComfyImage = ({String name, Uint8List bytes});
 
 typedef _Node = Map<String, Object?>;
 
-/// 读用户导入的工作流。只认「导出 (API)」的格式:一张"节点编号 → 节点"的表,
-/// 每个节点有 class_type。普通保存的(带 nodes 列表)要重新导出。
+/// 读用户导入的工作流,得到「导出 (API)」的格式:一张"节点编号 → 节点"的表,
+/// 每个节点有 class_type。普通保存的(带 nodes 列表)先转过来(见 [canvasToApi])。
 Map<String, Object?> parseApiWorkflow(String text) {
   Object? json;
   try {
@@ -80,9 +81,7 @@ Map<String, Object?> parseApiWorkflow(String text) {
   if (json is! Map<String, Object?>) {
     throw ComfyException(tr('不是有效的工作流 JSON'));
   }
-  if (json['nodes'] is List) {
-    throw ComfyException(tr('这是普通保存的工作流,请在 ComfyUI 里用「导出 (API)」重新导出'));
-  }
+  if (isCanvasWorkflow(json)) return canvasToApi(json);
   final ok =
       json.isNotEmpty &&
       json.values.every((n) => n is Map && n['class_type'] is String);
@@ -177,17 +176,56 @@ _Node? _positiveTextNode(Map<String, Object?> wf) {
   return null;
 }
 
+/// 出图的宽高(区域控制的画板尺寸)。
+typedef ComfySize = ({int width, int height});
+
+/// 空白画布节点(EmptyLatentImage、EmptySD3LatentImage 这类)。
+final _emptyLatent = RegExp(r'^Empty.*Latent');
+
+/// 出图尺寸在哪几个节点上(编号):标了 `Penna.Latent` 组的,没有就是所有空白画布节点。
+List<String> latentNodeIds(Map<String, Object?> wf) {
+  final all = [
+    for (final MapEntry(key: id, value: node) in wf.entries)
+      if (node is Map &&
+          _inputs(node)['width'] is num &&
+          _inputs(node)['height'] is num)
+        (id, node),
+  ];
+  final marked = [
+    for (final (id, n) in all)
+      if ('${(n['_meta'] as Map?)?['title'] ?? ''}'.startsWith('Penna.Latent'))
+        id,
+  ];
+  if (marked.isNotEmpty) return marked;
+  return [
+    for (final (id, n) in all)
+      if (_emptyLatent.hasMatch('${n['class_type']}')) id,
+  ];
+}
+
+/// ComfyUI 的潜空间按 8 像素一格:取最近的 8 的倍数。
+int snapLatent(int v) => max(16, (v / 8).round() * 8);
+
 /// 准备好排队的一份工作流(不改原来的):
 /// - 提示词放进写着 `{{prompt}}` 的地方;没有这个记号就放进正面提示词框;
-/// - 所有 seed / noise_seed 换成随机数,不然 ComfyUI 把重复的单子当成做过的,什么都不出。
+/// - 所有 seed / noise_seed 换成随机数,不然 ComfyUI 把重复的单子当成做过的,什么都不出;
+/// - 给了 [size] 就把空白画布的宽高换成它(区域控制的画板尺寸)。
 /// 两处都找不到放提示词的地方时抛 [ComfyException]。
 Map<String, Object?> prepareWorkflow(
   Map<String, Object?> workflow,
   String prompt, {
   Random? random,
+  ComfySize? size,
 }) {
   final wf = jsonDecode(jsonEncode(workflow)) as Map<String, Object?>;
   final dice = random ?? Random();
+  if (size != null) {
+    for (final id in latentNodeIds(wf)) {
+      final inputs = _inputs(wf[id]);
+      inputs['width'] = snapLatent(size.width);
+      inputs['height'] = snapLatent(size.height);
+    }
+  }
   var marked = false;
   for (final node in wf.values) {
     final inputs = _inputs(node);
@@ -580,12 +618,14 @@ class ComfyClient {
     ];
   }
 
-  /// 用 [workflow](导入的 API 格式全文;空的用内置文生图)出图,返回出的每一张。
+  /// 用 [workflow](导入的工作流全文;空的用内置文生图)出图,返回出的每一张。
+  /// [size] 给了就按它的宽高出(见 [prepareWorkflow])。
   /// [canceled] 返回 true 时把单子从队列里撤掉(正在跑的就打断),抛 canceled 的 [ComfyException]。
   /// [onProgress] 报整单的进度(0 到 1),听不到 WebSocket 时不报。
   Future<List<ComfyImage>> run(
     String workflow,
     String prompt, {
+    ComfySize? size,
     bool Function()? canceled,
     void Function(ComfyProgress)? onProgress,
   }) async {
@@ -597,7 +637,7 @@ class ComfyClient {
     } else {
       base = parseApiWorkflow(workflow);
     }
-    final prepared = prepareWorkflow(base, prompt);
+    final prepared = prepareWorkflow(base, prompt, size: size);
     // 进度按 client_id 发到对应的 WebSocket 上:先连上再排队。
     final clientId = 'penna-${Random().nextInt(1 << 32)}';
     String? id;

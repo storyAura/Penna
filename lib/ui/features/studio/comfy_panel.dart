@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/harness/comfy_workflow.dart';
+import '../../../core/harness/comfyui.dart';
 import '../../../data/models/app_config.dart';
 import '../../../data/services/config_service.dart';
 import '../../../l10n/l10n.dart';
@@ -8,6 +9,8 @@ import '../../core/motion.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'comfy_runner.dart';
+
+part 'comfy_panel_params.dart';
 
 /// 权重按这么多一格加减。
 const _strengthStep = 0.05;
@@ -28,7 +31,7 @@ String comfyStatusText(ComfyStatus? status) => switch (status) {
   (connected: false, :final error, ms: _, version: _) => error ?? tr('未连接'),
 };
 
-/// 侧栏里的 ComfyUI:换哪台、换工作流、LoRA 配置和每个 LoRA。
+/// 侧栏里的 ComfyUI:换哪台、换工作流、模型、画面大小、采样参数、LoRA 配置和每个 LoRA。
 class ComfyPanel extends StatelessWidget {
   const ComfyPanel({super.key, required this.runner, required this.config});
 
@@ -78,6 +81,7 @@ class ComfyPanel extends StatelessWidget {
           selected: runner.flowId,
           onSelected: runner.selectFlow,
         ),
+        if (wf != null) ..._params(context, runner, wf, report),
         if (wf != null) ..._loras(context, wf, comfy, report),
       ],
     );

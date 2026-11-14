@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import '../../l10n/l10n.dart';
 import 'comfyui.dart';
@@ -167,6 +168,124 @@ ComfyWorkflow setModel(
   final out = _copy(wf);
   _inputsOf(out, node)[key] = value;
   return out;
+}
+
+/// 改 [node] 的一个输入(模型名、采样器参数)。
+ComfyWorkflow setInput(
+  ComfyWorkflow wf,
+  String node,
+  String key,
+  Object value,
+) {
+  final out = _copy(wf);
+  _inputsOf(out, node)[key] = value;
+  return out;
+}
+
+/// 画面大小(Latent):第一个空白画布节点的宽高;没有是 null。
+ComfySize? latentSize(ComfyWorkflow wf) {
+  final id = latentNodeIds(wf).firstOrNull;
+  if (id == null) return null;
+  final inputs = _inputsOf(wf, id);
+  return (
+    width: (inputs['width'] as num).toInt(),
+    height: (inputs['height'] as num).toInt(),
+  );
+}
+
+/// 改画面大小:所有空白画布节点(标了 `Penna.Latent` 的只改它)换成 [size](取 8 的倍数)。
+ComfyWorkflow setLatentSize(ComfyWorkflow wf, ComfySize size) {
+  final ids = latentNodeIds(wf);
+  if (ids.isEmpty) throw ComfyException(tr('工作流里找不到设画面大小的节点'));
+  final out = _copy(wf);
+  for (final id in ids) {
+    _inputsOf(out, id)
+      ..['width'] = snapLatent(size.width)
+      ..['height'] = snapLatent(size.height);
+  }
+  return out;
+}
+
+/// 采样器能改的参数(没接线的才算)。
+const samplerKeys = ['steps', 'cfg', 'sampler_name', 'scheduler', 'denoise'];
+
+/// 工作流里的采样器(有 steps 的节点):编号、类型、能改的参数现在的值。
+List<({String node, String type, Map<String, Object?> values})> samplerSlots(
+  ComfyWorkflow wf,
+) => [
+  for (final (id, type, inputs) in _nodes(wf))
+    if (inputs['steps'] is num)
+      (
+        node: id,
+        type: type,
+        values: {
+          for (final k in samplerKeys)
+            if (inputs[k] is num || inputs[k] is String) k: inputs[k],
+        },
+      ),
+];
+
+/// Agent 写的 `<comfy-set>` 里的键(左边)对应工作流里的输入名。
+const _setKeys = {
+  'steps': 'steps',
+  'cfg': 'cfg',
+  'denoise': 'denoise',
+  'sampler': 'sampler_name',
+  'sampler_name': 'sampler_name',
+  'scheduler': 'scheduler',
+};
+
+/// 照 Agent 写的 `<comfy-set>size=832x1216 steps=30</comfy-set>` 改工作流:
+/// size 可以写宽x高,也可以写比例(3:4,面积照现在的、取 64 的倍数);
+/// 采样器参数改排第一的采样器。返回改好的和改了哪些(给人看的)。
+/// 一项都认不出时抛 [ComfyException]。
+// ponytail: 有好几个采样器(高清修复)时只改第一个;要改别的再加 `#编号`。
+({ComfyWorkflow workflow, List<String> changed}) applyComfySet(
+  ComfyWorkflow wf,
+  String spec,
+) {
+  var out = wf;
+  final changed = <String>[];
+  final pairs = RegExp(r'([A-Za-z_]+)\s*[=:]\s*([^\s,,;;]+)');
+  for (final m in pairs.allMatches(spec)) {
+    final key = m[1]!.toLowerCase(), value = m[2]!;
+    if (key == 'size' || key == 'ratio') {
+      final size = _sizeOf(value, latentSize(out));
+      if (size == null) continue;
+      out = setLatentSize(out, size);
+      final now = latentSize(out)!;
+      changed.add('${now.width}×${now.height}');
+      continue;
+    }
+    final input = _setKeys[key];
+    final sampler = samplerSlots(out).firstOrNull;
+    if (input == null || sampler == null) continue;
+    final old = sampler.values[input];
+    final Object? v = old is num ? num.tryParse(value) : value;
+    if (v == null || old == null) continue;
+    out = setInput(out, sampler.node, input, v);
+    changed.add('$input=$value');
+  }
+  if (changed.isEmpty) throw ComfyException(tr('没认出要改的出图参数'));
+  return (workflow: out, changed: changed);
+}
+
+/// `832x1216` 或比例 `3:4`(按 [now] 的面积换算成 64 的倍数)。
+ComfySize? _sizeOf(String v, ComfySize? now) {
+  final exact = RegExp(r'^(\d+)\s*[x×*]\s*(\d+)$').firstMatch(v);
+  if (exact != null) {
+    return (width: int.parse(exact[1]!), height: int.parse(exact[2]!));
+  }
+  final ratio = RegExp(r'^(\d+(?:\.\d+)?)[:/](\d+(?:\.\d+)?)$').firstMatch(v);
+  if (ratio == null) return null;
+  final a = double.parse(ratio[1]!), b = double.parse(ratio[2]!);
+  if (a <= 0 || b <= 0) return null;
+  final area = now == null ? 1024 * 1024 : now.width * now.height;
+  int by64(double x) => ((x / 64).round() * 64).clamp(256, 4096);
+  return (
+    width: by64(math.sqrt(area * a / b)),
+    height: by64(math.sqrt(area * b / a)),
+  );
 }
 
 /// 改一个 LoRA 的权重、开关(给了哪个改哪个)。几个权重(模型、CLIP)一起改。

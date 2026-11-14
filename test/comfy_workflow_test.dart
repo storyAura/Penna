@@ -164,4 +164,34 @@ void main() {
       throwsA(isA<ComfyException>()),
     );
   });
+
+  group('出图参数', () {
+    final wf = defaultWorkflow('m.safetensors');
+
+    test('读画面大小和采样器参数', () {
+      expect(latentSize(wf), (width: 1024, height: 1024));
+      final s = samplerSlots(wf).single;
+      expect(s.node, '3');
+      expect(s.values['steps'], 25);
+      expect(s.values['sampler_name'], 'euler_ancestral');
+    });
+
+    test('Agent 写的 comfy-set:尺寸、比例、采样参数', () {
+      final a = applyComfySet(wf, 'size=832x1216 steps=30, cfg=4.5');
+      expect(latentSize(a.workflow), (width: 832, height: 1216));
+      expect(samplerSlots(a.workflow).single.values['steps'], 30);
+      expect(samplerSlots(a.workflow).single.values['cfg'], 4.5);
+      expect(a.changed, ['832×1216', 'steps=30', 'cfg=4.5']);
+      // 比例按现在的面积换算,取 64 的倍数。
+      final r = applyComfySet(wf, 'ratio=16:9 sampler=euler');
+      expect(latentSize(r.workflow), (width: 1344, height: 768));
+      expect(samplerSlots(r.workflow).single.values['sampler_name'], 'euler');
+      // 原来的不动。
+      expect(latentSize(wf), (width: 1024, height: 1024));
+    });
+
+    test('一项都认不出时报错', () {
+      expect(() => applyComfySet(wf, '画大一点'), throwsA(isA<ComfyException>()));
+    });
+  });
 }

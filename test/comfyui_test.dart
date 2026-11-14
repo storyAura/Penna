@@ -472,11 +472,11 @@ void main() {
         config: service,
         streamChat: (_) => const Stream.empty(),
       );
-      final board = LayoutBoard()..setSize(400, 400);
+      final board = LayoutBoard()..setSize(832, 1216);
       final vm = StudioViewModel(
         config: service,
         streamChat: (_) => Stream.value(
-          '<layout>{"width": 400, "height": 400, "summary": {"caption": "cat"}, '
+          '<layout>{"width": 832, "height": 1216, "summary": {"caption": "cat"}, '
           '"items": [{"name": "猫", "bbox": [0, 0, 200, 200]}], '
           '"bbox_coord_space": "abs", "bbox_format": "xyxy"}</layout>'
           // 标签里写的字不算:区域控制始终用画板上的布局。
@@ -496,6 +496,9 @@ void main() {
         ((queued['prompt'] as Map)['6'] as Map)['inputs']['text'],
         board.json,
       );
+      // 按画板的画布尺寸出图,不照工作流里写死的(issue #8)。
+      final latent = ((queued['prompt'] as Map)['5'] as Map)['inputs'] as Map;
+      expect([latent['width'], latent['height']], [832, 1216]);
       expect(identical(vm.comfy, main.comfy), isTrue);
     });
 
