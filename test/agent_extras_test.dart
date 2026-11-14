@@ -392,4 +392,23 @@ void main() {
       expect(formatMs(3250), '3.3 s');
     });
   });
+
+  test('回复语言:接在系统提示最后,用户的语言优先,看不出来用界面语言;英文界面的标注用英文', () async {
+    final seen = <LlmRequest>[];
+    final vm = _studio(
+      seen,
+      () => 'ok',
+      setup: (c) => c.copyWith(language: 'en'),
+    );
+    vm.send('make her smile');
+    await pumpEventQueue();
+    final system = seen.single.messages.first['content']!;
+    expect(system, endsWith(replyLanguageRule('en')));
+    expect(replyLanguageRule('en'), contains('用户最新这条消息所用的语言'));
+    expect(replyLanguageRule('en'), contains('用界面语言英文'));
+    expect(system, contains('【Subject】'));
+    expect(system, isNot(contains('正文用两三句中文')));
+    // 认不得的界面语言当简体中文。
+    expect(replyLanguageRule('xx'), contains('简体中文'));
+  });
 }

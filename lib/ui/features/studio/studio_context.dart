@@ -409,7 +409,7 @@ extension StudioContext on StudioViewModel {
     final draft = _joined(labels: true);
     return [
       preset.systemPrompt,
-      _draftFormatPrompt(cfg.glossLanguage),
+      _draftFormatPrompt(cfg.glossLanguage, cfg.language),
       _skillPrompt(cfg),
       webSearchGuide,
       _comfyPrompt,
@@ -507,12 +507,17 @@ extension StudioContext on StudioViewModel {
     final pierce = piercing ?? cfg.piercingText;
     final system = messages.isNotEmpty && messages.first['role'] == 'system';
     final asDocument = document && system && cfg.piercingDocument;
-    final sent = pierce.isEmpty || !system
+    // 说给用户的话用什么语言:接在系统提示最后,盖得过前面的要求(见 [replyLanguageRule])。
+    final sent = !system
         ? messages
         : [
             {
               'role': 'system',
-              'content': '$pierce\n\n${messages.first['content']}',
+              'content': [
+                if (pierce.isNotEmpty) pierce,
+                messages.first['content'],
+                replyLanguageRule(cfg.language),
+              ].join('\n\n'),
             },
             ...messages.skip(1),
           ];
@@ -636,7 +641,8 @@ extension StudioContext on StudioViewModel {
       _layoutSystemPrompt(config.config, config.config.activePreset);
 
   /// 成稿的写法(`<draft>` 的格式),副聊天也照它写。
-  String get draftFormat => _draftFormatPrompt(config.config.glossLanguage);
+  String get draftFormat =>
+      _draftFormatPrompt(config.config.glossLanguage, config.config.language);
 
   /// 给副聊天看的工作区:当前系列的每一页(带分段标注),标出眼前是哪一页。
   String get workspaceText {
@@ -703,31 +709,59 @@ const _glossLanguages = {
   ),
 };
 
+/// 界面语言(`AppConfig.language`)在发给模型的话里的叫法,和成稿分段标注的写法、例子。
+/// 标注不超过 12 个字(`draft_block.dart` 的 `_label` 只认这么长)。
+const _uiLanguages = {
+  'zh-Hans': (name: '简体中文', label: '不超过 6 个字', example: ['主体', '光影']),
+  'zh-Hant': (name: '繁体中文', label: '不超过 6 个字', example: ['主體', '光影']),
+  'ja': (name: '日文', label: '不超过 6 个字', example: ['主体', 'ライティング']),
+  'en': (
+    name: '英文',
+    label: '一两个词,不超过 12 个字母',
+    example: ['Subject', 'Lighting'],
+  ),
+};
+
+/// 发给模型的话固定是中文;用户界面不是中文时,说给用户的话要换成用户的语言。
+/// 用户这条消息的语言优先,看不出来时用界面语言 [language]。
+/// 接在每次请求的系统提示最后(见 `_requests`),所以盖得过 Preset 里旧的「回答用中文」。
+String replyLanguageRule(String language) {
+  final ui = (_uiLanguages[language] ?? _uiLanguages['zh-Hans']!).name;
+  return '【回复语言】说给用户看的话(正文、提问、选项、说明)用用户最新这条消息所用的语言写;'
+      '那条消息看不出是哪种语言(只有提示词、标签、图片或几个字母)时,用界面语言$ui。'
+      '这一条优先于前面任何「用中文回答」「用中文说明」之类的要求。'
+      '提示词本身照前面的要求写(默认英文);成稿已有的分段标注照旧沿用,新起的标注用$ui。';
+}
+
 /// 每个 Preset 的系统提示后面都跟着这一条:最终输出时另出一份分段标注的新成稿。
 /// 标签和标注的写法要和 `draft_block.dart` 的解析对得上。
 /// 每段下面的〔译〕行用 [gloss] 这种语言写;为 null(英文界面)时不要〔译〕行。
-String _draftFormatPrompt(String? gloss) {
+/// 新起的分段标注用界面语言 [language] 写:标注跟着成稿走,换着语言写会对不上号。
+String _draftFormatPrompt(String? gloss, String language) {
   final lang = _glossLanguages[gloss];
+  final ui = _uiLanguages[language] ?? _uiLanguages['zh-Hans']!;
+  final [a, b] = ui.example;
+  final labelRule = '标注用${ui.name},${ui.label}';
   final sections = lang == null
-      ? '每段占一行:行首用【】标出这段写的是什么(标注用中文,不超过 6 个字),后面跟这段提示词原文;'
+      ? '每段占一行:行首用【】标出这段写的是什么($labelRule),后面跟这段提示词原文;'
             '不写〔译〕行。例如:\n'
             '<draft>\n'
-            '【主体】A colossal veined white angel statue with folded wings...\n'
-            '【光影】Hard low sunlight from a high clerestory window...\n'
+            '【$a】A colossal veined white angel statue with folded wings...\n'
+            '【$b】Hard low sunlight from a high clerestory window...\n'
             '</draft>\n'
-      : '每段占两行:第一行行首用【】标出这段写的是什么(标注用中文,不超过 6 个字),后面跟这段提示词原文;'
+      : '每段占两行:第一行行首用【】标出这段写的是什么($labelRule),后面跟这段提示词原文;'
             '第二行以〔译〕开头,是这段的${lang.name}翻译,只给用户对照看。'
             '〔译〕这个记号照原样写,不换成繁体或别的写法;它必须另起一行,不能接在提示词同一行后面,'
             '提示词那一行里不夹译文。例如:\n'
             '<draft>\n'
-            '【主体】A colossal veined white angel statue with folded wings...\n'
+            '【$a】A colossal veined white angel statue with folded wings...\n'
             '〔译〕${lang.example[0]}\n'
-            '【光影】Hard low sunlight from a high clerestory window...\n'
+            '【$b】Hard low sunlight from a high clerestory window...\n'
             '〔译〕${lang.example[1]}\n'
             '</draft>\n';
   return '【输出格式】只要这次回复给出了新的或改过的提示词,就把它放在回复最后的 <draft> 和 </draft> 之间,'
       '程序会把它放进成稿区。要放进成稿的提示词只写在 <draft> 里,正文里不要把它再抄一遍。'
-      '正文用两三句中文说明你做了什么:动了哪几段、怎么改的、有什么要用户留意的,不列清单。'
+      '正文用两三句话说明你做了什么:动了哪几段、怎么改的、有什么要用户留意的,不列清单。'
       '你看不到界面,程序会显示放在哪一页:正文不要说成稿在左边右边、已更新到哪里;'
       '称呼用"你",不写"已为您""提示词已更新至"这类客套话。'
       '<draft> 里的提示词按内容切成几段。'

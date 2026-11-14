@@ -179,7 +179,7 @@ Penna uses ComfyUI as its image generation backend, talking to ComfyUI's built-i
 
 **Settings → App settings** gathers interface language, dark mode, fonts and avatars, version and updates, and app information.
 
-- **Language**: 简体中文, 繁體中文, English and 日本語, applied immediately. On first launch the language follows the system locale, with English for systems in languages other than Chinese and Japanese. In Chinese and Japanese interfaces, section translations and machine translation use that language; the English interface shows the English text directly.
+- **Language**: 简体中文, 繁體中文, English and 日本語, applied immediately. On first launch the language follows the system locale, with English for systems in languages other than Chinese and Japanese. The Agent replies in the language of the user's message, falling back to the interface language; new section labels in the draft use the interface language. In Chinese and Japanese interfaces, section translations and machine translation use that language; the English interface shows the English text directly.
 - **Dark mode**: follow the system, always on, always off, or custom hours (overnight included), with the new colors expanding in a circle.
 - **Fonts and avatars**: Latin and CJK fonts can be a built-in font or any installed font; the Agent and user avatars can be replaced with your own pictures.
 - **Tutorial**: on first launch, the mascot Story walks through every area of the three workbenches and their advanced features, then introduces the other pages. Each area is highlighted with a text box explaining it; use ← → to move back and forth, or skip at any time. **Tutorial** at the bottom left of Settings replays it.

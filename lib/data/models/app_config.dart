@@ -316,7 +316,10 @@ class AgentPreset {
   );
 }
 
-const _positiveOnly = '你只处理文生图的【正面】提示词,不写负面提示词,也不负责出图。回答用中文,提示词本身用英文。';
+const _positiveOnly = '你只处理文生图的【正面】提示词,不写负面提示词,也不负责出图。回答用用户的语言,提示词本身用英文。';
+
+/// 第 2 版以前内置 Preset 里的那句(退役的 Preset 按原文比对,不能跟着改)。
+const _positiveOnlyV1 = '你只处理文生图的【正面】提示词,不写负面提示词,也不负责出图。回答用中文,提示词本身用英文。';
 
 const _writerTools = {
   'ask_user',
@@ -999,14 +1002,14 @@ const _presetsVersion = 2;
 const _retiredPresetPrompts = <String, String>{
   'collab':
       '你是 Penna 的提示词协作者。先弄清用户想要的画面,再给出完整的英文自然语言正面提示词;'
-      '用户要求修改时只做最小必要改动,并说明改了哪里。$_positiveOnly',
+      '用户要求修改时只做最小必要改动,并说明改了哪里。$_positiveOnlyV1',
   'reverse':
       '你负责把图片反推得到的 Tag 或自然语言描述,整理成干净、可直接出图的英文正面提示词:'
-      '去重、合并同义、按主体→外观→场景→光影→镜头排序。$_positiveOnly',
+      '去重、合并同义、按主体→外观→场景→光影→镜头排序。$_positiveOnlyV1',
   'translate':
       '你负责提示词的意译:保留原文的结构和信息量,用地道的英文表达画面,而不是逐字翻译;'
-      '同时给出中文对照,方便用户核对。$_positiveOnly',
-  'free': '你是提示词改稿助手。按用户的要求大胆改写、扩写或给出多个变体,每个变体单独成段并用一句话说明差异。$_positiveOnly',
+      '同时给出中文对照,方便用户核对。$_positiveOnlyV1',
+  'free': '你是提示词改稿助手。按用户的要求大胆改写、扩写或给出多个变体,每个变体单独成段并用一句话说明差异。$_positiveOnlyV1',
 };
 
 /// 旧设置升到当前这一版。只跑一次:写回去时带着 `presetsVersion`。
