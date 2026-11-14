@@ -78,6 +78,33 @@ class _ComfySectionState extends State<ComfySection> {
     }
   }
 
+  /// 右键一个工作流:改名、导出、删除。
+  Future<void> _flowMenu(ComfyFlow flow, Offset at) async {
+    final picked = await popMenu(context, at, [tr('改名'), tr('导出'), tr('删除')]);
+    if (!mounted || picked == null) return;
+    if (picked == tr('删除')) return _removeFlow(flow);
+    if (picked == tr('改名')) {
+      final name = await askName(context, tr('改名'), flow.name);
+      if (name == null || name.trim().isEmpty) return;
+      _put(_comfy.putFlow((id: flow.id, name: name.trim(), text: flow.text)));
+      return;
+    }
+    final file = await getSaveLocation(
+      suggestedName:
+          '${flow.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}.json',
+      acceptedTypeGroups: [
+        const XTypeGroup(label: 'JSON', extensions: ['json']),
+      ],
+    );
+    if (file == null) return;
+    try {
+      await File(file.path).writeAsString(flow.text);
+      if (mounted) showToast(context, tr('已导出'));
+    } on FileSystemException {
+      if (mounted) showToast(context, tr('写不进这个位置'), warn: true);
+    }
+  }
+
   Future<void> _moveImages() async {
     final dir = await getDirectoryPath();
     if (dir == null) return;
@@ -198,6 +225,7 @@ class _ComfySectionState extends State<ComfySection> {
                   selected: _comfy.flow?.id == flow.id,
                   onSelect: () => _put(_comfy.copyWith(flowId: flow.id)),
                   onRemove: () => _removeFlow(flow),
+                  onMenu: (at) => _flowMenu(flow, at),
                 ),
             ],
           ),
@@ -238,23 +266,26 @@ class _ComfySectionState extends State<ComfySection> {
   }
 }
 
-/// 工作流列表里的一行:点了用它,导入的能删。
+/// 工作流列表里的一行:点了用它,导入的能删;右键是 [onMenu](给窗口坐标)。
 class _FlowRow extends StatelessWidget {
   const _FlowRow({
     required this.name,
     required this.selected,
     required this.onSelect,
     this.onRemove,
+    this.onMenu,
   });
 
   final String name;
   final bool selected;
   final VoidCallback onSelect;
   final VoidCallback? onRemove;
+  final ValueChanged<Offset>? onMenu;
 
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: onSelect,
+    onSecondaryTapUp: onMenu == null ? null : (d) => onMenu!(d.globalPosition),
     borderRadius: BorderRadius.circular(6),
     child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
