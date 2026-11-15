@@ -183,19 +183,18 @@ class _LayoutPageState extends State<LayoutPage> {
     _send(handOverRequest(board));
   }
 
-  /// 对话里放进一张参考图:它和画布一横一竖时,问一句要不要把画布对调
-  /// (开了自动审批就直接换)。
+  /// 对话里放进一张参考图:它和画布一横一竖时,问一句要不要把画布对调。
+  /// 开了自动审批也要问:参考图多半只参考内容(2026-11-16 用户反馈:没说要照图的比例,画布被换了)。
   Future<void> _matchImage(Attachment image) async {
     final to = await board.swapFor(image.bytes!);
     if (to == null || !mounted) return;
     final size = '${to.width}×${to.height}';
-    if (!widget.config.config.autoApprove &&
-        !await confirmDelete(
-          context,
-          to.width > to.height ? tr('参考图是横构图') : tr('参考图是竖构图'),
-          tr('画布换成 {0}?', [size]),
-          action: tr('换'),
-        )) {
+    if (!await confirmDelete(
+      context,
+      to.width > to.height ? tr('参考图是横构图') : tr('参考图是竖构图'),
+      tr('画布换成 {0}?', [size]),
+      action: tr('换'),
+    )) {
       return;
     }
     board.swap();

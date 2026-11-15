@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/providers/llm_http.dart';
+import '../../../core/harness/thinking.dart';
 import '../../../l10n/l10n.dart';
 
 @immutable
@@ -24,7 +25,12 @@ class ChatMessage {
     this.replyAt = 0,
     this.cut,
     this.images = const [],
+    this.thinking = '',
   });
+
+  /// 模型的思考(`<think>` 或开头的「思考过程:」,见 `splitThinking`):回复说完时从
+  /// [text] 里拆出来,界面上折起来;不发给模型,拆标签也看不到它。
+  final String thinking;
 
   /// 这条回复让 ComfyUI 出的图(文件路径,在「设置 → ComfyUI」的图片位置里)。
   /// 只给用户看,不发给模型。
@@ -81,6 +87,7 @@ class ChatMessage {
     int? replyAt,
     LlmCut? cut,
     List<String>? images,
+    String? thinking,
 
     /// 为真时去掉 [cut](接着写的时候:这条又在写了)。
     bool uncut = false,
@@ -102,6 +109,7 @@ class ChatMessage {
     replyAt: replyAt ?? this.replyAt,
     cut: uncut ? null : cut ?? this.cut,
     images: images ?? this.images,
+    thinking: thinking ?? this.thinking,
   );
 
   /// 存盘用。给了 [files] 才存附件(另存成文件,这里只记文件名)。
@@ -122,6 +130,7 @@ class ChatMessage {
       'usage': {'input': u.input, 'cached': u.cached, 'output': u.output},
     'cut': ?cut?.name,
     if (images.isNotEmpty) 'images': images,
+    if (thinking.isNotEmpty) 'thinking': thinking,
     if (otherReplies.isNotEmpty) ...{
       'otherReplies': [
         for (final reply in otherReplies)
@@ -170,6 +179,7 @@ class ChatMessage {
     replyAt: j['replyAt'] as int? ?? 0,
     cut: LlmCut.values.asNameMap()[j['cut']],
     images: List.unmodifiable(((j['images'] as List?) ?? const []).cast()),
+    thinking: j['thinking'] as String? ?? '',
   );
 }
 
@@ -330,3 +340,14 @@ List<ChatSession> byRecent(Iterable<ChatSession> chats) => List.unmodifiable(
 
 /// 历史提示词里的一条:当时的成稿(带分段标注)。
 typedef PromptRecord = ({DateTime time, String text});
+
+/// 回复说完(或出错停下):把模型的思考从正文里拆到 [ChatMessage.thinking],
+/// 之后拆标签、交成稿、发回给模型的都只是正文。
+ChatMessage settleThinking(ChatMessage m) {
+  final s = splitThinking(m.text);
+  if (s.thinking.isEmpty) return m;
+  return m.copyWith(
+    text: s.rest,
+    thinking: [m.thinking, s.thinking].where((t) => t.isNotEmpty).join('\n\n'),
+  );
+}

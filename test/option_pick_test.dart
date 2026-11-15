@@ -101,4 +101,33 @@ void main() {
     await tester.tap(find.text('确定'));
     expect(sent, ['主体:小绿\n场景:阳台\n光线:你定']);
   });
+
+  testWidgets('自己填写:问卷某项换成自己写的,单选回车直接发', (tester) async {
+    final sent = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(
+            children: [
+              FormPick(
+                options: const ['竖构图', '横构图'],
+                headings: const {0: '比例'},
+                onSubmit: sent.add,
+              ),
+              SinglePick(options: const ['红', '蓝'], onPick: sent.add),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('自己填写').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '21:9 超宽');
+    await tester.tap(find.text('确定'));
+    expect(sent, ['比例:21:9 超宽']);
+
+    await tester.enterText(find.byType(TextField).last, '墨绿');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    expect(sent.last, '墨绿');
+  });
 }

@@ -23,10 +23,10 @@ extension StudioContext on StudioViewModel {
     final calls = local == null
         ? const <LocalToolCall>[]
         : splitLocalTools(prose).calls.take(_maxLocalCalls).toList();
-    // 排布局的活转给区域控制的 Agent:一轮只转一件。
+    // 排布局的活转给区域控制的 Agent:一个一页,同名的排进同一个系列,挨个转。
     final asks = layoutAgent == null || layoutOnly
         ? const <({String name, String brief})>[]
-        : splitAskLayout(prose).asks.take(1).toList();
+        : splitAskLayout(prose).asks.take(_maxAsks).toList();
     // 要看副聊天的记录:本机的,不用等。
     final peek = side != null && splitPeek(prose, readSideChat).asked;
     final webs = _webQueries(prose);
@@ -70,9 +70,16 @@ extension StudioContext on StudioViewModel {
         if (_disposed || run != _toolRun) return;
         ran.add(await local!.runTool(call, image));
       }
-      for (final ask in asks) {
+      for (final (i, ask) in asks.indexed) {
         if (_disposed || run != _toolRun) return;
-        ran.add(await _askLayout(ask, run, _lastImage));
+        ran.add(
+          await _askLayout(
+            ask,
+            run,
+            _lastImage,
+            samePage: i > 0 && asks[i - 1].name == ask.name,
+          ),
+        );
       }
       if (_disposed || run != _toolRun) return;
       _toolBusy = false;
@@ -299,25 +306,27 @@ extension StudioContext on StudioViewModel {
   /// 把排布局的活交给区域控制的 Agent([layoutAgent]):在那边开一场新对话发过去
   /// (用户发的图一起转过去),等它把布局放到画板上,再把 JSON 放进成稿区新建的系列。
   /// [run] 是这一轮工具的编号:等的时候用户点了停止,就不往成稿里放了。
+  /// [samePage] 是同一条回复里上一个同名的任务之后的又一页:在那边同一个系列里新开一页。
   // ponytail: 主工作区停止时区域控制那边不跟着停,它写完的布局照样留在画板上。
   Future<LocalToolResult> _askLayout(
     ({String name, String brief}) ask,
     int run,
-    Attachment? image,
-  ) async {
+    Attachment? image, {
+    bool samePage = false,
+  }) async {
     final agent = layoutAgent!;
     final board = agent.layout;
     if (board == null || agent.isStreaming) {
       return (text: '区域控制的 Agent 正在忙,告诉用户等它说完再试。', note: tr('区域控制的 Agent 正在忙'));
     }
     // 在那边另起一个系列来排(有自己的对话),用户在区域控制工作台上的页原样留着;
-    // 那边只有一张空白页、还没聊过时直接用它。
+    // 那边只有一张空白页、还没聊过时直接用它。同一批的后几页接在这个系列里。
     final blank =
         agent.seriesLength == 1 &&
         agent.body.trim().isEmpty &&
         agent.messages.isEmpty;
     if (!blank) {
-      final problem = agent.addPage(newSeries: true);
+      final problem = agent.addPage(newSeries: !samePage);
       if (problem != null) {
         // 那边的系列满了:在区域控制工作台的页签下面亮出提醒,叫用户清理。
         if (agent.seriesFull) {
@@ -332,18 +341,18 @@ extension StudioContext on StudioViewModel {
         );
       }
     }
-    if (ask.name.isNotEmpty) agent.renameSeries(agent.series, ask.name);
-    // 参考图和画布一横一竖:先把画布对调。上面已经换到新系列的空白页,
-    // 用户原来的页不受影响,所以不用等自动审批。
-    final flipped = image != null && await board.swapFor(image.bytes!) != null;
-    if (flipped) board.swap();
-    final size = '${board.layout.width}×${board.layout.height}';
+    if (ask.name.isNotEmpty && !samePage) {
+      agent.renameSeries(agent.series, ask.name);
+    }
+    // 参考图不改画布:用户发图多半只参考内容和风格(2026-11-16 用户反馈:发了一张截图,
+    // 画布被照图翻成了横的)。要横竖构图时任务说明里会写,那边的 Agent 照着对调。
     final before = board.layout;
     try {
       await agent.sendAndWait(
-        '【主工作区转来的任务】${ask.brief}\n\n'
+        '$handoffMark${ask.brief}\n\n'
         '这是从主工作区转过来的活,用户不在这边看:不要提问,直接排一份完整的布局放进 <layout>'
-        '${image == null ? '' : ';参考图里看得出透视的话,同时写 <perspective>'}。',
+        '${image == null ? '' : ';图只参考画面内容、构图和风格,画布的横竖照任务说明,没写就不改;'
+                  '图里看得出透视的话,同时写 <perspective>'}。',
         attachments: [?image],
       );
     } on LlmException catch (e) {
@@ -353,9 +362,13 @@ extension StudioContext on StudioViewModel {
       );
     }
     // 画板上的布局没换过:它这次没写出能用的布局。
+    // 那边已经自检、补过一次了(`_checkHandoff`)。
     if (identical(board.layout, before)) {
       return (
-        text: '区域控制的 Agent 这次没写出布局。告诉用户可以去区域控制工作台接着跟它说。',
+        text:
+            '区域控制的 Agent 自检补过一次,还是没写出布局。'
+            '如果这是你第一次转:把任务说明改得更具体(一个标签只排一页,写清画面里有哪些东西、各放在哪),'
+            '再写一次 <ask-layout>;已经重转过还不行,就照实告诉用户可以去区域控制工作台接着跟它说。',
         note: tr('区域控制没写出布局'),
       );
     }
@@ -382,16 +395,14 @@ extension StudioContext on StudioViewModel {
       seriesName(series),
       pageNumber(written.isEmpty ? _page : written.first),
     ]);
-    final turned = flipped ? ',画布照参考图的横竖对调成了 $size' : '';
+    final size = '${board.layout.width}×${board.layout.height}';
     return (
       text:
-          '区域控制的 Agent 已排好布局($count 个框$turned),JSON 已放进成稿区$name,'
-          '区域控制工作台上也有一份。用一两句话告诉用户排了什么、放在哪里;'
+          '区域控制的 Agent 已排好布局($count 个框,画布 $size),JSON 已放进成稿区$name,'
+          '区域控制工作台上也有一份。先对照你写的任务说明核对一遍(要的东西都有吗、横竖对吗):'
+          '缺了要紧的就再写一次 <ask-layout> 说清楚要补什么;对得上就用一两句话告诉用户排了什么、放在哪里。'
           '不要写 <draft> 或 <layout>,也不要贴 JSON。',
-      note: [
-        tr('区域控制排好了 · {0} 个框 · 已放进{1}', [count, name]),
-        if (flipped) tr('画布已换成 {0}', [size]),
-      ].join(' · '),
+      note: tr('区域控制排好了 · {0} 个框 · 已放进{1}', [count, name]),
     );
   }
 
@@ -690,6 +701,9 @@ const _maxWebQueries = 3;
 
 /// 一轮里最多跑几次本地反推或下载。
 const _maxLocalCalls = 2;
+
+/// 一条回复最多转给区域控制几页(一个 `<ask-layout>` 一页)。
+const _maxAsks = 6;
 
 /// 把一个文本附件包成带边界的一段,做法同 [_skillBlock]。
 String _fileBlock(String name, String text) =>

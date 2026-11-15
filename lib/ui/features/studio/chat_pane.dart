@@ -514,7 +514,13 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
                   // 只排看得见的那几条时,底下的成稿卡片很高,估出的总高度偏差大,
                   // 拖滚动条会一下跳很远。上限是一场对话约 100 万像素高。
                   scrollCacheExtent: const ScrollCacheExtent.pixels(1e6),
-                  padding: const EdgeInsets.all(24),
+                  // 召唤了吉祥物时底下多留出她探出来的那截,最后一条不被她挡住。
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    24,
+                    24,
+                    24 + MascotRoom.overhangOf(context),
+                  ),
                   itemCount: rows.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 24),
                   itemBuilder: (_, row) => _row(messages, rows[row]),

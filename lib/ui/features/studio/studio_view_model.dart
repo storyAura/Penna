@@ -25,6 +25,7 @@ import '../../../core/harness/providers/llm_router.dart';
 import '../../../core/harness/providers/openai_provider.dart';
 import '../../../core/harness/tags/tag_dictionary.dart';
 import '../../../core/harness/tags/tag_search.dart';
+import '../../../core/harness/thinking.dart';
 import '../../../core/harness/web_search.dart';
 import '../../../data/models/app_config.dart';
 import '../../../data/services/archive_store.dart';
@@ -65,6 +66,7 @@ part 'studio_rewrite.dart';
 part 'studio_series_refs.dart';
 part 'studio_skills.dart';
 part 'studio_storage.dart';
+part 'studio_triggers.dart';
 
 /// 成稿的一块文字。[pinned] 为真时是固定区:润色和 Agent 都改不到它。
 typedef Block = ({String text, bool pinned});
@@ -435,6 +437,9 @@ class StudioViewModel extends ChangeNotifier {
 
   /// 用户这一条消息之后已经查了几轮;封顶,免得模型没完没了地查。
   int _toolRounds = 0;
+
+  /// 用户这一条消息之后程序自己叫醒了 Agent 几次(接着写、自检返工,见 `studio_triggers.dart`)。
+  int _wakes = 0;
 
   /// 这一轮里查回来过的标签(标准写法)。
   final _foundTags = <String>{};

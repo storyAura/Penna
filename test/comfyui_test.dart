@@ -883,4 +883,54 @@ void main() {
     expect(localOutputDir(stats(['ComfyUI/main.py'])), isNull);
     expect(localOutputDir(null), isNull);
   });
+
+  test('API 工作流里没接到输出的节点读的时候去掉,侧栏不列它', () {
+    final wf = parseApiWorkflow(
+      jsonEncode({
+        '1': {
+          'class_type': 'CheckpointLoaderSimple',
+          'inputs': {'ckpt_name': 'used.safetensors'},
+        },
+        '2': {
+          'class_type': 'VAEDecode',
+          'inputs': {
+            'vae': ['1', 2],
+          },
+        },
+        '3': {
+          'class_type': 'SaveImage',
+          'inputs': {
+            'images': ['2', 0],
+          },
+        },
+        // 放在工作区里、没接线的。
+        '9': {
+          'class_type': 'CheckpointLoaderSimple',
+          'inputs': {'ckpt_name': 'loose.safetensors'},
+        },
+      }),
+    );
+    expect(wf.keys, unorderedEquals(['1', '2', '3']));
+    expect(modelSlots(wf).map((m) => m.value), ['used.safetensors']);
+  });
+
+  test('存图文件名里的 %date:…% 和 %节点.控件% 提交前换掉', () {
+    final wf = <String, Object?>{
+      '5': {
+        'class_type': 'EmptyLatentImage',
+        'inputs': {'width': 832},
+      },
+    };
+    final now = DateTime(2026, 11, 6, 9, 5, 3);
+    expect(expandComfyText('%date:yy_MM_dd%/Penna', wf, now), '26_11_06/Penna');
+    expect(
+      expandComfyText(
+        '%date:yyyy-M-d hhmmss%_%EmptyLatentImage.width%',
+        wf,
+        now,
+      ),
+      '2026-11-6 090503_832',
+    );
+    expect(expandComfyText('%Nope.x%', wf, now), '%Nope.x%');
+  });
 }

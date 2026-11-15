@@ -14,6 +14,7 @@ import '../../../core/harness/llm_log.dart';
 import '../../../core/harness/piercing_document.dart';
 import '../../../core/harness/providers/llm_http.dart' show LlmCut;
 import '../../../core/harness/tags/tag_search.dart';
+import '../../../core/harness/thinking.dart';
 import '../../../core/harness/web_search.dart';
 import '../../../data/services/skill_store.dart';
 import '../../core/theme.dart';
@@ -236,7 +237,14 @@ class ChatMessageView extends StatelessWidget {
     // 先拆新 Skill:它正文里举例用的成稿标签不能被当成成稿。
     // 出图标签由程序交给 ComfyUI,聊天里只留进度和出好的图。
     // 穿甲弹文档模式的 <document> 只是一层包装,里面的标签照常认。
-    final generate = splitGenerate(stripDocumentMarks(m.text));
+    // 模型的思考先拆掉(说完时已拆进 m.thinking;这里管正在写的和旧存档里的),
+    // 收成一块默认折起来,里面引用的标签不当真。
+    final think = splitThinking(stripDocumentMarks(m.text), done: !streaming);
+    final thinking = [
+      m.thinking,
+      think.thinking,
+    ].where((t) => t.isNotEmpty).join('\n\n');
+    final generate = splitGenerate(think.rest);
     // 换工作流的标签也由程序做,结果记在回复的记录上。
     final model = splitToolTag(
       splitToolTag(
@@ -311,6 +319,15 @@ class ChatMessageView extends StatelessWidget {
         ? splitToolTag(peeked, loadSkillTag).queries
         : const <String>[];
     return [
+      if (thinking.isNotEmpty) ...[
+        _ToolBlock(
+          icon: Icons.psychology_outlined,
+          summary: streaming && think.rest.isEmpty ? tr('思考中…') : tr('思考过程'),
+          details: [thinking],
+          open: false,
+        ),
+        const SizedBox(height: 10),
+      ],
       if (loading.isNotEmpty) ...[
         _ToolBlock(
           icon: Icons.auto_stories_outlined,

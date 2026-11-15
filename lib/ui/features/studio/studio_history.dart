@@ -167,6 +167,7 @@ extension StudioHistory on StudioViewModel {
     _quote = null;
     bodySelection = null;
     _toolRounds = 0;
+    _wakes = 0;
     _foundTags.clear();
     _pageEpoch++;
   }

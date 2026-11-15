@@ -141,6 +141,9 @@ class _StudioPageState extends State<StudioPage> {
                         'studio.chat',
                         child: MascotRoom(
                           width: widget.config.config.mascot ? mascotRoom : 0,
+                          overhang: widget.config.config.mascot
+                              ? mascotOverhang
+                              : 0,
                           child: ChatPane(
                             tour: 'studio',
                             vm: widget.vm,

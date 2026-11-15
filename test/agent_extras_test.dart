@@ -252,7 +252,7 @@ void main() {
   });
 
   group('接着写', () {
-    test('写了半截出错:留着写好的部分,接着写时一起发回去,写出来的接在后面', () async {
+    test('写了半截出错:留着写好的部分,自己接着写,一起发回去,写出来的接在后面', () async {
       final seen = <LlmRequest>[];
       var calls = 0;
       final config = tempConfig()
@@ -280,12 +280,12 @@ void main() {
 
       vm.send('画狐狸');
       await pumpEventQueue();
-      expect(vm.messages.last.failed, isTrue);
-      expect(vm.partialLast, 'a fox in ');
-      expect(llmLog.events.first.kind, LlmEventKind.error);
-
-      expect(vm.continueReply(), isNull);
-      await pumpEventQueue();
+      // 断线后程序自己接着写(触发器),不等用户点「接着写」。
+      expect(calls, 2);
+      expect(
+        llmLog.events.map((e) => e.kind),
+        containsAll([LlmEventKind.error, LlmEventKind.cut]),
+      );
 
       final sent = seen.last.messages;
       expect(sent[sent.length - 2], {

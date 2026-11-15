@@ -10,11 +10,28 @@ typedef PickItem = ({String label, String detail});
 
 /// 单选的选项:竖着一行一项,点哪一行就把它当成回答发出去。样子和 [MultiPick] 一样;
 /// 第一项是模型推荐的,底色标出来。[onPick] 为 null 时只是摆着看。
-class SinglePick extends StatelessWidget {
+/// 最后一行可以自己填写,回车发出去。
+class SinglePick extends StatefulWidget {
   const SinglePick({super.key, required this.options, required this.onPick});
 
   final List<String> options;
   final ValueChanged<String>? onPick;
+
+  @override
+  State<SinglePick> createState() => _SinglePickState();
+}
+
+class _SinglePickState extends State<SinglePick> {
+  final _own = TextEditingController();
+
+  List<String> get options => widget.options;
+  ValueChanged<String>? get onPick => widget.onPick;
+
+  @override
+  void dispose() {
+    _own.dispose();
+    super.dispose();
+  }
 
   Widget _row(int i, String option) {
     final first = i == 0;
@@ -74,6 +91,8 @@ class SinglePick extends StatelessWidget {
                 if (i > 0) const SizedBox(height: 4),
                 _row(i, option),
               ],
+              const SizedBox(height: 4),
+              _OwnInput(controller: _own, onSubmit: (t) => onPick?.call(t)),
             ],
           ),
         ),
@@ -104,6 +123,25 @@ class MultiPick extends StatefulWidget {
 
 class _PickState extends State<MultiPick> {
   var _picked = const <String>{};
+
+  /// 自己填写的,接在勾中的后面一起发。
+  final _own = TextEditingController();
+
+  @override
+  void dispose() {
+    _own.dispose();
+    super.dispose();
+  }
+
+  /// 交出去的字:按原来的先后;全选了说「全部」,自己写的接在最后。
+  String get _answer {
+    final own = _own.text.trim();
+    final items = widget.items;
+    final picked = _picked.length == items.length
+        ? '全部'
+        : items.map((item) => item.label).where(_picked.contains).join('、');
+    return [picked, own].where((s) => s.isNotEmpty).join('、');
+  }
 
   @override
   void didUpdateWidget(MultiPick old) {
@@ -207,6 +245,8 @@ class _PickState extends State<MultiPick> {
                   const SizedBox(height: 4),
                 _row(item),
               ],
+              const SizedBox(height: 4),
+              _OwnInput(controller: _own, onChanged: (_) => setState(() {})),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -235,17 +275,9 @@ class _PickState extends State<MultiPick> {
                     icon: Icons.check,
                     background: PennaColors.primary,
                     foreground: Colors.white,
-                    // 按原来的先后发出去;全选了就说「全部」。
-                    onPressed: _picked.isEmpty
+                    onPressed: _answer.isEmpty
                         ? null
-                        : () => widget.onSubmit?.call(
-                            all
-                                ? '全部'
-                                : items
-                                      .map((item) => item.label)
-                                      .where(_picked.contains)
-                                      .join('、'),
-                          ),
+                        : () => widget.onSubmit?.call(_answer),
                   ),
                 ],
               ),
@@ -280,8 +312,21 @@ class FormPick extends StatefulWidget {
 typedef _Group = ({String title, List<String> options});
 
 class _FormPickState extends State<FormPick> {
-  /// 第几组选的第几个;不在表里的是「你定」。
+  /// 第几组选的第几个;不在表里的是「你定」,[_ownPick] 是自己填写。
   late Map<int, int> _picked = _recommended();
+
+  /// 各组自己填写的字,点了「自己填写」才建。
+  final _typed = <int, TextEditingController>{};
+
+  static const _ownPick = -1;
+
+  @override
+  void dispose() {
+    for (final c in _typed.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
 
   List<_Group> get _groups {
     final groups = <_Group>[];
@@ -318,6 +363,10 @@ class _FormPickState extends State<FormPick> {
       [
         if (group.title.isNotEmpty) '${group.title}:',
         switch (_picked[g]) {
+          _ownPick => switch (_typed[g]?.text.trim() ?? '') {
+            '' => '你定',
+            final own => own,
+          },
           final i? => group.options[i],
           null => '你定',
         },
@@ -376,8 +425,20 @@ class _FormPickState extends State<FormPick> {
                         selected: _picked[g] == i,
                         onTap: () => _tap(g, i),
                       ),
+                    PennaChip(
+                      label: tr('自己填写'),
+                      selected: _picked[g] == _ownPick,
+                      onTap: () {
+                        _typed.putIfAbsent(g, TextEditingController.new);
+                        _tap(g, _ownPick);
+                      },
+                    ),
                   ],
                 ),
+                if (_picked[g] == _ownPick) ...[
+                  const SizedBox(height: 6),
+                  _OwnInput(controller: _typed[g]!, autofocus: true),
+                ],
               ],
               const SizedBox(height: 10),
               Row(
@@ -395,6 +456,77 @@ class _FormPickState extends State<FormPick> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 选项下面自己填写的那一栏(2026-11-16 用户要求:选项里没有想要的,能自己写)。
+/// [onSubmit] 给了时回车就交出去(单选);[onChanged] 让外面跟着更新(多选、问卷)。
+class _OwnInput extends StatelessWidget {
+  const _OwnInput({
+    required this.controller,
+    this.onSubmit,
+    this.onChanged,
+    this.autofocus = false,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String>? onSubmit;
+  final ValueChanged<String>? onChanged;
+  final bool autofocus;
+
+  void _send() {
+    final text = controller.text.trim();
+    if (text.isNotEmpty) onSubmit?.call(text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.only(left: 8),
+      decoration: BoxDecoration(
+        color: PennaColors.card,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: PennaColors.border),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.edit_outlined, size: 15, color: PennaColors.slate400),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              autofocus: autofocus,
+              onChanged: onChanged,
+              onSubmitted: onSubmit == null ? null : (_) => _send(),
+              contextMenuBuilder: pennaTextMenu,
+              style: TextStyle(fontSize: 12.5, color: PennaColors.text),
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                hintText: tr('自己填写'),
+                hintStyle: TextStyle(
+                  fontSize: 12.5,
+                  color: PennaColors.slate400,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+            ),
+          ),
+          if (onSubmit != null)
+            ListenableBuilder(
+              listenable: controller,
+              builder: (context, _) => IconButton(
+                tooltip: tr('发送'),
+                iconSize: 16,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.arrow_upward),
+                color: PennaColors.primary,
+                onPressed: controller.text.trim().isEmpty ? null : _send,
+              ),
+            ),
+        ],
       ),
     );
   }

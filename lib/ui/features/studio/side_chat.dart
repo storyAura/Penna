@@ -9,6 +9,7 @@ import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/manga/manga_script.dart' show storyboardTag;
 import '../../../core/harness/providers/llm_router.dart';
+import '../../../core/harness/thinking.dart';
 import '../../../l10n/l10n.dart';
 import 'studio_view_model.dart';
 
@@ -398,7 +399,7 @@ class SideChat extends ChangeNotifier {
     // 用户这次的话里提到的角色,和主聊天一样先替模型查好。
     final (:ask, text: lookup, :note) = main.autoLookupFor(sent);
     final requests = main.sideRequests(
-      _systemPrompt,
+      '$_systemPrompt\n\n$thinkRule',
       sent,
       ask: ask,
       lookup: lookup,
@@ -419,17 +420,22 @@ class SideChat extends ChangeNotifier {
           (delta) => _update((m) => m.copyWith(text: m.text + delta)),
           onError: (Object e) {
             _reply = null;
-            _update(
-              (m) => m.copyWith(
-                text: tr('{0}\n[出错] {1}', [m.text, e]),
+            _update((m) {
+              final t = settleThinking(m);
+              return t.copyWith(
+                text: tr('{0}\n[出错] {1}', [t.text, e]),
                 failed: true,
-              ),
-            );
+              );
+            });
             main.sideChanged();
           },
           onDone: () {
             _reply = null;
-            _update((m) => m.copyWith(text: cleanReplyPrompts(m.text)));
+            // 思考拆出去,后面拆标签的只看正文。
+            _update((m) {
+              final t = settleThinking(m);
+              return t.copyWith(text: cleanReplyPrompts(t.text));
+            });
             main.sideChanged();
             if (_peek() || _lookup() || _askLayout()) return;
             _deliver();

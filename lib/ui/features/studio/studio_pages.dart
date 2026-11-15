@@ -115,6 +115,7 @@ extension StudioPages on StudioViewModel {
     _chatId = chat?.id ?? _newId();
     _messages = chat?.messages ?? const [];
     _toolRounds = 0;
+    _wakes = 0;
     _foundTags.clear();
   }
 

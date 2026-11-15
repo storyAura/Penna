@@ -36,6 +36,7 @@ extension StudioChat on StudioViewModel {
 
   String? _post(QueuedMessage m, DateTime time) {
     _toolRounds = 0;
+    _wakes = 0;
     _foundTags.clear();
     return _startReply([
       ..._messages,
@@ -153,6 +154,7 @@ extension StudioChat on StudioViewModel {
     final history = retryHistory(_messages);
     if (history == null) return tr('还没有可以重新回复的消息');
     _toolRounds = 0;
+    _wakes = 0;
     _foundTags.clear();
     return _startReply(history, now ?? DateTime.now());
   }
@@ -165,9 +167,15 @@ extension StudioChat on StudioViewModel {
   /// 写出来的接在后面(2026-11-13 用户要求)。不能接时返回原因。
   String? continueReply({DateTime? now}) {
     if (isStreaming) return tr('正在生成,请先停止当前回复');
+    _toolRounds = 0;
+    _wakes = 0;
+    return _resume(now ?? DateTime.now());
+  }
+
+  /// 把最后那条半截的回复接着写下去(用户点「接着写」、程序自己接着写都走这里)。
+  String? _resume(DateTime now) {
     final partial = partialLast;
     if (partial == null) return tr('这条回复已经写完了');
-    _toolRounds = 0;
     final last = _messages.last;
     return _startReply(
       [
@@ -179,7 +187,7 @@ extension StudioChat on StudioViewModel {
           uncut: true,
         ),
       ],
-      now ?? DateTime.now(),
+      now,
       resume: true,
     );
   }
@@ -204,6 +212,7 @@ extension StudioChat on StudioViewModel {
     }
     final before = _snapshot();
     _toolRounds = 0;
+    _wakes = 0;
     _foundTags.clear();
     final problem = _startReply(history, time);
     if (problem == null) {
@@ -247,7 +256,10 @@ extension StudioChat on StudioViewModel {
       chain,
       preset,
       [
-        {'role': 'system', 'content': _systemFor(cfg, preset)},
+        {
+          'role': 'system',
+          'content': '${_systemFor(cfg, preset)}\n\n$thinkRule',
+        },
         for (final (i, m) in sent.indexed)
           {
             'role': m.fromUser ? 'user' : 'assistant',
@@ -260,7 +272,8 @@ extension StudioChat on StudioViewModel {
                 forgetPerspectives(
                   forgetLayers(
                     forgetLayouts(
-                      text,
+                      // 旧存档里的回复还夹着思考,发回去前拆掉。
+                      splitThinking(text).rest,
                       placed: i + 1 >= sent.length || !sent[i + 1].tool,
                     ),
                   ),
@@ -295,18 +308,27 @@ extension StudioChat on StudioViewModel {
         ).listen(
           (delta) => _updateReply((m) => m.copyWith(text: m.text + delta)),
           onError: (Object e) {
-            _updateReply(
-              (m) => m.copyWith(
-                text: tr('{0}\n[出错] {1}', [m.text, e]),
+            _updateReply((m) {
+              final t = settleThinking(m);
+              return t.copyWith(
+                text: tr('{0}\n[出错] {1}', [t.text, e]),
                 failed: true,
-              ),
-            );
+              );
+            });
             _finishReply();
+            // 写了半截才断线:自己接着写,不等用户点。
+            if (_autoContinue()) return;
             _sendNext();
           },
           onDone: () {
             _finishReply();
-            _updateReply((m) => m.copyWith(text: cleanReplyPrompts(m.text)));
+            // 思考拆出去:后面拆标签的只看正文,思考里引用的标签不会被当真。
+            _updateReply((m) {
+              final t = settleThinking(m);
+              return t.copyWith(text: cleanReplyPrompts(t.text));
+            });
+            // 写到上限、断线了:自己接着写完再交货(交半截会交两遍)。
+            if (_autoContinue()) return;
             // 模型要先查标签:查完它会接着写,成稿等那一条。
             if (_searchTags()) return;
             // 布局页的对话只往布局画板上放,不碰成稿。
@@ -328,8 +350,9 @@ extension StudioChat on StudioViewModel {
             // 区域控制那边:布局放到画板上之后再出图(用的是画板交出去的 JSON)。
             if (layoutOnly) _deliverComfy();
             unawaited(_deliverSkill());
-            // 人物块对不上角色卡:让 Agent 接着改,改完那一条再发排着的消息。
-            if (_fixCast()) return;
+            // 程序自检出问题(人物块对不上角色卡、转来的任务没交出布局):
+            // 叫醒 Agent 接着改,改完那一条再发排着的消息。
+            if (_fixCast() || _checkHandoff()) return;
             _sendNext();
           },
           cancelOnError: true,

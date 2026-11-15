@@ -239,8 +239,11 @@ class _ToolBlock extends StatelessWidget {
     required this.details,
     this.icon = Icons.check_circle_outline,
     this.iconColor,
+    this.open = true,
   });
 
+  /// 一开始是不是展开的(模型的思考默认收起)。
+  final bool open;
   final String summary;
   final List<String> details;
   final IconData icon;
@@ -290,7 +293,7 @@ class _ToolBlock extends StatelessWidget {
           type: MaterialType.transparency,
           child: ExpansionTile(
             dense: true,
-            initiallyExpanded: true,
+            initiallyExpanded: open,
             tilePadding: const EdgeInsets.symmetric(horizontal: 10),
             childrenPadding: const EdgeInsets.fromLTRB(34, 0, 10, 10),
             expandedCrossAxisAlignment: CrossAxisAlignment.start,

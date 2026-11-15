@@ -28,6 +28,10 @@ const _pad = 16.0;
 /// 快捷操作那一排要让出的宽度(`MascotRoom`):她的宽度加一点空隙。
 final mascotRoom = _height * MascotLook.doze.aspect + 4;
 
+/// 她探出输入区上沿多高(`MascotRoom.overhang`):坐线以上的身子,加一点空隙。
+/// 说话的气泡冒在头的右边,也在这个高度里。
+const mascotOverhang = _height * _seat + 8;
+
 /// 「设置 → 召唤吉祥物」:她坐在 [anchor] 那块(对话的输入区)的上沿打瞌睡,腿和长袖垂在框前,
 /// 落在快捷操作那一排给她让出来的空地上(`MascotRoom`)。
 /// 鼠标移上去她抱膝撅嘴;左键点她,她抱头蹦一下、嘟囔一句,过一会儿接着打瞌睡。

@@ -86,7 +86,81 @@ Map<String, Object?> parseApiWorkflow(String text) {
       json.isNotEmpty &&
       json.values.every((n) => n is Map && n['class_type'] is String);
   if (!ok) throw ComfyException(tr('不是 ComfyUI 的 API 格式工作流'));
-  return json;
+  return connectedToOutputs(json);
+}
+
+final _outputType = RegExp('SaveImage|PreviewImage');
+
+/// 只留从输出(存图、预览图、`Penna.Output` 组)往回接得上的节点,同画布格式的转法
+/// (2026-11-16 用户反馈:「导出 (API)」里放在工作区没接线的节点也列进侧栏能改,
+/// 改了它的模型也不起作用)。一个输出都认不出时原样返回。
+Map<String, Object?> connectedToOutputs(Map<String, Object?> wf) {
+  final todo = [
+    for (final MapEntry(:key, :value) in wf.entries)
+      if (value is Map &&
+          (_outputType.hasMatch('${value['class_type']}') ||
+              '${(value['_meta'] as Map?)?['title'] ?? ''}'.startsWith(
+                'Penna.Output',
+              )))
+        key,
+  ];
+  if (todo.isEmpty) return wf;
+  final keep = <String>{};
+  while (todo.isNotEmpty) {
+    final id = todo.removeLast();
+    if (!keep.add(id) || wf[id] == null) continue;
+    for (final v in _inputs(wf[id]).values) {
+      // 接线写成 [来源节点编号, 第几个输出]。
+      if (v is List && v.length == 2 && v.first is String) {
+        todo.add(v.first as String);
+      }
+    }
+  }
+  if (keep.length == wf.length) return wf;
+  return {
+    for (final MapEntry(:key, :value) in wf.entries)
+      if (keep.contains(key)) key: value,
+  };
+}
+
+final _dateMark = RegExp(r'%date:([^%]+)%');
+final _widgetMark = RegExp(r'%([^%.:]+)\.([^%.:]+)%');
+final _dateToken = RegExp('yyyy|yy|MM|M|dd|d|hh|h|mm|m|ss|s');
+
+/// 存图节点文件名里的 `%date:yy_MM_dd%`、`%节点标题.控件%`:ComfyUI 的网页在提交前
+/// 自己换掉,直接调接口时要我们换(2026-11-16 用户反馈:标准工作流的存图节点报
+/// 「目录名称无效 …\output\%date:yy_MM_dd%」)。写法照官方前端的 formatDate。
+String expandComfyText(String text, Map<String, Object?> wf, DateTime now) {
+  String two(int n) => '$n'.padLeft(2, '0');
+  final dated = text.replaceAllMapped(
+    _dateMark,
+    (m) => m[1]!.replaceAllMapped(_dateToken, (t) {
+      return switch (t[0]) {
+        'yyyy' => '${now.year}',
+        'yy' => two(now.year % 100),
+        'MM' => two(now.month),
+        'M' => '${now.month}',
+        'dd' => two(now.day),
+        'd' => '${now.day}',
+        'hh' => two(now.hour),
+        'h' => '${now.hour}',
+        'mm' => two(now.minute),
+        'm' => '${now.minute}',
+        'ss' => two(now.second),
+        _ => '${now.second}',
+      };
+    }),
+  );
+  return dated.replaceAllMapped(_widgetMark, (m) {
+    for (final node in wf.values) {
+      if (node is! Map) continue;
+      final title = '${(node['_meta'] as Map?)?['title'] ?? ''}';
+      if (title != m[1] && node['class_type'] != m[1]) continue;
+      final v = _inputs(node)[m[2]];
+      if (v is String || v is num || v is bool) return '$v';
+    }
+    return m[0]!;
+  });
 }
 
 /// 没导入工作流时用的:最基本的文生图,模型用 ComfyUI 里的 [checkpoint]。
@@ -227,11 +301,14 @@ Map<String, Object?> prepareWorkflow(
     }
   }
   var marked = false;
+  final now = DateTime.now();
   for (final node in wf.values) {
     final inputs = _inputs(node);
     for (final key in inputs.keys.toList()) {
       final value = inputs[key];
-      if (value is String && value.contains(comfyPromptMark)) {
+      if (key == 'filename_prefix' && value is String) {
+        inputs[key] = expandComfyText(value, workflow, now);
+      } else if (value is String && value.contains(comfyPromptMark)) {
         inputs[key] = value.replaceAll(comfyPromptMark, prompt);
         marked = true;
       } else if ((key == 'seed' || key == 'noise_seed') && value is num) {
