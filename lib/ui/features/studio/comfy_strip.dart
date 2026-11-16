@@ -130,26 +130,28 @@ class _ComfyStrip extends StatelessWidget {
     },
   );
 
-  Widget _thumb(BuildContext context, String path) => MouseRegion(
-    cursor: SystemMouseCursors.click,
-    child: GestureDetector(
-      onTap: () => showImageViewer(context, comfyImageAttachment(path)),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: Image.memory(
-          comfyImageAttachment(path).bytes!,
-          height: _thumbHeight,
-          cacheHeight: (_thumbHeight * 2).round(),
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => SizedBox.square(
-            dimension: _thumbHeight,
-            child: Icon(
-              Icons.broken_image_outlined,
-              color: PennaColors.slate400,
+  Widget _thumb(BuildContext context, String path) => isVideoFile(path)
+      ? ComfyVideoTile(path: path, height: _thumbHeight)
+      : MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => showImageViewer(context, comfyImageAttachment(path)),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.memory(
+                comfyImageAttachment(path).bytes!,
+                height: _thumbHeight,
+                cacheHeight: (_thumbHeight * 2).round(),
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => SizedBox.square(
+                  dimension: _thumbHeight,
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    color: PennaColors.slate400,
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-    ),
-  );
+        );
 }

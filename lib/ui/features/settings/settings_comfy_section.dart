@@ -78,17 +78,33 @@ class _ComfySectionState extends State<ComfySection> {
     }
   }
 
-  /// 右键一个工作流:改名、导出、删除。
+  Future<void> _rename(ComfyFlow flow) async {
+    final name = await askName(context, tr('改名'), flow.name);
+    if (name == null || name.trim().isEmpty) return;
+    _put(_comfy.putFlow((id: flow.id, name: name.trim(), text: flow.text)));
+  }
+
+  /// 复制一份放在它下面(LoRA 配置、要上传的素材跟着复制)。
+  void _copy(ComfyFlow flow) => _put(
+    _comfy.copyFlow(
+      flow.id,
+      newId: '${DateTime.now().microsecondsSinceEpoch}',
+      name: tr('{0} 副本', [tr(flow.name)]),
+    ),
+  );
+
+  /// 右键一个工作流:改名、复制、导出、删除。
   Future<void> _flowMenu(ComfyFlow flow, Offset at) async {
-    final picked = await popMenu(context, at, [tr('改名'), tr('导出'), tr('删除')]);
+    final picked = await popMenu(context, at, [
+      tr('改名'),
+      tr('复制'),
+      tr('导出'),
+      tr('删除'),
+    ]);
     if (!mounted || picked == null) return;
     if (picked == tr('删除')) return _removeFlow(flow);
-    if (picked == tr('改名')) {
-      final name = await askName(context, tr('改名'), flow.name);
-      if (name == null || name.trim().isEmpty) return;
-      _put(_comfy.putFlow((id: flow.id, name: name.trim(), text: flow.text)));
-      return;
-    }
+    if (picked == tr('改名')) return _rename(flow);
+    if (picked == tr('复制')) return _copy(flow);
     final file = await getSaveLocation(
       suggestedName:
           '${flow.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}.json',
@@ -219,14 +235,28 @@ class _ComfySectionState extends State<ComfySection> {
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Text(tr('还没导入,出图用内置文生图'), style: hintStyle),
                 ),
-              for (final flow in _comfy.flows)
-                _FlowRow(
-                  name: tr(flow.name),
-                  selected: _comfy.flow?.id == flow.id,
-                  onSelect: () => _put(_comfy.copyWith(flowId: flow.id)),
-                  onRemove: () => _removeFlow(flow),
-                  onMenu: (at) => _flowMenu(flow, at),
-                ),
+              // 按住左边的把手拖着换顺序(侧栏下拉里的先后跟着变)。
+              ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                itemCount: _comfy.flows.length,
+                onReorderItem: (from, to) => _put(_comfy.moveFlow(from, to)),
+                itemBuilder: (context, i) {
+                  final flow = _comfy.flows[i];
+                  return _FlowRow(
+                    key: ValueKey(flow.id),
+                    index: i,
+                    name: tr(flow.name),
+                    selected: _comfy.flow?.id == flow.id,
+                    onSelect: () => _put(_comfy.copyWith(flowId: flow.id)),
+                    onRename: () => _rename(flow),
+                    onCopy: () => _copy(flow),
+                    onRemove: () => _removeFlow(flow),
+                    onMenu: (at) => _flowMenu(flow, at),
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -266,31 +296,58 @@ class _ComfySectionState extends State<ComfySection> {
   }
 }
 
-/// 工作流列表里的一行:点了用它,导入的能删;右键是 [onMenu](给窗口坐标)。
+/// 工作流列表里的一行:拖动把手、点了用它、改名、复制、删除;右键是 [onMenu](给窗口坐标)。
 class _FlowRow extends StatelessWidget {
   const _FlowRow({
+    super.key,
+    required this.index,
     required this.name,
     required this.selected,
     required this.onSelect,
-    this.onRemove,
-    this.onMenu,
+    required this.onRename,
+    required this.onCopy,
+    required this.onRemove,
+    required this.onMenu,
   });
 
+  final int index;
   final String name;
   final bool selected;
-  final VoidCallback onSelect;
-  final VoidCallback? onRemove;
-  final ValueChanged<Offset>? onMenu;
+  final VoidCallback onSelect, onRename, onCopy, onRemove;
+  final ValueChanged<Offset> onMenu;
+
+  Widget _action(String tip, IconData icon, VoidCallback onTap) => IconButton(
+    tooltip: tip,
+    iconSize: 16,
+    visualDensity: VisualDensity.compact,
+    color: PennaColors.slate400,
+    icon: Icon(icon),
+    onPressed: onTap,
+  );
 
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: onSelect,
-    onSecondaryTapUp: onMenu == null ? null : (d) => onMenu!(d.globalPosition),
+    onSecondaryTapUp: (d) => onMenu(d.globalPosition),
     borderRadius: BorderRadius.circular(6),
     child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
+          ReorderableDragStartListener(
+            index: index,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.grab,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Icon(
+                  Icons.drag_indicator,
+                  size: 16,
+                  color: PennaColors.slate400,
+                ),
+              ),
+            ),
+          ),
           Icon(
             selected ? Icons.radio_button_checked : Icons.radio_button_off,
             size: 16,
@@ -298,17 +355,9 @@ class _FlowRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(child: Text(name, style: const TextStyle(fontSize: 13))),
-          if (onRemove != null)
-            IconButton(
-              tooltip: tr('删除'),
-              iconSize: 16,
-              visualDensity: VisualDensity.compact,
-              color: PennaColors.slate400,
-              icon: const Icon(Icons.delete_outline),
-              onPressed: onRemove,
-            )
-          else
-            const SizedBox(height: 32),
+          _action(tr('改名'), Icons.edit_outlined, onRename),
+          _action(tr('复制'), Icons.copy_outlined, onCopy),
+          _action(tr('删除'), Icons.delete_outline, onRemove),
         ],
       ),
     ),

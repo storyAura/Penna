@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/harness/comfyui.dart' show isVideoFile;
 import '../../../core/harness/draft_block.dart';
 import '../../../data/services/archive_store.dart';
 import '../../core/theme.dart';
@@ -12,6 +13,7 @@ import '../archive/archive_page.dart';
 import '../settings/settings_sections.dart';
 import 'body_card.dart';
 import 'comfy_progress_view.dart';
+import 'comfy_video_tile.dart';
 import 'image_viewer.dart';
 import 'polish_dialog.dart';
 import 'studio_view_model.dart';

@@ -183,8 +183,12 @@ class ComfyRunner extends ChangeNotifier {
   /// 存档案库时配的图:用这条提示词出的最新一张;没有时 [any] 为真就给最新的一张。
   // ponytail: 改了几个字再存也配最新的一张,可能是别的页出的;配错了在档案库里换图。
   String? latestFor(String prompt, {bool any = true}) =>
-      _images.where((i) => i.prompt == prompt).firstOrNull?.path ??
-      (any ? _images.firstOrNull?.path : null);
+      _stills.where((i) => i.prompt == prompt).firstOrNull?.path ??
+      (any ? _stills.firstOrNull?.path : null);
+
+  /// 出过的图里不是视频的(视频做不了预览图)。
+  Iterable<GeneratedImage> get _stills =>
+      _images.where((i) => !isVideoFile(i.path));
 
   /// 用 [prompt] 出一张,返回出的图和出错的原因(停止了两个都是空的)。
   /// 只由队列([ComfyQueue.generate])调,同一时间只有一张。
@@ -202,14 +206,16 @@ class ComfyRunner extends ChangeNotifier {
     _owner = owner;
     notifyListeners();
     final client = _client;
+    final comfy = config.config.comfy;
     var saved = <GeneratedImage>[];
     String? error;
     try {
       final out = await client.run(
         // 空的是内置文生图。
-        config.config.comfy.flow?.text ?? '',
+        comfy.flow?.text ?? '',
         prompt,
         size: size,
+        uploads: comfy.inputs[comfy.flow?.id ?? builtinWorkflowId] ?? const {},
         canceled: () => run != _run,
         onProgress: (p) {
           if (run != _run) return;
@@ -228,12 +234,14 @@ class ComfyRunner extends ChangeNotifier {
           small.bytes,
           now,
         ).path;
-        // 这次运行里显示、复制的是传回来的原图;磁盘上的是压过的。
-        _attachments[path] = Attachment.image(
-          name: image.name,
-          mime: _mimeOf(image.name),
-          bytes: image.bytes,
-        );
+        // 这次运行里显示、复制的是传回来的原图;磁盘上的是压过的。视频不当图片附件。
+        if (!isVideoFile(image.name)) {
+          _attachments[path] = Attachment.image(
+            name: image.name,
+            mime: _mimeOf(image.name),
+            bytes: image.bytes,
+          );
+        }
         saved.add((path: path, prompt: prompt, time: now));
       }
       if (run != _run) return (images: none, error: null);
@@ -258,6 +266,7 @@ class ComfyRunner extends ChangeNotifier {
 
   /// 存盘用的那份:转成 WebP(尺寸不变);转不了或没变小就存原图。
   Future<ComfyImage> _forDisk(ComfyImage image) async {
+    if (isVideoFile(image.name)) return image;
     try {
       final webp = await toStoredWebP(image.bytes);
       if (webp != null && webp.length < image.bytes.length) {

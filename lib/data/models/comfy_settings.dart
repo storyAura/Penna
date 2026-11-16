@@ -22,8 +22,16 @@ typedef ComfyFlow = ({String id, String name, String text});
 /// 一个 LoRA 在一套配置里的样子。
 typedef LoraSetting = ({String name, double strength, bool on});
 
-/// 存下来的一套 LoRA 配置。
-typedef LoraPreset = ({String name, List<LoraSetting> loras});
+/// 存下来的一套 LoRA 配置;[flow] 是它属于哪个工作流(各工作流的配置互不相干)。
+typedef LoraPreset = ({String flow, String name, List<LoraSetting> loras});
+
+/// 把 [list] 里第 [from] 个挪到第 [to] 个的位置(拖动排序用,[to] 是挪完之后的位置)。
+List<T> moved<T>(List<T> list, int from, int to) {
+  final out = [...list];
+  final item = out.removeAt(from);
+  out.insert(to.clamp(0, out.length), item);
+  return out;
+}
 
 /// 「设置 → ComfyUI」:有哪几台 ComfyUI、哪几个工作流、存好的 LoRA 配置,出的图放哪。
 @immutable
@@ -34,13 +42,15 @@ class ComfySettings {
     this.flows = const [],
     this.flowId = builtinWorkflowId,
     this.loraPresets = const [],
-    this.loraPreset = '',
+    this.loraPresetOf = const {},
+    this.inputs = const {},
     this.imageDir = '',
     this.autoGenerate = true,
     this.outputDirs = const {},
   });
 
-  /// 读设置。旧版只有一个地址(`url`)和一个工作流(`workflow`、`workflowName`),照样读成列表。
+  /// 读设置。旧版只有一个地址(`url`)和一个工作流(`workflow`、`workflowName`),照样读成列表;
+  /// 旧版的 LoRA 配置不分工作流,每个工作流各拿一份。
   factory ComfySettings.fromJson(Object? json) {
     final m = json is Map ? json : const {};
     final servers = <ComfyServer>[
@@ -69,6 +79,13 @@ class ComfySettings {
         text: oldFlow,
       ));
     }
+    final flowId =
+        m['flowId'] as String? ??
+        (oldFlow.trim().isNotEmpty ? 'imported' : builtinWorkflowId);
+    final flowIds = flows.isEmpty
+        ? const [builtinWorkflowId]
+        : [for (final f in flows) f.id];
+    final current = flowIds.contains(flowId) ? flowId : flowIds.first;
     return ComfySettings(
       servers: servers.isNotEmpty
           ? List.unmodifiable(servers)
@@ -83,26 +100,46 @@ class ComfySettings {
           m['serverId'] as String? ??
           (servers.isEmpty ? comfyLocalId : servers.first.id),
       flows: List.unmodifiable(flows),
-      flowId:
-          m['flowId'] as String? ??
-          (oldFlow.trim().isNotEmpty ? 'imported' : builtinWorkflowId),
+      flowId: flowId,
       loraPresets: List.unmodifiable([
         for (final p in m['loraPresets'] as List? ?? const [])
           if (p is Map && p['name'] is String)
-            (
-              name: p['name'] as String,
-              loras: List<LoraSetting>.unmodifiable([
-                for (final l in p['loras'] as List? ?? const [])
-                  if (l is Map && l['name'] is String)
-                    (
-                      name: l['name'] as String,
-                      strength: (l['strength'] as num? ?? 1).toDouble(),
-                      on: l['on'] != false,
-                    ),
-              ]),
-            ),
+            for (final flow
+                in p['flow'] is String ? [p['flow'] as String] : flowIds)
+              (
+                flow: flow,
+                name: p['name'] as String,
+                loras: List<LoraSetting>.unmodifiable([
+                  for (final l in p['loras'] as List? ?? const [])
+                    if (l is Map && l['name'] is String)
+                      (
+                        name: l['name'] as String,
+                        strength: (l['strength'] as num? ?? 1).toDouble(),
+                        on: l['on'] != false,
+                      ),
+                ]),
+              ),
       ]),
-      loraPreset: m['loraPreset'] as String? ?? '',
+      loraPresetOf: Map.unmodifiable(switch (m['loraPresetOf']) {
+        final Map of => {
+          for (final MapEntry(:key, :value) in of.entries)
+            if (key is String && value is String) key: value,
+        },
+        // 旧版只记一个名字:算眼前那个工作流的。
+        _ => {
+          if (m['loraPreset'] case final String name when name.isNotEmpty)
+            current: name,
+        },
+      }),
+      inputs: Map.unmodifiable({
+        if (m['inputs'] case final Map all)
+          for (final MapEntry(key: flow, value: files) in all.entries)
+            if (flow is String && files is Map)
+              flow: Map<String, String>.unmodifiable({
+                for (final MapEntry(:key, :value) in files.entries)
+                  if (key is String && value is String) key: value,
+              }),
+      }),
       imageDir: m['imageDir'] as String? ?? '',
       autoGenerate: m['autoGenerate'] as bool? ?? true,
       outputDirs: Map.unmodifiable({
@@ -124,10 +161,15 @@ class ComfySettings {
   /// 眼前用的工作流;[builtinWorkflowId] 是内置文生图。
   final String flowId;
 
+  /// 所有工作流的 LoRA 配置,同一个工作流的按显示的先后排。
   final List<LoraPreset> loraPresets;
 
-  /// 眼前用的那套 LoRA 配置的名字;空的是没用哪一套。
-  final String loraPreset;
+  /// 各工作流眼前用的那套 LoRA 配置的名字(按工作流 id);没有是没用哪一套。
+  final Map<String, String> loraPresetOf;
+
+  /// 各工作流要上传的文件(按工作流 id):节点编号 → 本机文件路径。
+  /// 出图前传到 ComfyUI,填进那个加载图片 / 视频 / 音频的节点。
+  final Map<String, Map<String, String>> inputs;
 
   /// 出的图存在哪;空的是「文档\Penna\images」。
   final String imageDir;
@@ -147,6 +189,12 @@ class ComfySettings {
   ComfyFlow? get flow =>
       flows.where((f) => f.id == flowId).firstOrNull ?? flows.firstOrNull;
 
+  /// [flow] 那个工作流的 LoRA 配置,按显示的先后。
+  List<LoraPreset> presetsOf(String flow) => [
+    for (final p in loraPresets)
+      if (p.flow == flow) p,
+  ];
+
   Map<String, Object?> toJson() => {
     'servers': [
       for (final s in servers) {'id': s.id, 'name': s.name, 'url': s.url},
@@ -159,6 +207,7 @@ class ComfySettings {
     'loraPresets': [
       for (final p in loraPresets)
         {
+          'flow': p.flow,
           'name': p.name,
           'loras': [
             for (final l in p.loras)
@@ -166,7 +215,8 @@ class ComfySettings {
           ],
         },
     ],
-    'loraPreset': loraPreset,
+    'loraPresetOf': loraPresetOf,
+    if (inputs.isNotEmpty) 'inputs': inputs,
     'imageDir': imageDir,
     'autoGenerate': autoGenerate,
     if (outputDirs.isNotEmpty) 'outputDirs': outputDirs,
@@ -178,7 +228,8 @@ class ComfySettings {
     List<ComfyFlow>? flows,
     String? flowId,
     List<LoraPreset>? loraPresets,
-    String? loraPreset,
+    Map<String, String>? loraPresetOf,
+    Map<String, Map<String, String>>? inputs,
     String? imageDir,
     bool? autoGenerate,
     Map<String, String>? outputDirs,
@@ -190,7 +241,10 @@ class ComfySettings {
     loraPresets: loraPresets == null
         ? this.loraPresets
         : List.unmodifiable(loraPresets),
-    loraPreset: loraPreset ?? this.loraPreset,
+    loraPresetOf: loraPresetOf == null
+        ? this.loraPresetOf
+        : Map.unmodifiable(loraPresetOf),
+    inputs: inputs == null ? this.inputs : Map.unmodifiable(inputs),
     imageDir: imageDir ?? this.imageDir,
     autoGenerate: autoGenerate ?? this.autoGenerate,
     outputDirs: outputDirs == null
@@ -225,7 +279,8 @@ class ComfySettings {
         : [...flows, flow],
   );
 
-  /// 删掉一个工作流;删的是眼前那个就换到剩下的第一个(都删了用内置文生图)。
+  /// 删掉一个工作流(连同它的 LoRA 配置和要上传的文件);
+  /// 删的是眼前那个就换到剩下的第一个(都删了用内置文生图)。
   ComfySettings removeFlow(String id) {
     final rest = [
       for (final f in flows)
@@ -234,21 +289,76 @@ class ComfySettings {
     return copyWith(
       flows: rest,
       flowId: flowId == id ? rest.firstOrNull?.id ?? builtinWorkflowId : flowId,
+      loraPresets: [
+        for (final p in loraPresets)
+          if (p.flow != id) p,
+      ],
+      loraPresetOf: {...loraPresetOf}..remove(id),
+      inputs: {...inputs}..remove(id),
     );
   }
 
-  /// 存一套 LoRA 配置;同名的换掉。
-  ComfySettings putLoraPreset(LoraPreset preset) => copyWith(
-    loraPresets: loraPresets.any((p) => p.name == preset.name)
-        ? [for (final p in loraPresets) p.name == preset.name ? preset : p]
-        : [...loraPresets, preset],
-  );
+  /// 复制一个工作流,放在它下面:全文、LoRA 配置、要上传的文件都跟着复制。
+  ComfySettings copyFlow(
+    String id, {
+    required String newId,
+    required String name,
+  }) {
+    final i = flows.indexWhere((f) => f.id == id);
+    if (i < 0) return this;
+    return copyWith(
+      flows: [...flows]
+        ..insert(i + 1, (id: newId, name: name, text: flows[i].text)),
+      loraPresets: [
+        ...loraPresets,
+        for (final p in presetsOf(id))
+          (flow: newId, name: p.name, loras: p.loras),
+      ],
+      loraPresetOf: {...loraPresetOf, newId: ?loraPresetOf[id]},
+      inputs: {...inputs, newId: ?inputs[id]},
+    );
+  }
 
-  ComfySettings removeLoraPreset(String name) => copyWith(
+  /// 拖动工作流换顺序。
+  ComfySettings moveFlow(int from, int to) =>
+      copyWith(flows: moved(flows, from, to));
+
+  /// 存一套 LoRA 配置;同一个工作流里同名的换掉。
+  ComfySettings putLoraPreset(LoraPreset preset) {
+    bool same(LoraPreset p) => p.flow == preset.flow && p.name == preset.name;
+    return copyWith(
+      loraPresets: loraPresets.any(same)
+          ? [for (final p in loraPresets) same(p) ? preset : p]
+          : [...loraPresets, preset],
+    );
+  }
+
+  ComfySettings removeLoraPreset(String flow, String name) => copyWith(
     loraPresets: [
       for (final p in loraPresets)
-        if (p.name != name) p,
+        if (p.flow != flow || p.name != name) p,
     ],
-    loraPreset: loraPreset == name ? '' : loraPreset,
+    loraPresetOf: loraPresetOf[flow] == name
+        ? ({...loraPresetOf}..remove(flow))
+        : null,
   );
+
+  /// 拖动 [flow] 那个工作流的 LoRA 配置换顺序([from]、[to] 是它自己那几套里的位置)。
+  ComfySettings moveLoraPreset(String flow, int from, int to) {
+    final own = moved(presetsOf(flow), from, to);
+    return copyWith(
+      loraPresets: [
+        for (final p in loraPresets)
+          if (p.flow != flow) p,
+        ...own,
+      ],
+    );
+  }
+
+  /// [flow] 那个工作流的 [node] 要上传的文件换成 [path](null 是不传,用工作流里原来写的)。
+  ComfySettings putInput(String flow, String node, String? path) {
+    final files = {...?inputs[flow]};
+    path == null ? files.remove(node) : files[node] = path;
+    return copyWith(inputs: {...inputs, flow: Map.unmodifiable(files)});
+  }
 }

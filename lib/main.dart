@@ -17,6 +17,7 @@ import 'core/harness/update/updater.dart';
 import 'data/models/app_config.dart';
 import 'data/services/archive_store.dart';
 import 'data/services/notebook_store.dart';
+import 'data/services/soul_store.dart';
 import 'data/services/character_store.dart';
 import 'data/services/config_service.dart';
 import 'data/services/error_log.dart';
@@ -137,6 +138,8 @@ Future<void> main() async {
   await archive.load();
   final notebooks = NotebookStore(File('${home.path}${sep}notebooks.json'));
   await notebooks.load();
+  final soul = SoulStore(File('${home.path}${sep}soul.json'));
+  await soul.load();
   final local = LocalModel(
     dir: home,
     streamChat: streamChat,
@@ -152,6 +155,8 @@ Future<void> main() async {
   vm.poses = poses;
   vm.archive = archive;
   vm.notebooks = notebooks;
+  vm.soul = soul;
+  layoutChat.soul = soul;
   // 区域控制那场对话同样能本地反推、附姿势参考(两个工作台本是同一类)。
   layoutChat.local = local;
   layoutChat.poses = poses;

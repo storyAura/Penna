@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
+import '../../../core/harness/comfyui.dart' show isVideoFile;
 import 'comfy_runner.dart';
+import 'comfy_video_tile.dart';
 import 'image_viewer.dart';
 
 String _two(int n) => '$n'.padLeft(2, '0');
@@ -212,6 +214,7 @@ class _JobTile extends StatelessWidget {
         ),
       );
     }
+    if (isVideoFile(path)) return ComfyVideoTile(path: path, height: size);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(

@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/harness/comfy_workflow.dart';
@@ -10,6 +13,7 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'comfy_runner.dart';
 
+part 'comfy_panel_lists.dart';
 part 'comfy_panel_params.dart';
 
 /// 权重按这么多一格加减。
@@ -31,7 +35,8 @@ String comfyStatusText(ComfyStatus? status) => switch (status) {
   (connected: false, :final error, ms: _, version: _) => error ?? tr('未连接'),
 };
 
-/// 侧栏里的 ComfyUI:换哪台、换工作流、模型、画面大小、采样参数、LoRA 配置和每个 LoRA。
+/// 侧栏里的 ComfyUI:换哪台、换工作流、模型、要上传的素材、画面大小、采样参数、
+/// LoRA 配置和每个 LoRA。
 class ComfyPanel extends StatelessWidget {
   const ComfyPanel({super.key, required this.runner, required this.config});
 
@@ -82,7 +87,8 @@ class ComfyPanel extends StatelessWidget {
           onSelected: runner.selectFlow,
         ),
         if (wf != null) ..._params(context, runner, wf, report),
-        if (wf != null) ..._loras(context, wf, comfy, report),
+        if (wf != null) ..._uploads(context, runner),
+        if (wf != null) ..._loras(context, wf, report),
       ],
     );
   }
@@ -90,7 +96,6 @@ class ComfyPanel extends StatelessWidget {
   List<Widget> _loras(
     BuildContext context,
     ComfyWorkflow wf,
-    ComfySettings comfy,
     void Function(String?) report,
   ) {
     final slots = loraSlots(wf);
@@ -119,31 +124,21 @@ class ComfyPanel extends StatelessWidget {
       Row(
         children: [
           Expanded(
-            child: _Menu<String>(
-              leading: Icon(
-                Icons.layers_outlined,
-                size: 14,
-                color: PennaColors.slate500,
-              ),
+            child: _PresetMenu(
               label: runner.loraPreset?.name ?? tr('LoRA 配置'),
-              items: [
-                for (final p in comfy.loraPresets)
-                  (value: p.name, label: p.name),
-                (value: '', label: tr('新建')),
-              ],
+              names: [for (final p in runner.loraPresets) p.name],
               selected: runner.loraPreset?.name,
-              onSelected: (name) async {
-                if (name.isNotEmpty) {
-                  final preset = comfy.loraPresets.firstWhere(
-                    (p) => p.name == name,
-                  );
-                  report(runner.applyLoraPreset(preset));
-                  return;
-                }
+              onSelected: (name) => report(
+                runner.applyLoraPreset(
+                  runner.loraPresets.firstWhere((p) => p.name == name),
+                ),
+              ),
+              onCreate: () async {
                 final asked = await _askText(context, tr('存成一套 LoRA 配置'));
                 if (asked != null) report(runner.saveLoraPreset(asked));
               },
               onRemove: runner.removeLoraPreset,
+              onReorder: runner.moveLoraPreset,
             ),
           ),
           if (runner.loraPreset case final preset?)
@@ -165,19 +160,33 @@ class ComfyPanel extends StatelessWidget {
         ],
       ),
       const SizedBox(height: 6),
-      for (final slot in slots)
-        _LoraRow(
-          key: ValueKey('${slot.node}/${slot.key}'),
-          slot: slot,
+      // 按住左边的把手拖着换顺序。
+      ReorderableListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        buildDefaultDragHandles: false,
+        itemCount: slots.length,
+        onReorderItem: (from, to) =>
+            report(runner.edit((wf) => moveLora(wf, from, to))),
+        itemBuilder: (context, i) => _LoraRow(
+          key: ValueKey('${slots[i].node}/${slots[i].key}'),
+          index: i,
+          slot: slots[i],
           onOn: (on) => report(
-            runner.edit((wf) => setLora(wf, slot.node, slot.key, on: on)),
+            runner.edit(
+              (wf) => setLora(wf, slots[i].node, slots[i].key, on: on),
+            ),
           ),
           onStrength: (v) => report(
-            runner.edit((wf) => setLora(wf, slot.node, slot.key, strength: v)),
+            runner.edit(
+              (wf) => setLora(wf, slots[i].node, slots[i].key, strength: v),
+            ),
           ),
-          onRemove: () =>
-              report(runner.edit((wf) => removeLora(wf, slot.node, slot.key))),
+          onRemove: () => report(
+            runner.edit((wf) => removeLora(wf, slots[i].node, slots[i].key)),
+          ),
         ),
+      ),
     ];
   }
 }
@@ -205,7 +214,6 @@ Widget _heading(String text, [Widget? trailing]) => Padding(
 String _short(String name) => name.split(RegExp(r'[\\/]')).last;
 
 /// 下拉选择框:显示 [label],点开列出 [items],[selected] 那项打勾。
-/// 给了 [onRemove] 时每项(值不为空的)后面有个叉。
 class _Menu<T extends Object> extends StatelessWidget {
   const _Menu({
     required this.label,
@@ -213,7 +221,6 @@ class _Menu<T extends Object> extends StatelessWidget {
     required this.onSelected,
     this.selected,
     this.leading,
-    this.onRemove,
   });
 
   final String label;
@@ -221,7 +228,6 @@ class _Menu<T extends Object> extends StatelessWidget {
   final T? selected;
   final ValueChanged<T> onSelected;
   final Widget? leading;
-  final ValueChanged<T>? onRemove;
 
   @override
   Widget build(BuildContext context) => PopupMenuButton<T>(
@@ -234,7 +240,7 @@ class _Menu<T extends Object> extends StatelessWidget {
       maxHeight: 420,
     ),
     onSelected: onSelected,
-    itemBuilder: (menu) => [
+    itemBuilder: (_) => [
       for (final item in items)
         PopupMenuItem<T>(
           value: item.value,
@@ -256,56 +262,50 @@ class _Menu<T extends Object> extends StatelessWidget {
                   style: const TextStyle(fontSize: 12.5),
                 ),
               ),
-              if (onRemove != null && item.value != '')
-                IconButton(
-                  tooltip: tr('删除'),
-                  iconSize: 14,
-                  visualDensity: VisualDensity.compact,
-                  color: PennaColors.slate400,
-                  icon: const Icon(Icons.close),
-                  onPressed: () {
-                    onRemove!(item.value);
-                    Navigator.pop(menu);
-                  },
-                ),
             ],
           ),
         ),
     ],
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-      decoration: BoxDecoration(
-        color: PennaColors.card,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: PennaColors.border),
-      ),
-      child: Row(
-        children: [
-          if (leading != null) ...[leading!, const SizedBox(width: 8)],
-          Expanded(
-            child: Text(
-              label,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12),
-            ),
-          ),
-          Icon(Icons.unfold_more, size: 14, color: PennaColors.slate400),
-        ],
-      ),
-    ),
+    child: _menuBox(label, leading),
   );
 }
+
+/// 下拉框收起时的样子:边框里一行字,右边上下箭头。
+Widget _menuBox(String label, Widget? leading) => Container(
+  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+  decoration: BoxDecoration(
+    color: PennaColors.card,
+    borderRadius: BorderRadius.circular(6),
+    border: Border.all(color: PennaColors.border),
+  ),
+  child: Row(
+    children: [
+      if (leading != null) ...[leading, const SizedBox(width: 8)],
+      Expanded(
+        child: Text(
+          label,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 12),
+        ),
+      ),
+      Icon(Icons.unfold_more, size: 14, color: PennaColors.slate400),
+    ],
+  ),
+);
 
 /// 一个 LoRA:开关(加载器有开关时)、名字、权重(− 数字 +)、去掉。
 class _LoraRow extends StatelessWidget {
   const _LoraRow({
     super.key,
+    required this.index,
     required this.slot,
     required this.onOn,
     required this.onStrength,
     required this.onRemove,
   });
 
+  /// 第几个(拖动把手要知道)。
+  final int index;
   final LoraSlot slot;
   final ValueChanged<bool> onOn;
   final ValueChanged<double> onStrength;
@@ -325,6 +325,17 @@ class _LoraRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
+          ReorderableDragStartListener(
+            index: index,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.grab,
+              child: Icon(
+                Icons.drag_indicator,
+                size: 14,
+                color: PennaColors.slate400,
+              ),
+            ),
+          ),
           if (slot.canToggle)
             SizedBox.square(
               dimension: 22,

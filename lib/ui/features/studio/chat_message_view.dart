@@ -4,12 +4,13 @@ import 'package:flutter/services.dart';
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/characters/character_dict.dart';
 import '../../../core/harness/chat_peek.dart';
-import '../../../core/harness/comfyui.dart' show splitGenerate;
+import '../../../core/harness/comfyui.dart' show isVideoFile, splitGenerate;
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
 import '../../../core/harness/manga/manga_script.dart' show storyboardTag;
 import '../../../core/harness/notebook_tags.dart';
+import '../../../core/harness/soul_tags.dart';
 import '../../../core/harness/llm_log.dart';
 import '../../../core/harness/piercing_document.dart';
 import '../../../core/harness/providers/llm_http.dart' show LlmCut;
@@ -17,15 +18,18 @@ import '../../../core/harness/tags/tag_search.dart';
 import '../../../core/harness/thinking.dart';
 import '../../../core/harness/web_search.dart';
 import '../../../data/services/skill_store.dart';
+import '../../../data/services/soul_store.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'attachment_view.dart';
 import 'comfy_progress_view.dart';
+import 'comfy_video_tile.dart';
 import 'layout_card.dart';
 import 'markdown_text.dart';
 import 'mention.dart';
 import 'option_pick.dart';
 import 'skill_card.dart';
+import 'soul_notice.dart';
 import 'studio_view_model.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
@@ -82,6 +86,7 @@ class ChatMessageView extends StatelessWidget {
     this.onReuseAttachment,
     this.draftSections = const [],
     this.comfy,
+    this.soul,
     this.onGenerate,
   });
 
@@ -90,6 +95,9 @@ class ChatMessageView extends StatelessWidget {
 
   /// 出图的进度:这条回复要的图正在出时显示在它下面。
   final ComfyRunner? comfy;
+
+  /// PennaSoul:这条回复记了东西时,下面出「已加入 PennaSoul 记录」(能撤销)。
+  final SoulStore? soul;
 
   /// 点了「出图」:回复下面的(null,用出图标签里的提示词)或成稿卡片上的(那份成稿)。
   /// 为 null 时没有这些按钮(区域控制的对话)。
@@ -188,14 +196,26 @@ class ChatMessageView extends StatelessWidget {
   List<Widget> _images(bool asked) {
     final runner = comfy;
     return [
-      if (message.images.isNotEmpty) ...[
+      if (message.images.any((p) => !isVideoFile(p))) ...[
         const SizedBox(height: 10),
         AttachmentStrip(
           attachments: [
-            for (final p in message.images) comfyImageAttachment(p),
+            for (final p in message.images)
+              if (!isVideoFile(p)) comfyImageAttachment(p),
           ],
           onReuse: onReuseAttachment,
           height: _generatedHeight,
+        ),
+      ],
+      if (message.images.any(isVideoFile)) ...[
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final p in message.images.where(isVideoFile))
+              ComfyVideoTile(path: p, height: _generatedHeight * 0.6),
+          ],
         ),
       ],
       if (runner != null && !streaming)
@@ -254,10 +274,12 @@ class ChatMessageView extends StatelessWidget {
       comfySetTag,
     );
     // 记事本的两个标签:读的走工具循环,存的说完才存,都不显示。
+    // PennaSoul 的两个标签同样说完才做,记了的在下面另画提示条。
+    final souled = splitSoul(model.prose);
     final peeked = splitToolTag(
       splitSaveNote(
         splitPeek(
-          splitPeek(model.prose, readSideChat).prose,
+          splitPeek(souled.prose, readSideChat).prose,
           readMainChat,
         ).prose,
       ).prose,
@@ -404,6 +426,12 @@ class ChatMessageView extends StatelessWidget {
         ),
       ],
       ..._images(generate.asked),
+      if (soul != null && !streaming && souled.remember.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        PopIn(
+          child: SoulNotice(soul: soul!, notes: souled.remember),
+        ),
+      ],
       // 给用户点的选项:点一下就当成他的回答发出去。
       // 这条回复已经把成稿写出来了就不显示:没有什么还要他先点头的。
       // 问挑哪几段,当前页却一段都没有:说一声,让用户自己打字回答。

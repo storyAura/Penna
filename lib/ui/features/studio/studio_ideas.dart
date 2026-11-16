@@ -9,8 +9,12 @@ const _ideaPopular = 2000;
 /// Preset 正文最多带多少字给模型参考画风。
 const _ideaPresetMax = 4000;
 
+/// PennaSoul 的偏好最多带几条给模型。
+const _ideaLikes = 8;
+
 /// 新对话的空白处摆几条创作点子:用 Agent 的模型现想,点一条填进输入框。
-/// 对话里一有话就作废,下一场新对话重想。
+/// 点子的类型照眼前的 Preset 来(2026-11-16 用户要求:写视频的 Preset 出视频的点子),
+/// 往 PennaSoul 记着的偏好上靠。对话里一有话就作废,下一场新对话重想;换了 Preset 也重想。
 extension StudioIdeas on StudioViewModel {
   /// 眼前的点子;还没要或正在要时是 null,要过但没要到是空的。
   List<String>? get ideaList => _ideas;
@@ -23,8 +27,12 @@ extension StudioIdeas on StudioViewModel {
 
   /// 空对话显示时调:还没有点子就去要一份。可以在 build 里调,要到之前不通知。
   void wantIdeas() {
-    if (!_ideasOn || _ideas != null || _ideasBusy) return;
+    if (!_ideasOn) return;
+    final preset = config.config.activePresetId;
+    if ((_ideas != null || _ideasBusy) && _ideasFor != preset) forgetIdeas();
+    if (_ideas != null || _ideasBusy) return;
     _ideasBusy = true;
+    _ideasFor = preset;
     unawaited(_fetchIdeas(_ideasRun));
   }
 
@@ -52,7 +60,11 @@ extension StudioIdeas on StudioViewModel {
         _requests(cfg, _usable(cfg.agentChain), preset, [
           {
             'role': 'system',
-            'content': _ideasPrompt(cfg.language, preset.systemPrompt),
+            'content': _ideasPrompt(
+              cfg.language,
+              preset.systemPrompt,
+              soul?.entries ?? const [],
+            ),
           },
           {'role': 'user', 'content': _ideasAsk(_ideaCast(Random()))},
         ], piercing: ''),
@@ -110,7 +122,7 @@ extension StudioIdeas on StudioViewModel {
       : '这批的角色已经抽好,每条用一个,按这个顺序:${cast.join('、')}。'
             '名字照写,括号里的作品名不用写进点子。';
 
-  String _ideasPrompt(String language, String preset) {
+  String _ideasPrompt(String language, String preset, List<SoulEntry> memory) {
     final what = manga != null
         ? '「用某角色画一篇什么漫画」,带一个情节转折'
         : layoutOnly
@@ -123,12 +135,21 @@ extension StudioIdeas on StudioViewModel {
       _ => '简体中文',
     };
     final style = preset.trim();
+    final likes = [
+      for (final e in memory)
+        if (e.kind == soulLike) e,
+    ].take(_ideaLikes);
     return [
       if (style.isNotEmpty)
-        '【用户当前的 Preset】下面是用户写词时用的设定,只拿来参考画风和题材取向,'
-            '不要照它的输出格式写:\n'
+        '【用户当前的 Preset】下面是用户这会儿用的设定。点子是什么、题材和句式都照它的用途来:'
+            '它写视频提示词,点子就是一段视频(谁、做什么动作、镜头怎么走);写写实摄影就是一张照片;'
+            '写插画就是一幅插画。不要照它的输出格式写:\n'
             '${style.length > _ideaPresetMax ? style.substring(0, _ideaPresetMax) : style}',
-      '你给文生图提示词工作台的用户出创作点子。写 $_ideaCount 条,句式是$what,'
+      if (likes.isNotEmpty)
+        '【用户的偏好】平时常用的(次数多的更重)。一半左右的点子往这些上靠,别条条都一样:\n'
+            '${likes.map((e) => '- ${e.text}(${e.hits} 次)').join('\n')}',
+      '你给提示词工作台的用户出创作点子。写 $_ideaCount 条,句式默认是$what'
+          '(Preset 是写视频之类别的用途时,照它改成那种说法),'
           '例如「给芙莉莲画一套夏日浴衣」「用阿尼亚画她第一次上烹饪课」。'
           '点子要贴着角色本身:服装、表情、日常场景、和别人的互动、季节节日;画风和题材跟上面的 Preset 一致。'
           '不要赛博朋克、全息、霓虹、未来科技、机甲、太空这类科幻元素,除非角色本来就出自这类作品。'

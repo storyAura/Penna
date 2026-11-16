@@ -180,10 +180,37 @@ extension ComfyFlows on ComfyRunner {
           '${_modelsOf(c.id).isEmpty ? '模型未知' : _modelsOf(c.id).join('、')}',
   ].join('\n');
 
+  /// 眼前这个工作流的 LoRA 配置(各工作流各是各的),按显示的先后。
+  List<LoraPreset> get loraPresets => _settings.presetsOf(flowId);
+
   /// 眼前用的那套 LoRA 配置;没用哪一套(或已删掉)是 null。
-  LoraPreset? get loraPreset => _settings.loraPresets
-      .where((p) => p.name == _settings.loraPreset)
+  LoraPreset? get loraPreset => loraPresets
+      .where((p) => p.name == _settings.loraPresetOf[flowId])
       .firstOrNull;
+
+  /// 拖动眼前这个工作流的 LoRA 配置换顺序。
+  void moveLoraPreset(int from, int to) {
+    _put(_settings.moveLoraPreset(flowId, from, to));
+    _changed();
+  }
+
+  /// 眼前这个工作流要上传素材的节点(见 [uploadSlots])。
+  List<UploadSlot> get uploads =>
+      workflow == null ? const [] : uploadSlots(workflow!);
+
+  /// 眼前这个工作流各节点选好的文件:节点编号 → 本机路径。
+  Map<String, String> get uploadFiles => _settings.inputs[flowId] ?? const {};
+
+  /// 给 [node] 选一个要上传的文件(null 是不传,用工作流里原来写的)。
+  void setUpload(String node, String? path) {
+    _put(_settings.putInput(flowId, node, path));
+    _changed();
+  }
+
+  /// 记下眼前这个工作流用的是哪一套。
+  void _useLoraPreset(String name) => _put(
+    _settings.copyWith(loraPresetOf: {..._settings.loraPresetOf, flowId: name}),
+  );
 
   /// 眼前工作流的 LoRA 和用着的那套配置不一样了(要存才留得住)。
   bool get loraPresetChanged {
@@ -205,10 +232,13 @@ extension ComfyFlows on ComfyRunner {
     if (wf == null) return tr('还没连上 ComfyUI');
     if (name.trim().isEmpty) return tr('名字不能为空');
     _put(
-      _settings
-          .putLoraPreset((name: name.trim(), loras: _lorasOf(wf)))
-          .copyWith(loraPreset: name.trim()),
+      _settings.putLoraPreset((
+        flow: flowId,
+        name: name.trim(),
+        loras: _lorasOf(wf),
+      )),
     );
+    _useLoraPreset(name.trim());
     _changed();
     return null;
   }
@@ -244,13 +274,13 @@ extension ComfyFlows on ComfyRunner {
       return next;
     });
     if (problem != null) return problem;
-    _put(_settings.copyWith(loraPreset: preset.name));
+    _useLoraPreset(preset.name);
     _changed();
     return null;
   }
 
   void removeLoraPreset(String name) {
-    _put(_settings.removeLoraPreset(name));
+    _put(_settings.removeLoraPreset(flowId, name));
     _changed();
   }
 }

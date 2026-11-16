@@ -20,6 +20,7 @@ import '../../../core/harness/manga/manga_script.dart';
 import '../../../core/harness/notebook_tags.dart';
 import '../../../core/harness/llm_log.dart';
 import '../../../core/harness/piercing_document.dart';
+import '../../../core/harness/soul_tags.dart';
 import '../../../core/harness/providers/grok_auth.dart';
 import '../../../core/harness/providers/llm_router.dart';
 import '../../../core/harness/providers/openai_provider.dart';
@@ -33,6 +34,7 @@ import '../../../data/services/character_store.dart';
 import '../../../data/services/config_service.dart';
 import '../../../data/services/notebook_store.dart';
 import '../../../data/services/skill_store.dart';
+import '../../../data/services/soul_store.dart';
 import '../../../data/services/translate_chain.dart';
 import '../../../data/services/translate_engines.dart';
 import '../layout/layout_board.dart';
@@ -64,6 +66,7 @@ part 'studio_poses.dart';
 part 'studio_prompts.dart';
 part 'studio_rewrite.dart';
 part 'studio_series_refs.dart';
+part 'studio_soul.dart';
 part 'studio_skills.dart';
 part 'studio_storage.dart';
 part 'studio_triggers.dart';
@@ -231,6 +234,10 @@ class StudioViewModel extends ChangeNotifier {
   /// 同 [local] 建好之后才接上。
   NotebookStore? notebooks;
 
+  /// PennaSoul:用户的长期约定和偏好([StudioSoul])。同 [local] 建好之后才接上;
+  /// 区域控制那场对话和主工作区共用一份。
+  SoulStore? soul;
+
   /// 区域控制工作台的那场对话(`layoutOnly`)。主工作区的 Agent 写 `<ask-layout>` 时,
   /// 把活转给它,等它把布局放到画板上,再把 JSON 拿回主工作区的新系列。
   /// 和 [local] 一样建好之后才接上;没有就由主工作区的 Agent 自己写 `<layout>`。
@@ -262,6 +269,9 @@ class StudioViewModel extends ChangeNotifier {
   List<String>? _ideas;
   bool _ideasBusy = false;
   int _ideasRun = 0;
+
+  /// 眼前这份点子是按哪个 Preset 想的(换了 Preset 就重想)。
+  String? _ideasFor;
 
   /// 布局页右边那场对话用的:系统提示只讲布局,回复里的 `<layout>` 放到 [layout] 上,
   /// 不往成稿里送。界面和工作台的对话是同一个 `ChatPane`。

@@ -443,6 +443,7 @@ extension StudioContext on StudioViewModel {
       _siblingPages,
       _seriesRefPrompt,
       _notebookPrompt,
+      _soulPrompt,
       // 副聊天说过话才提:模型知道有这么个地方、怎么去看。
       if (side?.messages.isNotEmpty ?? false) sideNoteForMain,
       _namingNote('draft'),
@@ -467,6 +468,7 @@ extension StudioContext on StudioViewModel {
         '${preset.systemPrompt}',
     builtinSkillList.firstWhere((s) => s.id == 'character-lib').body,
     _characterPrompt,
+    _soulPrompt,
     _layoutPagesPrompt,
     webSearchGuide,
     _comfyPrompt,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/services/config_service.dart';
+import '../../../data/services/soul_store.dart';
 import '../../core/smooth_scroll.dart';
 import '../../core/theme.dart';
 import '../../core/tour_spot.dart';
@@ -14,6 +15,7 @@ import 'settings_comfy_section.dart';
 import 'settings_extension_sections.dart';
 import 'settings_llm_section.dart';
 import 'settings_local_section.dart';
+import 'settings_soul_section.dart';
 import 'settings_translate_section.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
@@ -25,6 +27,7 @@ List<_Tab> get _tabs => [
   (icon: Icons.translate, label: tr('翻译')),
   (icon: Icons.theater_comedy_outlined, label: 'Preset'),
   (icon: Icons.school_outlined, label: 'Skills'),
+  (icon: Icons.favorite_border, label: 'PennaSoul'),
   (icon: Icons.tune, label: tr('参数与工具')),
   (icon: Icons.electrical_services, label: 'MCP'),
   (icon: Icons.brush_outlined, label: 'ComfyUI'),
@@ -41,6 +44,7 @@ class SettingsPage extends StatefulWidget {
     required this.skills,
     required this.local,
     required this.comfy,
+    required this.soul,
     this.onTutorial,
   });
 
@@ -51,6 +55,7 @@ class SettingsPage extends StatefulWidget {
   final SkillStore skills;
   final LocalModel local;
   final ComfyRunner comfy;
+  final SoulStore soul;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -149,11 +154,12 @@ class _SettingsPageState extends State<SettingsPage> {
                     1 => TranslateSection(service: service),
                     2 => PresetSection(service: service),
                     3 => SkillsSection(service: service, skills: widget.skills),
-                    4 => AbilitySection(service: service),
-                    5 => McpSection(service: service),
-                    6 => ComfySection(service: service, runner: widget.comfy),
-                    7 => QuickActionSection(service: service),
-                    8 => LocalSection(service: service, local: widget.local),
+                    4 => SoulSection(soul: widget.soul),
+                    5 => AbilitySection(service: service),
+                    6 => McpSection(service: service),
+                    7 => ComfySection(service: service, runner: widget.comfy),
+                    8 => QuickActionSection(service: service),
+                    9 => LocalSection(service: service, local: widget.local),
                     _ => AppSection(service: service),
                   },
                 ),

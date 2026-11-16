@@ -23,7 +23,8 @@ String _paramName(String key) => switch (key) {
   _ => key,
 };
 
-/// 侧栏里改工作流的几样:模型、画面大小、采样器参数。
+/// 侧栏里工作流的几样:模型(只看,不能改:换模型就换工作流)、画面大小、
+/// 采样器参数(默认收起)。
 List<Widget> _params(
   BuildContext context,
   ComfyRunner runner,
@@ -40,14 +41,6 @@ List<Widget> _params(
         label: m.key == 'unet_name' ? 'UNet' : 'Checkpoint',
         value: _short(m.value),
         tooltip: '${m.value}\n${m.type}',
-        onTap: () async {
-          final names = await runner.optionsFor(m.type, m.key);
-          if (!context.mounted) return;
-          final picked = await _pickName(context, tr('换模型'), names);
-          if (picked != null) {
-            report(runner.edit((wf) => setInput(wf, m.node, m.key, picked)));
-          }
-        },
       ),
     if (size != null) ...[
       _heading(tr('画面大小')),
@@ -84,33 +77,87 @@ List<Widget> _params(
         },
       ),
     ],
-    for (final s in samplers) ...[
-      _heading(samplers.length > 1 ? '${tr('采样')} · #${s.node}' : tr('采样')),
-      for (final MapEntry(:key, :value) in s.values.entries)
-        _ParamRow(
-          label: _paramName(key),
-          value: '$value',
-          onTap: () async {
-            final Object? next;
-            if (value is String) {
-              final names = await runner.optionsFor(s.type, key);
-              if (!context.mounted) return;
-              next = await _pickName(context, _paramName(key), names);
-            } else {
-              final asked = await _askText(
-                context,
-                _paramName(key),
-                initial: '$value',
-              );
-              next = num.tryParse(asked?.trim() ?? '');
-            }
-            if (next != null) {
-              report(runner.edit((wf) => setInput(wf, s.node, key, next!)));
-            }
-          },
-        ),
-    ],
+    for (final s in samplers)
+      _Fold(
+        key: ValueKey('sampler/${s.node}'),
+        title: samplers.length > 1 ? '${tr('采样')} · #${s.node}' : tr('采样'),
+        children: [
+          for (final MapEntry(:key, :value) in s.values.entries)
+            _ParamRow(
+              label: _paramName(key),
+              value: '$value',
+              onTap: () async {
+                final Object? next;
+                if (value is String) {
+                  final names = await runner.optionsFor(s.type, key);
+                  if (!context.mounted) return;
+                  next = await _pickName(context, _paramName(key), names);
+                } else {
+                  final asked = await _askText(
+                    context,
+                    _paramName(key),
+                    initial: '$value',
+                  );
+                  next = num.tryParse(asked?.trim() ?? '');
+                }
+                if (next != null) {
+                  report(runner.edit((wf) => setInput(wf, s.node, key, next!)));
+                }
+              },
+            ),
+        ],
+      ),
   ];
+}
+
+/// 一块参数:标题一行,点了展开 / 收起,默认收起。
+class _Fold extends StatefulWidget {
+  const _Fold({super.key, required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  State<_Fold> createState() => _FoldState();
+}
+
+class _FoldState extends State<_Fold> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      InkWell(
+        borderRadius: BorderRadius.circular(4),
+        onTap: () => setState(() => _open = !_open),
+        child: _heading(
+          widget.title,
+          AnimatedRotation(
+            turns: _open ? 0.5 : 0,
+            duration: Motion.of(context, Motion.base),
+            curve: Motion.expand,
+            child: Icon(
+              Icons.expand_more,
+              size: 16,
+              color: PennaColors.slate400,
+            ),
+          ),
+        ),
+      ),
+      AnimatedSize(
+        duration: Motion.of(context, Motion.base),
+        curve: Motion.expand,
+        alignment: Alignment.topCenter,
+        child: _open
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: widget.children,
+              )
+            : const SizedBox(width: double.infinity),
+      ),
+    ],
+  );
 }
 
 /// 一行参数:左边名字,右边现在的值,点了改。
@@ -118,13 +165,15 @@ class _ParamRow extends StatelessWidget {
   const _ParamRow({
     required this.label,
     required this.value,
-    required this.onTap,
+    this.onTap,
     this.tooltip,
   });
 
   final String label, value;
   final String? tooltip;
-  final VoidCallback onTap;
+
+  /// 点了改;null 是只看(没有笔的图标)。
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => InkWell(
@@ -152,8 +201,10 @@ class _ParamRow extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 4),
-          Icon(Icons.edit_outlined, size: 12, color: PennaColors.slate400),
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            Icon(Icons.edit_outlined, size: 12, color: PennaColors.slate400),
+          ],
         ],
       ),
     ),

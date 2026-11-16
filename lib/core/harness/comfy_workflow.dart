@@ -319,6 +319,33 @@ ComfyWorkflow setLora(
   return out;
 }
 
+/// 拖动 LoRA 换顺序:第 [from] 个挪到第 [to] 个([to] 是挪完之后的位置)。
+/// 各槽位(节点、输入)不动,名字、权重、开关按新的先后重新填一遍。
+// ponytail: 挪进没有开关的槽位时,关着的 LoRA 会变成开着(那种加载器没有开关可关)。
+ComfyWorkflow moveLora(ComfyWorkflow wf, int from, int to) {
+  final slots = loraSlots(wf);
+  final order = [...slots];
+  order.insert(to.clamp(0, slots.length - 1), order.removeAt(from));
+  var out = _copy(wf);
+  for (final (i, slot) in slots.indexed) {
+    final want = order[i];
+    final inputs = _inputsOf(out, slot.node);
+    if (inputs[slot.key] case final Map nested) {
+      nested['lora'] = want.name;
+    } else {
+      inputs[slot.key] = want.name;
+    }
+    out = setLora(
+      out,
+      slot.node,
+      slot.key,
+      strength: want.strength,
+      on: want.on,
+    );
+  }
+  return out;
+}
+
 String _nextId(ComfyWorkflow wf) =>
     '${wf.keys.map(int.tryParse).nonNulls.fold(0, (a, b) => a > b ? a : b) + 1}';
 

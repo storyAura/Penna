@@ -38,17 +38,16 @@ extension StudioChat on StudioViewModel {
     _toolRounds = 0;
     _wakes = 0;
     _foundTags.clear();
-    return _startReply([
-      ..._messages,
-      ChatMessage(
-        fromUser: true,
-        text: m.text,
-        time: time,
-        skillIds: m.skillIds,
-        attachments: m.attachments,
-        quote: m.quote,
-      ),
-    ], time);
+    final message = ChatMessage(
+      fromUser: true,
+      text: m.text,
+      time: time,
+      skillIds: m.skillIds,
+      attachments: m.attachments,
+      quote: m.quote,
+    );
+    _noteSoulUses(message);
+    return _startReply([..._messages, message], time);
   }
 
   /// 把排着的第 [i] 条撤掉。
@@ -342,6 +341,7 @@ extension StudioChat on StudioViewModel {
             }
             _deliverCharacters();
             _deliverNotes();
+            _deliverSoul();
             // 透视在 _deliverLayout 里先放(没有布局时它自己放)。
             _deliverLayout();
             _deliverLayers();

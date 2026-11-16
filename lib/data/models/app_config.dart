@@ -7,6 +7,7 @@ import '../../l10n/l10n.dart';
 export 'comfy_settings.dart';
 export 'mcp_server.dart';
 
+part 'minimax_h3_preset.dart';
 part 'moss_preset.dart';
 
 /// 区域控制交出去的 summary.caption 最前面默认加的质量词(属性栏里能改)。
@@ -339,6 +340,7 @@ const defaultPresetId = mossPresetId;
 
 const factoryPresets = [
   mossPreset,
+  minimaxH3Preset,
   AgentPreset(
     id: 'anime',
     name: '动漫风格',
@@ -496,7 +498,7 @@ class AppConfig {
       presets: presets.isEmpty
           ? factoryPresets
           : ((m['presetsVersion'] as num?) ?? 1) < _presetsVersion
-          ? _upgradePresets(presets)
+          ? _upgradePresets(presets, (m['presetsVersion'] as num?) ?? 1)
           : presets,
       // 测过「MOSS 视觉」测试项的(只有测试版有过这个开关)直接用上它。
       activePresetId: m['trialPreset'] == true
@@ -996,7 +998,8 @@ bool isFactoryPreset(String id) => factoryPresets.any((p) => p.id == id);
 
 /// 内置 Preset 的第几版。第 2 版(2026-11-05):去掉和 Skill 重了的四个
 /// (协同写词、反推润色、意译合稿、自由改稿,活由「写提示词」「照图写」管),加上「MOSS 视觉」。
-const _presetsVersion = 2;
+/// 第 3 版(2026-11-16):加上「MiniMax H3 视频」。
+const _presetsVersion = 3;
 
 /// 退役的内置 Preset 当时的系统提示:旧设置里一字没改的才删,改过的是用户的东西,留着。
 const _retiredPresetPrompts = <String, String>{
@@ -1012,9 +1015,11 @@ const _retiredPresetPrompts = <String, String>{
   'free': '你是提示词改稿助手。按用户的要求大胆改写、扩写或给出多个变体,每个变体单独成段并用一句话说明差异。$_positiveOnlyV1',
 };
 
-/// 旧设置升到当前这一版。只跑一次:写回去时带着 `presetsVersion`。
-List<AgentPreset> _upgradePresets(List<AgentPreset> saved) => [
-  if (!saved.any((p) => p.id == mossPresetId)) mossPreset,
+/// 旧设置从第 [from] 版升到当前这一版。只跑一次:写回去时带着 `presetsVersion`。
+/// 只加那一版之后才有的,之前删掉的不再加回来。
+List<AgentPreset> _upgradePresets(List<AgentPreset> saved, num from) => [
+  if (from < 2 && !saved.any((p) => p.id == mossPresetId)) mossPreset,
+  if (from < 3 && !saved.any((p) => p.id == minimaxH3PresetId)) minimaxH3Preset,
   for (final p in saved)
     if (_retiredPresetPrompts[p.id] != p.systemPrompt) p,
 ];

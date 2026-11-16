@@ -1355,7 +1355,7 @@ void main() {
     });
   });
 
-  test('内置 Preset 第 2 版:旧设置里没改过的四个删掉、改过的留着,补上 MOSS 视觉;只升一次', () {
+  test('内置 Preset 升版:旧设置里没改过的四个删掉、改过的留着,补上 MOSS 视觉和 MiniMax H3;只升一次', () {
     Map<String, Object> preset(String id, String prompt) => {
       'id': id,
       'name': id,
@@ -1376,13 +1376,27 @@ void main() {
     });
     expect(
       [for (final p in old.presets) p.id],
-      [mossPresetId, 'free', 'story'],
+      [mossPresetId, minimaxH3PresetId, 'free', 'story'],
+    );
+    // 第 2 版升上来:只补「MiniMax H3 视频」,删掉的 MOSS 视觉不加回来。
+    expect(
+      [
+        for (final p in AppConfig.fromJson({
+          'presets': [preset('story', '故事')],
+          'presetsVersion': 2,
+        }).presets)
+          p.id,
+      ],
+      [minimaxH3PresetId, 'story'],
     );
     // 用的那个被删了:落到第一个。
     expect(old.activePreset.id, mossPresetId);
 
     // 写回去带着版本号:用户删掉 MOSS 视觉后不会再被加回来。
-    final saved = old.removePreset(mossPresetId).toJson();
+    final saved = old
+        .removePreset(mossPresetId)
+        .removePreset(minimaxH3PresetId)
+        .toJson();
     expect(
       [for (final p in AppConfig.fromJson(saved).presets) p.id],
       ['free', 'story'],

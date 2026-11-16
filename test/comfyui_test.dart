@@ -211,6 +211,134 @@ void main() {
     expect(parseApiWorkflow(jsonEncode(_flux)).length, 5);
   });
 
+  test('出图时连视频一起要:SaveVideo 记在 images、Video Combine 记在 gifs', () {
+    final outputs = {
+      '9': {
+        'images': [
+          {'filename': 'a.mp4', 'type': 'output'},
+        ],
+        'animated': [true],
+      },
+      '10': {
+        'gifs': [
+          {'filename': 'b.webm', 'type': 'output', 'format': 'video/webm'},
+        ],
+      },
+    };
+    expect(pickOutputImages(outputs, videos: true).map((f) => f['filename']), [
+      'a.mp4',
+      'b.webm',
+    ]);
+    // 档案库的图片分区不要 gifs 里的视频。
+    expect(pickOutputImages(outputs).map((f) => f['filename']), ['a.mp4']);
+    expect(isVideoFile('x/Penna-1.MP4'), isTrue);
+    expect(isVideoFile('a.png'), isFalse);
+  });
+
+  test('认出要上传素材的节点:图片、视频、音频,模型加载器不算', () {
+    final slots = uploadSlots({
+      '1': {
+        'class_type': 'LoadImage',
+        'inputs': {'image': 'a.png'},
+        '_meta': {'title': '人物'},
+      },
+      '2': {
+        'class_type': 'VHS_LoadVideo',
+        'inputs': {'video': 'v.mp4', 'frame_load_cap': 0},
+      },
+      '3': {
+        'class_type': 'LoadAudio',
+        'inputs': {'audio': 'a.wav'},
+      },
+      '4': {
+        'class_type': 'LoraLoader',
+        'inputs': {'lora_name': 'x.safetensors'},
+      },
+      '5': {
+        'class_type': 'LoadImage',
+        'inputs': {
+          'image': ['9', 0],
+        },
+      },
+    });
+    expect(slots.map((s) => (s.node, s.kind)), [
+      ('1', 'image'),
+      ('2', 'video'),
+      ('3', 'audio'),
+    ]);
+    expect(slots.first.title, '人物');
+    expect(slots.first.value, 'a.png');
+  });
+
+  test('LoRA 配置按工作流分开;旧设置的每个工作流各拿一份;复制、拖动工作流', () {
+    final old = ComfySettings.fromJson({
+      'flows': [
+        {'id': 'a', 'name': 'A', 'text': '{}'},
+        {'id': 'b', 'name': 'B', 'text': '{}'},
+      ],
+      'flowId': 'b',
+      'loraPresets': [
+        {
+          'name': '柔和',
+          'loras': [
+            {'name': 'x.safetensors', 'strength': 0.5, 'on': true},
+          ],
+        },
+      ],
+      'loraPreset': '柔和',
+    });
+    expect(old.presetsOf('a').single.name, '柔和');
+    expect(old.presetsOf('b').single.name, '柔和');
+    expect(old.loraPresetOf, {'b': '柔和'});
+    // 删了 a 的那一套,b 的还在。
+    final cut = old.removeLoraPreset('a', '柔和');
+    expect(cut.presetsOf('a'), isEmpty);
+    expect(cut.presetsOf('b'), hasLength(1));
+    // 存盘读回一样。
+    final again = ComfySettings.fromJson(jsonDecode(jsonEncode(old.toJson())));
+    expect(again.toJson(), old.toJson());
+    // 复制 b 放在它下面,配置、用着哪一套、要上传的素材都跟着复制。
+    final copied = old
+        .putInput('b', '20', 'D:/ref.png')
+        .copyFlow('b', newId: 'c', name: 'B 副本');
+    expect(copied.flows.map((f) => f.id), ['a', 'b', 'c']);
+    expect(copied.presetsOf('c').single.name, '柔和');
+    expect(copied.loraPresetOf['c'], '柔和');
+    expect(copied.inputs['c'], {'20': 'D:/ref.png'});
+    // 拖动换顺序;删掉工作流时它的配置一起删。
+    expect(copied.moveFlow(2, 0).flows.map((f) => f.id), ['c', 'a', 'b']);
+    final removed = copied.removeFlow('c');
+    expect(removed.presetsOf('c'), isEmpty);
+    expect(removed.inputs.containsKey('c'), isFalse);
+    // 拖动同一个工作流的配置换顺序。
+    final two = old.putLoraPreset((flow: 'b', name: '浓', loras: const []));
+    expect(two.moveLoraPreset('b', 1, 0).presetsOf('b').map((p) => p.name), [
+      '浓',
+      '柔和',
+    ]);
+  });
+
+  test('拖动 LoRA 换顺序:槽位不动,名字、权重、开关跟着走', () {
+    final wf = {
+      '1': {
+        'class_type': 'Power Lora Loader (rgthree)',
+        'inputs': {
+          'lora_1': {'on': true, 'lora': 'a.safetensors', 'strength': 1.0},
+          'lora_2': {'on': false, 'lora': 'b.safetensors', 'strength': 0.5},
+          'lora_3': {'on': true, 'lora': 'c.safetensors', 'strength': 0.8},
+        },
+      },
+    };
+    final out = loraSlots(moveLora(wf, 2, 0));
+    expect(out.map((l) => l.name), [
+      'c.safetensors',
+      'a.safetensors',
+      'b.safetensors',
+    ]);
+    expect(out.map((l) => l.on), [true, true, false]);
+    expect(out.map((l) => l.strength), [0.8, 1.0, 0.5]);
+  });
+
   test('有存下来的图就不要预览图', () {
     final files = pickOutputImages({
       '9': {
@@ -230,6 +358,7 @@ void main() {
   group('假的 ComfyUI', () {
     late HttpServer server;
     late Map<String, Object?> queued;
+    String? uploaded;
     var polls = 0;
     final sockets = <WebSocket>[];
     Object? forgotten;
@@ -347,6 +476,15 @@ void main() {
                     },
             ),
           );
+        } else if (path == '/upload/image') {
+          uploaded = await utf8.decoder.bind(req).join();
+          res.write(
+            jsonEncode({
+              'name': 'penna-up.png',
+              'subfolder': 'pen',
+              'type': 'input',
+            }),
+          );
         } else if (path == '/view') {
           expect(req.uri.queryParameters['filename'], 'Penna_0001.png');
           res.add([1, 2, 3]);
@@ -377,6 +515,33 @@ void main() {
       final prompt = queued['prompt'] as Map;
       expect((prompt['6'] as Map)['inputs']['text'], 'a cat');
       expect((prompt['4'] as Map)['inputs']['ckpt_name'], 'm.safetensors');
+    });
+
+    test('出图前先传选好的图,换掉加载图片的节点', () async {
+      final dir = Directory.systemTemp.createTempSync('penna-up');
+      final file = File('${dir.path}/ref.png')..writeAsBytesSync([7, 7, 7]);
+      final wf = {
+        ...defaultWorkflow('m.safetensors'),
+        '20': {
+          'class_type': 'LoadImage',
+          'inputs': {'image': 'example.png'},
+        },
+        // 接到输出上,不然导入时会被当成没接线的节点去掉。
+        '21': {
+          'class_type': 'PreviewImage',
+          'inputs': {
+            'images': ['20', 0],
+          },
+        },
+      };
+      final client = ComfyClient('http://127.0.0.1:${server.port}')
+        ..poll = Duration.zero;
+      await client.run(jsonEncode(wf), 'edit', uploads: {'20': file.path});
+      final prompt = queued['prompt'] as Map;
+      expect((prompt['20'] as Map)['inputs']['image'], 'pen/penna-up.png');
+      expect(uploaded, contains('name="image"'));
+      expect(uploaded, contains('name="overwrite"'));
+      dir.deleteSync(recursive: true);
     });
 
     test('Agent 写了出图标签:出图,图贴回那条回复', () async {
@@ -604,13 +769,19 @@ void main() {
       // 删掉正用着的那一套,就不算用着哪一套了。
       runner.removeLoraPreset('柔和');
       expect(runner.loraPreset, isNull);
-      // 设置存盘读回,用着哪一套也留着。
+      // 设置存盘读回,用着哪一套也留着(按工作流记)。
       expect(
         ComfySettings.fromJson(
-          service.config.comfy.copyWith(loraPreset: '加一个').toJson(),
-        ).loraPreset,
+          service.config.comfy
+              .copyWith(loraPresetOf: {runner.flowId: '加一个'})
+              .toJson(),
+        ).loraPresetOf[runner.flowId],
         '加一个',
       );
+      // 各工作流的配置互不相干:换到另一个工作流,看不到这边的。
+      runner.selectFlow('f2');
+      expect(runner.loraPresets, isEmpty);
+      expect(runner.loraPreset, isNull);
     });
 
     test('Agent 换成用那个模型的工作流再出图;换不成就不出图', () async {

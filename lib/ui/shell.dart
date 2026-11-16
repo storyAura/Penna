@@ -6,6 +6,7 @@ import '../data/services/archive_store.dart';
 import '../data/services/character_store.dart';
 import '../data/services/config_service.dart';
 import '../data/services/notebook_store.dart';
+import '../data/services/soul_store.dart';
 import '../data/services/skill_store.dart';
 import 'core/theme.dart';
 import 'core/version.dart';
@@ -115,6 +116,8 @@ class _AppShellState extends State<AppShell> {
     widget.vm.poses ??= _poses;
     widget.vm.archive ??= _archive;
     widget.vm.notebooks ??= _notebooks;
+    widget.vm.soul ??= SoulStore();
+    _layoutChat.soul ??= widget.vm.soul;
     _layoutChat.local ??= _local;
     _layoutChat.poses ??= _poses;
     _mangaChat.local ??= _local;
@@ -360,6 +363,7 @@ class _AppShellState extends State<AppShell> {
                           skills: widget.skills,
                           local: _local,
                           comfy: widget.vm.comfy,
+                          soul: widget.vm.soul!,
                           onTutorial: _startTour,
                         ),
                       ),
