@@ -12,6 +12,14 @@ typedef LlmUsage = ({int input, int cached, int output});
 /// 随某条消息发出的一张图片。
 typedef LlmImage = ({String mime, Uint8List bytes});
 
+/// 交给模型用的一个外接工具(MCP 服务的工具翻译过来的):[name] 只含字母、数字、下划线,
+/// [schema] 是参数的 JSON Schema。
+typedef LlmTool = ({
+  String name,
+  String description,
+  Map<String, Object?> schema,
+});
+
 /// 回复为什么没写完:到了输出上限、被接口拦下、接口没说写完连接就结束了。
 enum LlmCut { length, blocked, broken }
 
@@ -32,7 +40,68 @@ class LlmRequest {
     this.effort,
     this.onCut,
     this.serviceTier = '',
+    this.tools = const [],
+    this.toolsPrompt = '',
+    this.toolsNote = '',
   });
+
+  /// 外接工具(MCP)。两种给法,见 `llm_router.dart` 的 `streamChat`:
+  /// 接口支持原生函数调用时随请求发 [tools]([asNativeTools]),模型发回的函数调用由各接口
+  /// 换成 `<mcp-call>` 标签接在回复里;不支持时把怎么写标签的说明 [toolsPrompt]
+  /// 接进系统提示([asTextTools])。两条路出来的都是同一种标签。
+  final List<LlmTool> tools;
+
+  /// 文字标签那条路的说明:有哪些工具、参数表、标签怎么写。
+  final String toolsPrompt;
+
+  /// 原生函数调用那条路接在系统提示后面的一句(工具表已经随请求发了)。
+  final String toolsNote;
+
+  /// 走文字标签:不发 [tools],说明接进系统提示。
+  LlmRequest asTextTools() => _withTools(const [], toolsPrompt);
+
+  /// 走原生函数调用:发 [tools],系统提示只多一句。
+  LlmRequest asNativeTools() => _withTools(tools, toolsNote);
+
+  LlmRequest _withTools(List<LlmTool> tools, String note) {
+    final system = messages.isNotEmpty && messages.first['role'] == 'system';
+    return LlmRequest(
+      baseUrl: baseUrl,
+      model: model,
+      apiKey: apiKey,
+      // 有系统提示就接在它后面,没有就另起一条(图片的下标跟着挪一位)。
+      messages: note.isEmpty
+          ? messages
+          : system
+          ? [
+              {
+                'role': 'system',
+                'content': '${messages.first['content']}\n\n$note',
+              },
+              ...messages.skip(1),
+            ]
+          : [
+              {'role': 'system', 'content': note},
+              ...messages,
+            ],
+      images: note.isEmpty || system
+          ? images
+          : {
+              for (final MapEntry(:key, :value) in images.entries)
+                key + 1: value,
+            },
+      temperature: temperature,
+      topP: topP,
+      protocol: protocol,
+      token: token,
+      webSearch: webSearch,
+      onUsage: onUsage,
+      effort: effort,
+      onCut: onCut,
+      serviceTier: serviceTier,
+      tools: tools,
+    );
+  }
 
   /// Google 接口的用量档位:空串是自动(不传);standard、flex、priority 见 `gemini_provider.dart`。
   final String serviceTier;
@@ -59,6 +128,9 @@ class LlmRequest {
     effort: effort,
     onCut: onCut,
     serviceTier: serviceTier,
+    tools: tools,
+    toolsPrompt: toolsPrompt,
+    toolsNote: toolsNote,
   );
 
   /// 只换图片的一份。
@@ -77,6 +149,9 @@ class LlmRequest {
     effort: effort,
     onCut: onCut,
     serviceTier: serviceTier,
+    tools: tools,
+    toolsPrompt: toolsPrompt,
+    toolsNote: toolsNote,
   );
 
   /// 换掉消息(测试连接用);[webSearch] 不给就照旧。

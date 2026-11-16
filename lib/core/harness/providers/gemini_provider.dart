@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../llm_log.dart';
+import '../mcp/mcp_tools.dart';
 import 'llm_http.dart';
 import 'responses_provider.dart' show sourcesText;
 import '../../../l10n/l10n.dart';
@@ -63,6 +64,20 @@ Map<String, Object?> geminiBody(LlmRequest req) {
     if (req.webSearch)
       'tools': [
         {'google_search': <String, Object>{}},
+      ]
+    // 外接工具(MCP):参数表原样给(`parametersJsonSchema` 收完整的 JSON Schema)。
+    else if (req.tools.isNotEmpty)
+      'tools': [
+        {
+          'functionDeclarations': [
+            for (final t in req.tools)
+              {
+                'name': t.name,
+                'description': t.description,
+                'parametersJsonSchema': t.schema,
+              },
+          ],
+        },
       ],
     // 用量档位:Developer API 放在请求体最外层;Vertex 走请求头(见 [geminiHeaders])。
     if (req.serviceTier.isNotEmpty &&
@@ -281,6 +296,24 @@ Future<List<String>> listGeminiModels(String baseUrl, String apiKey) async {
   );
 }
 
+/// 一行里的函数调用(`functionCall` 分段),写成 `<mcp-call>` 标签;没有是空串。
+String parseGeminiCalls(String line) {
+  final json = sseJson(line);
+  final candidates = json is Map ? json['candidates'] : null;
+  final first = candidates is List && candidates.isNotEmpty
+      ? candidates.first
+      : null;
+  final content = first is Map ? first['content'] : null;
+  final parts = content is Map ? content['parts'] : null;
+  return [
+    if (parts is List)
+      for (final p in parts)
+        if (p is Map)
+          if (p['functionCall'] case {'name': final String name} && final call)
+            mcpCallText(name, jsonEncode(call['args'] ?? const {})),
+  ].join();
+}
+
 /// 调用 Google Gemini 原生接口 `models/{model}:streamGenerateContent`。
 Stream<String> streamGeminiChat(LlmRequest req) =>
     runLlmStream((client) => effortFallback(req, (r) => _chat(client, r)));
@@ -306,7 +339,11 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     );
     try {
       await for (final line in lines) {
-        final delta = parseGeminiLine(line);
+        // 模型发的函数调用:换成 <mcp-call> 标签接在回复里。
+        final calls = req.tools.isEmpty ? '' : parseGeminiCalls(line);
+        final delta = calls.isEmpty
+            ? parseGeminiLine(line)
+            : '${parseGeminiLine(line) ?? ''}$calls';
         reportUsage(req, sseJson(line));
         finish = parseGeminiFinish(line) ?? finish;
         served = parseGeminiTier(line) ?? served;

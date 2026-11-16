@@ -163,9 +163,11 @@ extension StudioAutoLookup on StudioViewModel {
         names.isEmpty &&
         webs.isEmpty &&
         calls.isEmpty &&
-        reads == null) {
+        reads == null &&
+        !_wantsMcp(prose)) {
       return null;
     }
+    final called = await _callMcp(prose);
     final (results, web) = await (_findTags(queries), _searchWeb(webs)).wait;
     final people = {for (final name in names) name: findCharacters(name)};
     // 一个个跑:它们共用本地反推页上的图和选中的模型。
@@ -181,6 +183,7 @@ extension StudioAutoLookup on StudioViewModel {
         if (web.isNotEmpty) formatWebResults(web),
         if (ran.isNotEmpty) _localResults(ran),
         ?reads?.text,
+        ?called?.text,
       ].join('\n\n'),
       // 联网搜索不写在这:界面从 [text] 里读出来,单独显示一块。
       note: [
@@ -192,6 +195,7 @@ extension StudioAutoLookup on StudioViewModel {
           tr('查了角色库 · {0} 个', [people.values.expand((h) => h).length]),
         for (final r in ran) r.note,
         ?reads?.note,
+        ?called?.note,
       ].join(' · '),
     );
   }
@@ -202,6 +206,7 @@ extension StudioAutoLookup on StudioViewModel {
       splitCharacterTags(reply).queries.isNotEmpty ||
       splitLocalTools(reply).calls.isNotEmpty ||
       splitToolTag(reply, readSeriesTag).queries.isNotEmpty ||
+      _wantsMcp(reply) ||
       wantsWebSearch(reply);
 
   /// 副聊天、区域控制的系统提示里讲本地反推怎么用:没关掉「本地反推」时才有。

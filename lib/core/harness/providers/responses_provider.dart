@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../../l10n/l10n.dart';
+import '../mcp/mcp_tools.dart';
 import 'grok_auth.dart';
 import 'llm_http.dart';
 
@@ -38,10 +39,28 @@ Map<String, Object?> responsesBody(LlmRequest req) => {
     if (req.topP < 1) 'top_p': req.topP,
   },
   if (req.effort case final effort?) 'reasoning': {'effort': effort},
-  if (req.webSearch)
+  if (req.webSearch || req.tools.isNotEmpty)
     'tools': [
-      {'type': 'web_search'},
+      if (req.webSearch) {'type': 'web_search'},
+      // 外接工具(MCP)。
+      for (final t in req.tools)
+        {
+          'type': 'function',
+          'name': t.name,
+          'description': t.description,
+          'parameters': t.schema,
+        },
     ],
+};
+
+/// 一行里做完的一次函数调用,写成 `<mcp-call>` 标签;不是就是空串。
+String parseResponsesCall(String line) => switch (sseJson(line)) {
+  {
+    'type': 'response.output_item.done',
+    'item': {'type': 'function_call', 'name': final String name} && final item,
+  } =>
+    mcpCallText(name, '${item['arguments'] ?? ''}'),
+  _ => '',
 };
 
 /// 一行 SSE 里的一件事:增量文字,或结束时带的来源(网址 → 标题)。出错时抛错。
@@ -123,7 +142,9 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
         _ => cut,
       };
       sources.addAll(event.sources);
-      final delta = event.delta;
+      final delta = req.tools.isEmpty
+          ? event.delta
+          : '${event.delta ?? ''}${parseResponsesCall(line)}';
       if (delta != null && delta.isNotEmpty) {
         yielded = true;
         yield delta;

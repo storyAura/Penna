@@ -9,6 +9,7 @@ import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
 import '../../../core/harness/local/local_tools.dart';
 import '../../../core/harness/manga/manga_script.dart' show storyboardTag;
+import '../../../core/harness/mcp/mcp_tools.dart';
 import '../../../core/harness/notebook_tags.dart';
 import '../../../core/harness/soul_tags.dart';
 import '../../../core/harness/llm_log.dart';
@@ -275,7 +276,9 @@ class ChatMessageView extends StatelessWidget {
     );
     // 记事本的两个标签:读的走工具循环,存的说完才存,都不显示。
     // PennaSoul 的两个标签同样说完才做,记了的在下面另画提示条。
-    final souled = splitSoul(model.prose);
+    // 外接工具(MCP)的调用由程序做,正在写的那条上只提示在调哪些。
+    final mcp = splitMcpCalls(model.prose);
+    final souled = splitSoul(mcp.prose);
     final peeked = splitToolTag(
       splitSaveNote(
         splitPeek(
@@ -354,6 +357,16 @@ class ChatMessageView extends StatelessWidget {
         _ToolBlock(
           icon: Icons.auto_stories_outlined,
           summary: tr('正在加载技能 · {0}', [loading.join(tr('、'))]),
+          details: const [],
+        ),
+        const SizedBox(height: 10),
+      ],
+      if (streaming && mcp.calls.isNotEmpty) ...[
+        _ToolBlock(
+          icon: Icons.extension_outlined,
+          summary: tr('正在调用外接工具 · {0}', [
+            mcp.calls.map((c) => c.tool).join(tr('、')),
+          ]),
           details: const [],
         ),
         const SizedBox(height: 10),

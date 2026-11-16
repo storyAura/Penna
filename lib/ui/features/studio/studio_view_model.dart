@@ -17,6 +17,8 @@ import '../../../core/harness/local/local_tools.dart';
 import '../../../core/harness/manga/manga_gacha.dart';
 import '../../../core/harness/manga/manga_poses.dart';
 import '../../../core/harness/manga/manga_script.dart';
+import '../../../core/harness/mcp/mcp_hub.dart';
+import '../../../core/harness/mcp/mcp_tools.dart';
 import '../../../core/harness/notebook_tags.dart';
 import '../../../core/harness/llm_log.dart';
 import '../../../core/harness/piercing_document.dart';
@@ -58,6 +60,7 @@ part 'studio_history.dart';
 part 'studio_ideas.dart';
 part 'studio_layout_pages.dart';
 part 'studio_manga.dart';
+part 'studio_mcp.dart';
 part 'studio_meter.dart';
 part 'studio_notebook.dart';
 part 'studio_page_batch.dart';
@@ -233,6 +236,10 @@ class StudioViewModel extends ChangeNotifier {
   /// 记事本:Agent 写 `<read-notebook>` 能读、`<save-note>` 能存([StudioNotebook])。
   /// 同 [local] 建好之后才接上。
   NotebookStore? notebooks;
+
+  /// 用户添加的 MCP 服务的工具([StudioMcp]):请求上带着工具表,回复里的调用替模型做。
+  /// 同 [local] 建好之后才接上;几场对话共用一个。
+  McpHub? mcp;
 
   /// PennaSoul:用户的长期约定和偏好([StudioSoul])。同 [local] 建好之后才接上;
   /// 区域控制那场对话和主工作区共用一份。

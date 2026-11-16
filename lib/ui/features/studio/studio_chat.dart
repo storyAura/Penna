@@ -47,6 +47,8 @@ extension StudioChat on StudioViewModel {
       quote: m.quote,
     );
     noteSoulUses(message);
+    // 新添加、还没列过工具的 MCP 服务在后台列一遍(都列过了什么也不做)。
+    unawaited(mcp?.refresh());
     return _startReply([..._messages, message], time);
   }
 
@@ -292,6 +294,7 @@ extension StudioChat on StudioViewModel {
       ],
       images: _imagesOf(sent),
       document: cfg.piercing,
+      tools: true,
       onUsage: (u) {
         _liveUsageAt = _messages.last.time;
         _updateReply((m) => m.copyWith(usage: u));

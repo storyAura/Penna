@@ -194,7 +194,7 @@ Penna checks GitHub for new versions on every start, and you can also check by h
 
 ## MCP
 
-Add MCP servers over HTTP or stdio, test the connection and list their tools.
+Add MCP servers over HTTP or stdio, test the connection and list their tools. Tools from enabled servers are available to the Agent: the Workbench, Region Control and Manga Storyboard chats and their side chats call them when needed, hand the results back to the Agent to continue the reply, and list the tools used on the reply. APIs with function calling (OpenAI-compatible, Google and Responses) receive the tools as native function calls; other APIs, and models that reject function calling, switch to text tags automatically.
 
 ## Data files
 

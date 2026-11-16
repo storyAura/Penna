@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'core/harness/characters/character_dict.dart';
 import 'core/harness/local/model_scan.dart';
+import 'core/harness/mcp/mcp_hub.dart';
 import 'core/harness/providers/llm_router.dart';
 import 'core/harness/tags/tag_dictionary.dart';
 import 'core/harness/tags/tag_search.dart';
@@ -155,6 +156,12 @@ Future<void> main() async {
   vm.poses = poses;
   vm.archive = archive;
   vm.notebooks = notebooks;
+  // 用户添加的 MCP 服务的工具:几场对话共用,启动时在后台先列一遍。
+  final mcp = McpHub(() => config.config);
+  unawaited(mcp.refresh());
+  vm.mcp = mcp;
+  layoutChat.mcp = mcp;
+  mangaChat.mcp = mcp;
   vm.soul = soul;
   layoutChat.soul = soul;
   mangaChat.soul = soul;

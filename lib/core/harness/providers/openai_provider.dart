@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'llm_http.dart';
 import '../attachment.dart';
+import '../mcp/mcp_tools.dart';
 import '../web_search.dart';
 import '../../../l10n/l10n.dart';
 
@@ -148,6 +149,7 @@ Stream<String> _send(
       if (usage) 'stream_options': {'include_usage': true},
       'reasoning_effort': ?openAiEffort(req),
       if (req.webSearch) ...?chatSearchBody(req.baseUrl),
+      if (req.tools.isNotEmpty) 'tools': openAiTools(req.tools),
     },
     stall: llmStallFor(req),
   );
@@ -156,6 +158,7 @@ Stream<String> _send(
   var done = false;
   String? finish;
   final plain = StringBuffer();
+  final calls = OpenAiToolCalls();
   await for (final line in lines) {
     // 排队时发的 `: keep-alive`,不是内容。
     if (line.startsWith(':')) continue;
@@ -169,11 +172,17 @@ Stream<String> _send(
     }
     reportUsage(req, sseJson(line));
     finish = _finishReason(sseJson(line)) ?? finish;
+    calls.add(sseJson(line));
     final delta = parseSseLine(line);
     if (delta != null && delta.isNotEmpty) {
       yielded = true;
       yield delta;
     }
+  }
+  // 模型发的函数调用:换成 <mcp-call> 标签接在回复后面,后面的工具循环只认标签。
+  if (calls.text case final tags when tags.isNotEmpty) {
+    yielded = true;
+    yield tags;
   }
   if (yielded) {
     // 有的中转站不给结束原因,但见到 [DONE] 就是说完了。
@@ -215,8 +224,64 @@ String? _wholeReply(String body, LlmRequest req) {
   if (choices is! List || choices.isEmpty) return null;
   final first = choices.first;
   final message = first is Map ? first['message'] : null;
-  final content = message is Map ? message['content'] : null;
-  if (content is! String || content.isEmpty) return null;
+  final said = message is Map ? message['content'] : null;
+  final calls = OpenAiToolCalls()
+    ..add({
+      'choices': [
+        {'delta': message},
+      ],
+    });
+  final content = '${said is String ? said : ''}${calls.text}';
+  if (content.isEmpty) return null;
   if (openAiCut(_finishReason(json)) case final cut?) req.onCut?.call(cut);
   return content;
+}
+
+/// 工具表写成 `/chat/completions` 的 `tools`。
+List<Map<String, Object?>> openAiTools(List<LlmTool> tools) => [
+  for (final t in tools)
+    {
+      'type': 'function',
+      'function': {
+        'name': t.name,
+        'description': t.description,
+        'parameters': t.schema,
+      },
+    },
+];
+
+/// 攒流式回复里的函数调用:名字在第一段,参数的 JSON 一段段到,按 index 拼起来。
+class OpenAiToolCalls {
+  final _calls = <int, ({String name, StringBuffer args})>{};
+
+  /// 读一行 SSE 的 JSON(或整段回复的 message 包成的 delta)。
+  void add(Object? json) {
+    final choices = json is Map ? json['choices'] : null;
+    final first = choices is List && choices.isNotEmpty ? choices.first : null;
+    final delta = first is Map ? first['delta'] : null;
+    final list = delta is Map ? delta['tool_calls'] : null;
+    if (list is! List) return;
+    for (final (i, c) in list.indexed) {
+      if (c is! Map) continue;
+      final index = c['index'] is int ? c['index'] as int : i;
+      final fn = c['function'];
+      final name = fn is Map && fn['name'] is String
+          ? fn['name'] as String
+          : '';
+      final had = _calls[index];
+      final call = _calls[index] = (
+        name: (had?.name ?? '').isNotEmpty ? had!.name : name,
+        args: had?.args ?? StringBuffer(),
+      );
+      if (fn is Map && fn['arguments'] is String) {
+        call.args.write(fn['arguments']);
+      }
+    }
+  }
+
+  /// 攒好的调用写成 `<mcp-call>` 标签;没有是空串。
+  String get text => [
+    for (final c in _calls.values)
+      if (c.name.isNotEmpty) mcpCallText(c.name, c.args.toString()),
+  ].join();
 }

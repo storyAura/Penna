@@ -4,12 +4,19 @@ import 'dart:io';
 
 import '../../../l10n/l10n.dart';
 
-/// MCP 服务提供的一个工具。
+/// 没写参数表的工具当成不要参数。
+const _noParams = <String, Object?>{
+  'type': 'object',
+  'properties': <String, Object?>{},
+};
+
+/// MCP 服务提供的一个工具;[schema] 是它的参数表(JSON Schema)。
 class McpTool {
-  const McpTool(this.name, this.description);
+  const McpTool(this.name, this.description, [this.schema = _noParams]);
 
   final String name;
   final String description;
+  final Map<String, Object?> schema;
 }
 
 /// 给用户看的 MCP 错误;不含令牌。
@@ -63,6 +70,9 @@ List<McpTool> _tools(Map<String, Object?> result) {
           McpTool(
             t['name'] as String,
             t['description'] is String ? t['description'] as String : '',
+            t['inputSchema'] is Map
+                ? (t['inputSchema'] as Map).cast<String, Object?>()
+                : _noParams,
           ),
   ];
 }
@@ -104,11 +114,17 @@ Future<String> callHttpMcpTool(
   Map<String, Object?> arguments, {
   String token = '',
   Duration timeout = const Duration(seconds: 45),
-}) => _httpSession(url, token, timeout, (ask) async {
-  final result = await ask('tools/call', {
-    'name': name,
-    'arguments': arguments,
-  });
+}) => _httpSession(
+  url,
+  token,
+  timeout,
+  (ask) async => _callText(
+    await ask('tools/call', {'name': name, 'arguments': arguments}),
+  ),
+);
+
+/// `tools/call` 结果里的文字;工具自己报错时抛 [McpException]。
+String _callText(Map<String, Object?> result) {
   final content = result['content'];
   final text = [
     if (content is List)
@@ -121,7 +137,7 @@ Future<String> callHttpMcpTool(
     );
   }
   return text;
-});
+}
 
 /// 握手之后把「发一个请求、拿回它的 result」交给 [body] 用,用完断开。
 Future<T> _httpSession<T>(
@@ -255,7 +271,40 @@ Future<List<McpTool>> listStdioMcpTools(
   String command, {
   Map<String, String> environment = const {},
   Duration timeout = const Duration(seconds: 20),
-}) async {
+}) => _stdioSession(
+  command,
+  environment,
+  timeout,
+  (ask) async => _tools(await ask('tools/list', null)),
+);
+
+/// 在本机启动一个 MCP 服务程序,调用它的一个工具,返回结果里的文字,然后关掉它。
+// ponytail: 每次调用都重新启动一遍程序(npx、uvx 这类要几秒);嫌慢再让它常驻。
+Future<String> callStdioMcpTool(
+  String command,
+  String name,
+  Map<String, Object?> arguments, {
+  Map<String, String> environment = const {},
+  Duration timeout = const Duration(seconds: 60),
+}) => _stdioSession(
+  command,
+  environment,
+  timeout,
+  (ask) async => _callText(
+    await ask('tools/call', {'name': name, 'arguments': arguments}),
+  ),
+);
+
+/// 启动程序、握手之后把「发一个请求、拿回它的 result」交给 [body] 用,用完关掉程序。
+Future<T> _stdioSession<T>(
+  String command,
+  Map<String, String> environment,
+  Duration timeout,
+  Future<T> Function(
+    Future<Map<String, Object?>> Function(String method, Object? params) ask,
+  )
+  body,
+) async {
   final parts = splitCommand(command);
   if (parts.isEmpty) throw McpException(tr('没有填启动命令'));
   final Process process;
@@ -278,7 +327,7 @@ Future<List<McpTool>> listStdioMcpTools(
     process.stdout.transform(utf8.decoder).transform(const LineSplitter()),
   );
 
-  Future<Map<String, Object?>> ask(Map<String, Object?> body, int id) async {
+  Future<Map<String, Object?>> send(Map<String, Object?> body, int id) async {
     process.stdin.writeln(jsonEncode(body));
     while (await lines.moveNext()) {
       final reply = _tryJson(lines.current);
@@ -289,9 +338,13 @@ Future<List<McpTool>> listStdioMcpTools(
 
   try {
     return await () async {
-      _result(await ask(_request(1, 'initialize', _initializeParams), 1));
+      _result(await send(_request(1, 'initialize', _initializeParams), 1));
       process.stdin.writeln(jsonEncode(_initialized));
-      return _tools(_result(await ask(_request(2, 'tools/list'), 2)));
+      var id = 1;
+      return body(
+        (method, params) async =>
+            _result(await send(_request(++id, method, params), id)),
+      );
     }().timeout(timeout);
   } on TimeoutException {
     throw McpException(tr('等待程序回复超时'));

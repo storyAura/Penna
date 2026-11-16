@@ -1678,4 +1678,10 @@ const en = <String, String>{
   '播放': 'Play',
   '暂停': 'Pause',
   '音量': 'Volume',
+  '接口不收函数调用,外接工具改用文字标签':
+      'API rejected function calling; external tools use text tags',
+  '正在调用外接工具 · {0}': 'Calling external tools · {0}',
+  '调用了外接工具 · {0}': 'Called external tools · {0}',
+  '外接工具没调成 · {0}': 'External tool calls failed · {0}',
+  '「{0}」没调成:{1}': '“{0}” failed: {1}',
 };

@@ -9,8 +9,50 @@ import '../llm_log.dart';
 import '../web_search.dart';
 import '../../../l10n/l10n.dart';
 
-/// 按请求里的协议选对应的接口。
-Stream<String> streamChat(LlmRequest request) => switch (request.protocol) {
+/// 按请求里的协议选对应的接口。带着外接工具(MCP)时先定工具怎么给:
+/// 调本机命令行的两种协议没有函数调用,直接用文字标签;其余先试原生函数调用。
+Stream<String> streamChat(LlmRequest request) => request.tools.isEmpty
+    ? _dispatch(request)
+    : isCliProtocol(request.protocol)
+    ? _dispatch(request.asTextTools())
+    : toolsFallback(request, _dispatch);
+
+/// 这次运行里试出来不收原生函数调用的「协议|地址|模型」:之后直接用文字标签。
+final _textToolsOnly = <String>{};
+
+/// 先按原生函数调用发;接口不收工具表(没出字就报 400 / 422 / 501)时退回文字标签重发,
+/// 文字标签那次出了字才记住这个模型不收(是别的原因报错时两次都失败,不记)。
+// ponytail: 有的中转站收下工具表却悄悄丢掉,不报错,模型就调不了工具;
+// 遇到了给接口加一个「只用文字标签」的开关。
+Stream<String> toolsFallback(LlmRequest req, ChatStreamer send) async* {
+  final key = '${req.protocol}|${req.baseUrl}|${req.model}';
+  if (_textToolsOnly.contains(key)) {
+    yield* send(req.asTextTools());
+    return;
+  }
+  var started = false;
+  try {
+    await for (final delta in send(req.asNativeTools())) {
+      started = true;
+      yield delta;
+    }
+    return;
+  } on LlmException catch (e) {
+    final rejected = const {400, 422, 501}.contains(e.status);
+    if (started || !rejected) rethrow;
+  }
+  var answered = false;
+  await for (final delta in send(req.asTextTools())) {
+    if (!answered) {
+      answered = true;
+      _textToolsOnly.add(key);
+      llmLog.add(LlmEventKind.retry, req.model, tr('接口不收函数调用,外接工具改用文字标签'));
+    }
+    yield delta;
+  }
+}
+
+Stream<String> _dispatch(LlmRequest request) => switch (request.protocol) {
   'google' => streamGeminiChat(request),
   'grok' => streamResponsesChat(request),
   protocolClaudeCode || protocolCodex => streamCliChat(request),

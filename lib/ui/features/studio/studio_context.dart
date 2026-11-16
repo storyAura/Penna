@@ -5,9 +5,9 @@ extension StudioContext on StudioViewModel {
   /// 回复里要查标签(`<search-tags>`)、查角色库、用本地模型反推或下载模型:
   /// 做完把结果作为一条消息接在后面,让模型接着写。
   /// 返回是否接手了;接手了这条回复就只是中间一步。
-  // ponytail: 这是一小段固定几种工具的循环,靠文字标签而不是各家的函数调用接口;
-  // 要让 Agent 调任意 MCP 工具,得按技术架构第 5 节做通用的 AgentHarness。
-  // 下载模型时对话里只有一个等待的样子,进度要去「本地反推」页看。
+  // 内置的这几种工具靠文字标签(种类固定、要兼容很多模型);用户添加的 MCP 工具
+  // 能走原生函数调用,接口把调用换成 `<mcp-call>` 标签,也在这里调([StudioMcp])。
+  // ponytail: 下载模型时对话里只有一个等待的样子,进度要去「本地反推」页看。
   bool _searchTags() {
     final search = tagSearch;
     // 新写的 Skill 正文里举例用的查询不算。
@@ -40,6 +40,8 @@ extension StudioContext on StudioViewModel {
     final reads = layoutOnly || mangaOnly ? null : _readSeries(prose);
     // 要记事本里某个本子的内容。
     final notes = layoutOnly || mangaOnly ? null : _readNotebook(prose);
+    // 要调外接工具(MCP):模型自己写的标签,或接口把原生函数调用换成的。
+    final tools = _wantsMcp(prose);
     if (queries.isEmpty &&
             names.isEmpty &&
             calls.isEmpty &&
@@ -49,6 +51,7 @@ extension StudioContext on StudioViewModel {
             pose == null &&
             reads == null &&
             notes == null &&
+            !tools &&
             !peek ||
         _toolRounds >= _maxToolRounds) {
       return false;
@@ -63,6 +66,7 @@ extension StudioContext on StudioViewModel {
         _searchWeb(webs),
       ).wait;
       final skill = await _loadSkills(loads);
+      final called = tools ? await _callMcp(prose) : null;
       // 一个个跑:它们共用本地反推页上的图和选中的模型。
       final image = _lastImage ?? local?.image;
       final ran = <LocalToolResult>[];
@@ -103,6 +107,7 @@ extension StudioContext on StudioViewModel {
             ?pose?.text,
             ?reads?.text,
             ?notes?.text,
+            ?called?.text,
           ].join('\n\n'),
           attachments: pose?.images ?? const [],
           time: time,
@@ -116,8 +121,10 @@ extension StudioContext on StudioViewModel {
             ?pose?.note,
             ?reads?.note,
             ?notes?.note,
+            ?called?.note,
           ].join(' · '),
           toolDetails: [
+            ...?called?.details,
             for (final MapEntry(key: query, value: found) in results.entries)
               tr(
                 '「{0}」({1}):'
@@ -510,9 +517,16 @@ extension StudioContext on StudioViewModel {
     String? piercing,
     bool webSearch = false,
     bool document = false,
+    bool tools = false,
     void Function(LlmUsage)? onUsage,
     void Function(LlmCut)? onCut,
   }) {
+    // 外接工具(MCP):只有对话带([tools]),润色、反推、出点子、联网搜索不带。
+    // 走原生函数调用还是文字标签由 `streamChat` 按接口定,这里两样都备好。
+    final mcpTools = tools && !webSearch
+        ? mcp?.tools ?? const <LlmTool>[]
+        : const <LlmTool>[];
+    final mcpPrompt = mcpTextPrompt(mcpTools);
     // 穿甲弹:开着时接在系统提示最前面。对话、润色、反推都经过这里,
     // 它们的第一条都是系统提示。副聊天有自己的开关([piercing])。
     // 文档模式只给对话:[document] 是这场对话的穿甲弹开关。润色、反推要的是原样的结果,
@@ -572,6 +586,9 @@ extension StudioContext on StudioViewModel {
         // 搜索只是查资料,用不着多想。
         effort: webSearch ? null : cfg.thinking,
         serviceTier: llm.protocol == protocolGoogle ? llm.serviceTier : '',
+        tools: mcpTools,
+        toolsPrompt: mcpPrompt,
+        toolsNote: mcpTools.isEmpty ? '' : mcpNativeNote,
         token: llm.protocol == protocolGrok
             ? () => grokAccessToken(config, llm.id)
             : null,
@@ -634,6 +651,7 @@ extension StudioContext on StudioViewModel {
           ? cfg.piercingPrompt.trim()
           : '',
       document: cfg.sidePiercing,
+      tools: true,
       onUsage: onUsage,
       onCut: onCut,
     );
