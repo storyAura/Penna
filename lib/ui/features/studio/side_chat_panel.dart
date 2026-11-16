@@ -336,6 +336,7 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
       onAdoptLayout: pane._adoptLayout,
       onReuseAttachment: _reuse,
       comfy: vm.comfy,
+      soul: vm.soul,
       onGenerate: (prompt) => chat.generateReply(row.message, prompt: prompt),
       streaming: chat.isStreaming && last,
       onRetry: !chat.isStreaming && last && !row.message.fromUser

@@ -118,6 +118,7 @@ class _AppShellState extends State<AppShell> {
     widget.vm.notebooks ??= _notebooks;
     widget.vm.soul ??= SoulStore();
     _layoutChat.soul ??= widget.vm.soul;
+    _mangaChat.soul ??= widget.vm.soul;
     _layoutChat.local ??= _local;
     _layoutChat.poses ??= _poses;
     _mangaChat.local ??= _local;

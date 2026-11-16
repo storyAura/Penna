@@ -136,15 +136,15 @@ class SideChat extends ChangeNotifier {
     if (text.trim().isEmpty && attachments.isEmpty) return null;
     _rounds = 0;
     final time = now ?? DateTime.now();
-    return _start([
-      ..._messages,
-      ChatMessage(
-        fromUser: true,
-        text: text.trim(),
-        time: time,
-        attachments: List.unmodifiable(attachments),
-      ),
-    ], time);
+    final message = ChatMessage(
+      fromUser: true,
+      text: text.trim(),
+      time: time,
+      attachments: List.unmodifiable(attachments),
+    );
+    // PennaSoul:这里提到的角色也算一次。
+    main.noteSoulUses(message);
+    return _start([..._messages, message], time);
   }
 
   void stop() {
@@ -250,6 +250,7 @@ class SideChat extends ChangeNotifier {
     '用户要你参考主聊天里说过的话、或问主聊天的 Agent 说了什么时,只输出 <$readMainChat></$readMainChat>,'
         '程序把主聊天最近的记录交给你,你再接着回答。',
     main.mangaGuide,
+    main.soulGuide,
     main.webSearchGuide,
     main.localGuide,
     main.lookupGuide,
@@ -263,6 +264,7 @@ class SideChat extends ChangeNotifier {
     '用户要你参考主聊天里说过的话、或问主聊天的 Agent 说了什么时,只输出 <$readMainChat></$readMainChat>,'
         '程序把主聊天最近的记录交给你,你再接着回答。',
     main.layoutGuide,
+    main.soulGuide,
     main.comfyGuide,
     main.webSearchGuide,
     main.localGuide,
@@ -281,6 +283,7 @@ class SideChat extends ChangeNotifier {
         '程序把主聊天最近的记录交给你,你再接着回答。',
     '【工作区】用户眼前的提示词(每段开头的【】是分段标注,〔译〕行是对照译文):\n'
         '${main.workspaceText}',
+    main.soulGuide,
     main.webSearchGuide,
     main.localGuide,
     main.lookupGuide,
@@ -439,6 +442,15 @@ class SideChat extends ChangeNotifier {
             main.sideChanged();
             if (_peek() || _lookup() || _askLayout()) return;
             _deliver();
+            // PennaSoul 的标签和主聊天一样照做(记的在回复下面出提示条)。
+            final soul = main.applySoul(_messages.last.text);
+            if (soul != null) {
+              _update(
+                (m) =>
+                    m.copyWith(toolSummary: [?m.toolSummary, soul].join(' · ')),
+              );
+              main.sideChanged();
+            }
             notifyListeners();
           },
           cancelOnError: true,

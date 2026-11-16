@@ -10,6 +10,7 @@ extension StudioManga on StudioViewModel {
     '【用户当前的 Preset】只参考其中的画风和用词:\n${preset.systemPrompt}',
     builtinSkillList.firstWhere((s) => s.id == 'character-lib').body,
     _characterPrompt,
+    soulGuide,
     webSearchGuide,
     _posePrompt,
     localGuide,

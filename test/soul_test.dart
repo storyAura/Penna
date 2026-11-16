@@ -7,6 +7,8 @@ import 'package:penna/core/harness/soul_tags.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/character_store.dart';
 import 'package:penna/data/services/soul_store.dart';
+import 'package:penna/ui/features/manga/manga_board.dart';
+import 'package:penna/ui/features/studio/side_chat.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
 
 import 'fixtures.dart';
@@ -164,5 +166,45 @@ void main() {
     await pumpEventQueue();
     expect(seen, hasLength(2));
     expect(seen.last.messages.first['content'], contains('MiniMax H3'));
+  });
+
+  test('副聊天和漫画分镜的对话也带着 PennaSoul,副聊天记的同样存上', () async {
+    final seen = <LlmRequest>[];
+    final config = tempConfig()..update(const AppConfig().putLlm(_llm));
+    final soul = SoulStore()..remember(soulRule, '提到小绿就是自己存的小绿');
+    final vm = StudioViewModel(
+      config: config,
+      streamChat: (r) {
+        seen.add(r);
+        return Stream.value(
+          '好。<soul-remember kind="like">喜欢厚涂</soul-remember>',
+        );
+      },
+    );
+    addTearDown(vm.dispose);
+    vm.soul = soul;
+    final side = SideChat(vm);
+    vm.side = side;
+
+    side.send('帮我看看');
+    await pumpEventQueue();
+    expect(seen.single.messages.first['content'], contains('提到小绿就是自己存的小绿'));
+    expect(soul.find('喜欢厚涂')?.kind, soulLike);
+
+    final manga = StudioViewModel(
+      config: config,
+      manga: MangaBoard(),
+      streamChat: (r) {
+        seen.add(r);
+        return Stream.value('好');
+      },
+    );
+    addTearDown(manga.dispose);
+    manga.soul = soul;
+    manga.send('画一篇');
+    await pumpEventQueue();
+    final system = seen.last.messages.first['content']!;
+    expect(system, contains('【PennaSoul】'));
+    expect(system, contains('提到小绿就是自己存的小绿'));
   });
 }

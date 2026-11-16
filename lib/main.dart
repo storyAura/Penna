@@ -157,6 +157,7 @@ Future<void> main() async {
   vm.notebooks = notebooks;
   vm.soul = soul;
   layoutChat.soul = soul;
+  mangaChat.soul = soul;
   // 区域控制那场对话同样能本地反推、附姿势参考(两个工作台本是同一类)。
   layoutChat.local = local;
   layoutChat.poses = poses;

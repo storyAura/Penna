@@ -1662,7 +1662,6 @@ const en = <String, String>{
   '图像': 'Image',
   '上传素材': 'Uploads',
   '不传,用工作流里的': "Use the workflow's file",
-  '点击用系统播放器打开': 'Click to open in the system player',
   'MiniMax H3 视频': 'MiniMax H3 Video',
   'PennaSoul 没存上:{0}': 'PennaSoul was not saved: {0}',
   '添加约定': 'Add rule',
@@ -1673,4 +1672,10 @@ const en = <String, String>{
   '{0} 次': '{0}×',
   '已加入 PennaSoul 记录': 'Added to PennaSoul',
   '已从 PennaSoul 移除:{0}': 'Removed from PennaSoul: {0}',
+  '点击播放': 'Click to play',
+  '用系统播放器打开': 'Open in the system player',
+  '这个视频播放不了': 'This video cannot be played',
+  '播放': 'Play',
+  '暂停': 'Pause',
+  '音量': 'Volume',
 };

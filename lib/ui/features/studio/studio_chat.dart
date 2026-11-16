@@ -46,7 +46,7 @@ extension StudioChat on StudioViewModel {
       attachments: m.attachments,
       quote: m.quote,
     );
-    _noteSoulUses(message);
+    noteSoulUses(message);
     return _startReply([..._messages, message], time);
   }
 
