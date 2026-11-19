@@ -4,22 +4,40 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../l10n/l10n.dart';
+import 'character_json.dart';
 
-/// 角色的一套服装:名字和这套衣服的提示词。
-typedef CharacterOutfit = ({String name, String prompt});
+export 'character_json.dart';
 
-/// 角色库里用户自己存的一个角色:名字、提示词,和一张图([image] 是文件路径,没有就是空串)。
-/// [alias] 是别的叫法(逗号隔开),[intro] 是简介,[outfits] 是另存的几套服装。
+/// 角色库里用户自己存的一个角色:名字、作品([ip])、特征([prompt],长相)、默认穿着([clothing])、
+/// 另几套服装([outfits]),和一张图([image] 是文件路径,没有就是空串)。
+/// [alias] 是别的叫法(逗号隔开),[intro] 是简介。
 typedef CharacterCard = ({
   String id,
   String name,
+  String ip,
   String alias,
   String intro,
   String prompt,
+  String clothing,
   List<CharacterOutfit> outfits,
   String image,
   DateTime time,
 });
+
+/// [c] 去掉编号、图、时间,只剩内容(导出用)。
+CharacterEntry entryOf(CharacterCard c) => (
+  name: c.name,
+  ip: c.ip,
+  alias: c.alias,
+  intro: c.intro,
+  prompt: c.prompt,
+  clothing: c.clothing,
+  outfits: c.outfits,
+);
+
+/// 出图用的整条:特征接上默认穿着。
+String fullPromptOf(CharacterCard c) =>
+    [c.prompt, c.clothing].where((s) => s.isNotEmpty).join(', ');
 
 /// 一张要存进角色库的图:内容和扩展名(不带点)。
 typedef CharacterImage = ({List<int> bytes, String ext});
@@ -40,7 +58,12 @@ class CharacterStore extends ChangeNotifier {
   /// 显示的顺序(新加的在前,拖过的照拖完的)。
   List<CharacterCard> get cards => _cards;
 
-  File? get _file => _fileOf('characters.json');
+  /// 现在的存档,条目是标准 JSON(`characterToJson`)加上 id、image、time。
+  File? get _file => _fileOf('my_characters.json');
+
+  /// 旧版本的存档(名字 + prompt + outfits)。新存档还没有时从它搬过来;它本身不动,
+  /// 正式版和测试版共用一个数据文件夹,旧版本还在读它。
+  File? get _legacyFile => _fileOf('characters.json');
 
   /// 收藏另存一个文件:「我的」那份还是原来的列表格式,旧版本也读得了。
   File? get _favFile => _fileOf('character_favorites.json');
@@ -102,14 +125,17 @@ class CharacterStore extends ChangeNotifier {
       if (a.trim().isNotEmpty) a.trim(),
   ];
 
-  /// 存一个角色。给了 [id] 就是改那一个;没给时同名的算同一个(换掉提示词),否则新增。
-  /// [image]、[alias]、[intro]、[outfits] 不给就留着原来的。名字或提示词是空的不存,返回 null。
+  /// 存一个角色。给了 [id] 就是改那一个;没给时同名的算同一个(换掉特征),否则新增。
+  /// [image]、[ip]、[alias]、[intro]、[clothing]、[outfits] 不给就留着原来的。
+  /// 名字或特征是空的不存,返回 null。
   CharacterCard? put({
     String? id,
     required String name,
     required String prompt,
+    String? ip,
     String? alias,
     String? intro,
+    String? clothing,
     List<CharacterOutfit>? outfits,
     CharacterImage? image,
     DateTime? now,
@@ -119,13 +145,20 @@ class CharacterStore extends ChangeNotifier {
     final old = _cards
         .where((c) => id == null ? _key(c.name) == _key(name) : c.id == id)
         .firstOrNull;
-    final cardId = old?.id ?? '${time.microsecondsSinceEpoch}';
+    // 一次导入好几个时可能落在同一微秒里:编号撞了就往后挪。
+    var stamp = time.microsecondsSinceEpoch;
+    while (old == null && _cards.any((c) => c.id == '$stamp')) {
+      stamp++;
+    }
+    final cardId = old?.id ?? '$stamp';
     final card = (
       id: cardId,
       name: name.trim(),
+      ip: (ip ?? old?.ip ?? '').trim(),
       alias: (alias ?? old?.alias ?? '').trim(),
       intro: (intro ?? old?.intro ?? '').trim(),
       prompt: prompt.trim(),
+      clothing: (clothing ?? old?.clothing ?? '').trim(),
       outfits: outfits == null
           ? old?.outfits ?? const <CharacterOutfit>[]
           : _cleanOutfits(outfits),
@@ -142,6 +175,29 @@ class CharacterStore extends ChangeNotifier {
     );
     return card;
   }
+
+  /// 导入一批角色(导入的文件、Agent 写的 JSON):同名的改那一个,图和位置留着;
+  /// 空着的项不盖掉原来的。返回存上的名字。
+  List<String> importAll(Iterable<CharacterEntry> entries) {
+    String? given(String s) => s.isEmpty ? null : s;
+    return [
+      for (final e in entries)
+        if (put(
+              name: e.name,
+              prompt: e.prompt,
+              ip: given(e.ip),
+              alias: given(e.alias),
+              intro: given(e.intro),
+              clothing: given(e.clothing),
+              outfits: e.outfits.isEmpty ? null : e.outfits,
+            )
+            case final card?)
+          card.name,
+    ];
+  }
+
+  /// 导出「我的」全部角色:标准 JSON 数组(不带图)。
+  String exportJson() => exportCharacters(_cards.map(entryOf));
 
   /// 去掉名字和提示词都没写的服装,其余去掉首尾空白。
   static List<CharacterOutfit> _cleanOutfits(List<CharacterOutfit> outfits) =>
@@ -232,14 +288,7 @@ class CharacterStore extends ChangeNotifier {
     for (final c in _cards)
       {
         'id': c.id,
-        'name': c.name,
-        if (c.alias.isNotEmpty) 'alias': c.alias,
-        if (c.intro.isNotEmpty) 'intro': c.intro,
-        'prompt': c.prompt,
-        if (c.outfits.isNotEmpty)
-          'outfits': [
-            for (final o in c.outfits) {'name': o.name, 'prompt': o.prompt},
-          ],
+        ...characterToJson(entryOf(c)),
         'image': c.image,
         'time': c.time.toIso8601String(),
       },
@@ -260,26 +309,31 @@ class CharacterStore extends ChangeNotifier {
   }
 
   Future<void> load() async {
-    await _read(_file, (json) {
-      _cards = List.unmodifiable([
-        for (final c in (json as List).cast<Map<String, dynamic>>())
-          (
-            id: c['id'] as String,
-            name: c['name'] as String,
-            alias: c['alias'] as String? ?? '',
-            intro: c['intro'] as String? ?? '',
-            prompt: c['prompt'] as String,
-            outfits: List<CharacterOutfit>.unmodifiable([
-              for (final o
-                  in (c['outfits'] as List? ?? const [])
-                      .cast<Map<String, dynamic>>())
-                (name: o['name'] as String, prompt: o['prompt'] as String),
-            ]),
-            image: c['image'] as String? ?? '',
-            time: DateTime.parse(c['time'] as String),
-          ),
-      ]);
-    });
+    final legacy = _legacyFile;
+    if (_file?.existsSync() == false && legacy != null && legacy.existsSync()) {
+      // 第一次用新版本:把旧格式搬成新格式另存,旧文件留给旧版本。
+      await _read(legacy, (json) => _cards = _fromLegacy(json));
+      if (_cards.isNotEmpty) _save();
+    } else {
+      await _read(_file, (json) {
+        _cards = List.unmodifiable([
+          for (final c in (json as List).cast<Map<String, dynamic>>())
+            if (characterFromJson(c) case final e?)
+              (
+                id: c['id'] as String,
+                name: e.name,
+                ip: e.ip,
+                alias: e.alias,
+                intro: e.intro,
+                prompt: e.prompt,
+                clothing: e.clothing,
+                outfits: e.outfits,
+                image: c['image'] as String? ?? '',
+                time: DateTime.parse(c['time'] as String),
+              ),
+        ]);
+      });
+    }
     await _read(_favFile, (json) {
       final map = json as Map<String, dynamic>;
       List<String> names(String key) =>
@@ -289,6 +343,28 @@ class CharacterStore extends ChangeNotifier {
     });
     notifyListeners();
   }
+
+  /// 旧格式:整条 prompt 当特征(里面可能带着穿着,分不开就不分),outfits 当另几套服装。
+  static List<CharacterCard> _fromLegacy(Object? json) => List.unmodifiable([
+    for (final c in (json as List).cast<Map<String, dynamic>>())
+      (
+        id: c['id'] as String,
+        name: c['name'] as String,
+        ip: '',
+        alias: c['alias'] as String? ?? '',
+        intro: c['intro'] as String? ?? '',
+        prompt: c['prompt'] as String,
+        clothing: '',
+        outfits: List<CharacterOutfit>.unmodifiable([
+          for (final o
+              in (c['outfits'] as List? ?? const [])
+                  .cast<Map<String, dynamic>>())
+            (name: o['name'] as String, prompt: o['prompt'] as String),
+        ]),
+        image: c['image'] as String? ?? '',
+        time: DateTime.parse(c['time'] as String),
+      ),
+  ]);
 
   /// 读 [file] 交给 [use];读不了的文件留个底,不让下一次保存把它盖掉。
   Future<void> _read(File? file, void Function(Object? json) use) async {

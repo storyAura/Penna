@@ -248,12 +248,31 @@ extension ComfyQueue on ComfyRunner {
               : j,
       ];
       _jobs = List.unmodifiable([..._jobs, ...loaded]);
+      // 「出图」页签的图也从这里找回来,接在这次已经出的后面。
+      _images = List.unmodifiable(
+        [..._images, ..._restoredImages(loaded)].take(_maxImages),
+      );
       _jobSeq = [_jobSeq, for (final j in _jobs) j.id].reduce(max);
       _changed();
     } on Object catch (e) {
       debugPrint(tr('出图队列读不了:{0}', [e.runtimeType]));
       final stamp = DateTime.now().millisecondsSinceEpoch;
       await file.rename('${file.path}.bad-$stamp');
+    }
+  }
+
+  /// 上次出过的图(新的在前)。换过存图位置的按文件名到现在的位置找,
+  /// 两处都没有(删掉了)的不要。
+  Iterable<GeneratedImage> _restoredImages(List<ComfyJob> jobs) sync* {
+    for (final j in jobs) {
+      if (j.state != ComfyJobState.done) continue;
+      for (final p in j.images.reversed) {
+        final moved =
+            '$imageDir${Platform.pathSeparator}${File(p).uri.pathSegments.last}';
+        final path = File(p).existsSync() ? p : moved;
+        if (!File(path).existsSync()) continue;
+        yield (path: path, prompt: j.prompt, time: j.finished ?? j.queued);
+      }
     }
   }
 

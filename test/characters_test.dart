@@ -235,7 +235,8 @@ void main() {
     );
     expect(made.prose, '我查一下。');
     expect(made.queries, ['ganyu']);
-    expect(made.saves, [(name: '小蓝', prompt: 'blue hair girl')]);
+    expect(made.saves.single.name, '小蓝');
+    expect(made.saves.single.prompt, 'blue hair girl');
 
     expect(splitCharacterTags('好\n<search-character>gan').prose, '好');
     expect(splitCharacterTags('好 <save-char').prose, '好');
@@ -317,6 +318,123 @@ void main() {
     });
   });
 
+  group('角色的标准 JSON', () {
+    test('导出再导入一字不差;键不分大小写,Clothing-N 按号排,数组拼成一串', () {
+      final store = CharacterStore()
+        ..put(
+          name: '小蓝',
+          ip: '原创',
+          alias: 'Lan',
+          prompt: '1girl, blue hair',
+          clothing: 'school uniform',
+          outfits: [
+            (name: '泳装', prompt: 'swimsuit'),
+            (name: '', prompt: 'pajamas'),
+          ],
+        );
+      final text = store.exportJson();
+      final json = (jsonDecode(text) as List).single as Map;
+      expect(json.keys, [
+        'Name',
+        'ip',
+        'Alias',
+        'Traits',
+        'Clothing',
+        'Clothing-2',
+        'Clothing-2-name',
+        'Clothing-3',
+      ]);
+      final back = parseCharacters(text).single, card = store.cards.single;
+      expect(
+        (back.name, back.ip, back.alias, back.prompt, back.clothing),
+        (card.name, card.ip, card.alias, card.prompt, card.clothing),
+      );
+      expect(back.outfits, card.outfits);
+
+      final loose = parseCharacters('''```json
+{"characters": [
+  {"NAME": "小绿", "IP": "原创", "traits": ["green hair", "red eyes"],
+   "Clothing-10": "coat", "Clothing-3": "dress", "clothing-3-name": "礼服"},
+  {"Name": "没特征的"},
+  "不是对象"
+]}
+```''').single;
+      expect(loose.prompt, 'green hair, red eyes');
+      expect(loose.outfits, [
+        (name: '礼服', prompt: 'dress'),
+        (name: '', prompt: 'coat'),
+      ]);
+      expect(() => parseCharacters('不是 JSON'), throwsFormatException);
+    });
+
+    test('导入:同名的改那一个,空着的项不盖掉原来的,图和位置留着', () {
+      final store = CharacterStore()
+        ..put(name: 'a', prompt: 'a')
+        ..put(name: '小蓝', prompt: 'blue', alias: 'Lan', clothing: 'coat');
+      final names = store.importAll(
+        parseCharacters(
+          '[{"Name": "小蓝", "ip": "原创", "Traits": "long blue hair"},'
+          ' {"Name": "新来的", "Traits": "x"}]',
+        ),
+      );
+      expect(names, ['小蓝', '新来的']);
+      expect(store.cards.map((c) => c.name), ['新来的', '小蓝', 'a']);
+      final lan = store.cards[1];
+      expect(
+        (lan.ip, lan.alias, lan.prompt, lan.clothing),
+        ('原创', 'Lan', 'long blue hair', 'coat'),
+      );
+    });
+
+    test('旧版本的 characters.json 启动时搬成新格式,旧文件不动', () async {
+      final dir = Directory.systemTemp.createTempSync('penna_chars');
+      final legacy = File('${dir.path}/characters.json');
+      final old = jsonEncode([
+        {
+          'id': '1',
+          'name': '小蓝',
+          'alias': 'Lan',
+          'prompt': 'blue hair, school uniform',
+          'outfits': [
+            {'name': '泳装', 'prompt': 'swimsuit'},
+          ],
+          'image': 'x.webp',
+          'time': '2026-11-01T00:00:00.000',
+        },
+      ]);
+      legacy.writeAsStringSync(old);
+
+      final store = CharacterStore(dir);
+      await store.load();
+      final card = store.cards.single;
+      expect(
+        (
+          card.id,
+          card.name,
+          card.alias,
+          card.prompt,
+          card.clothing,
+          card.image,
+        ),
+        ('1', '小蓝', 'Lan', 'blue hair, school uniform', '', 'x.webp'),
+      );
+      expect(card.outfits, [(name: '泳装', prompt: 'swimsuit')]);
+      expect(legacy.readAsStringSync(), old);
+      final saved = jsonDecode(
+        File('${dir.path}/my_characters.json').readAsStringSync(),
+      );
+      expect((saved as List).single['Traits'], 'blue hair, school uniform');
+
+      // 再开一次读的是新文件:旧文件改了也不再搬。
+      store.put(name: '小蓝', prompt: 'long blue hair');
+      legacy.writeAsStringSync('[]');
+      final again = CharacterStore(dir);
+      await again.load();
+      expect(again.cards.single.prompt, 'long blue hair');
+      expect(again.cards.single.time, isNot(DateTime(2026, 11)));
+    });
+  });
+
   group('收藏内置的系列和角色', () {
     test('点一下收藏、再点取消;新收藏的在前;重开读得回来;坏文件留底', () async {
       final dir = Directory.systemTemp.createTempSync('penna_chars');
@@ -335,7 +453,7 @@ void main() {
       expect(again.favoriteCharacters, ['hatsune miku']);
       // 收藏另存一个文件,「我的」那份没被改成别的格式。
       expect(
-        jsonDecode(File('${dir.path}/characters.json').readAsStringSync()),
+        jsonDecode(File('${dir.path}/my_characters.json').readAsStringSync()),
         isList,
       );
 
@@ -445,7 +563,7 @@ void main() {
       await pumpEventQueue();
       expect(
         seen.last.messages.last['content'],
-        contains('提示词:green hair girl'),
+        contains('特征:green hair girl'),
       );
       // 上一条的查询结果不再重发。
       expect(
@@ -499,7 +617,7 @@ void main() {
       // 自己存了哪些角色,一开始就告诉了模型。
       expect(seen.first.messages.first['content'], contains('ganyu(别名:小甘)'));
       final handed = seen.last.messages.last['content']!;
-      expect(handed, contains('提示词:my ganyu'));
+      expect(handed, contains('特征:my ganyu'));
       expect(handed, contains('别名:小甘'));
       expect(handed, contains('简介:秘书'));
       expect(handed, contains('服装·泳装:blue bikini'));
@@ -551,6 +669,29 @@ void main() {
       expect((card.name, card.prompt), ('小蓝', 'blue hair girl'));
       expect(File(card.image).readAsBytesSync(), [9]);
       expect(vm.messages.last.toolSummary, '已存进角色库:小蓝');
+    });
+
+    test('存:标签里是 JSON 数组时一次存好几个,作品、服装都在;查回来看得到', () async {
+      final store = CharacterStore();
+      final vm = _studio([
+        '整理好了。<save-character>\n[{"Name": "小蓝", "ip": "原创", '
+            '"Traits": "blue hair", "Clothing": "coat", '
+            '"Clothing-2": "swimsuit", "Clothing-2-name": "泳装"},'
+            ' {"Name": "小绿", "Traits": "green hair"}]\n</save-character>',
+      ], store: store);
+
+      vm.send('把这两个角色整理进角色库');
+      await pumpEventQueue();
+
+      expect(store.cards.map((c) => c.name), ['小绿', '小蓝']);
+      // 同一微秒里存的两个,编号也不能撞。
+      expect(store.cards.map((c) => c.id).toSet(), hasLength(2));
+      expect(vm.messages.last.text, contains('整理好了'));
+      expect(vm.messages.last.toolSummary, '已存进角色库:小蓝、小绿');
+      final found = formatCharacterResults({'小蓝': vm.findCharacters('小蓝')});
+      expect(found, contains('作品:原创'));
+      expect(found, contains('默认服装:coat'));
+      expect(found, contains('服装·泳装:swimsuit'));
     });
   });
 }

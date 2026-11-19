@@ -7,13 +7,17 @@ class _CharacterDialog extends StatefulWidget {
     required this.prompt,
     required this.image,
     required this.editing,
+    this.ip = '',
     this.alias = '',
     this.intro = '',
+    this.clothing = '',
     this.outfits = const [],
   });
 
   final String name;
+  final String ip;
   final String alias;
+  final String clothing;
   final String intro;
   final String prompt;
   final List<CharacterOutfit> outfits;
@@ -28,7 +32,9 @@ class _CharacterDialog extends StatefulWidget {
 
 class _CharacterDialogState extends State<_CharacterDialog> {
   late var _name = widget.name;
+  late var _ip = widget.ip;
   late var _alias = widget.alias;
+  late var _clothing = widget.clothing;
   late var _intro = widget.intro;
   late var _prompt = widget.prompt;
 
@@ -191,6 +197,13 @@ class _CharacterDialogState extends State<_CharacterDialog> {
                 ),
                 const SizedBox(height: 8),
                 PennaField(
+                  label: tr('作品'),
+                  hint: tr('原创、genshin impact…'),
+                  value: _ip,
+                  onChanged: (v) => _ip = v,
+                ),
+                const SizedBox(height: 8),
+                PennaField(
                   label: tr('别名'),
                   hint: tr('多个用逗号隔开'),
                   value: _alias,
@@ -206,11 +219,18 @@ class _CharacterDialogState extends State<_CharacterDialog> {
                 ),
                 const SizedBox(height: 8),
                 PennaField(
-                  label: tr('提示词'),
-                  hint: tr('这个角色的长相和标志性的穿着'),
+                  label: tr('特征'),
+                  hint: tr('发型、眼睛、体型'),
                   maxLines: 5,
                   value: _prompt,
                   onChanged: (v) => setState(() => _prompt = v),
+                ),
+                const SizedBox(height: 8),
+                PennaField(
+                  label: tr('默认服装'),
+                  maxLines: 3,
+                  value: _clothing,
+                  onChanged: (v) => _clothing = v,
                 ),
                 for (final o in _outfits) _outfit(o),
                 Align(
@@ -234,7 +254,9 @@ class _CharacterDialogState extends State<_CharacterDialog> {
             onPressed: ready
                 ? () => Navigator.pop<_Draft>(context, (
                     name: _name,
+                    ip: _ip,
                     alias: _alias,
+                    clothing: _clothing,
                     intro: _intro,
                     prompt: _prompt,
                     outfits: [

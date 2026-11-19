@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../l10n/l10n.dart';
+import '../../core/blur_veil.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../../core/harness/comfyui.dart' show isVideoFile;
@@ -215,24 +216,30 @@ class _JobTile extends StatelessWidget {
       );
     }
     if (isVideoFile(path)) return ComfyVideoTile(path: path, height: size);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => showImageViewer(context, comfyImageAttachment(path)),
-        child: Container(
-          width: size,
-          height: size,
-          clipBehavior: Clip.antiAlias,
-          decoration: box,
-          child: Image.file(
-            File(path),
-            cacheWidth: 160,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => Icon(
-              Icons.broken_image_outlined,
-              size: 18,
-              color: PennaColors.slate400,
-            ),
+    return Container(
+      width: size,
+      height: size,
+      clipBehavior: Clip.antiAlias,
+      decoration: box,
+      child: BlurVeil(
+        onOpen: () => showImageViewer(
+          context,
+          comfyImageAttachment(path),
+          album: [
+            for (final j in runner.jobs)
+              if (j.images.firstOrNull case final p? when !isVideoFile(p))
+                comfyImageAttachment(p),
+          ],
+          shown: true,
+        ),
+        child: Image.file(
+          File(path),
+          cacheWidth: 160,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Icon(
+            Icons.broken_image_outlined,
+            size: 18,
+            color: PennaColors.slate400,
           ),
         ),
       ),

@@ -693,6 +693,8 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 200));
       expect(again.jobs.map((j) => j.prompt), ['a fox', 'a dog', 'a cat']);
       expect(again.jobs[1].images, dog.images);
+      // 「出图」页签的图重启后也在,新的在前。
+      expect(again.images.map((i) => i.path), [...dog.images, ...cat.images]);
     });
 
     test('测连接、读名单;内置的改过后另存一份;按名字或模型换工作流;LoRA 配置', () async {

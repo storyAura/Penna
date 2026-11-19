@@ -68,7 +68,7 @@ const _loraOptions = 'lora', _ckptOptions = 'ckpt';
 const _checkGap = Duration(seconds: 5);
 
 /// 用 ComfyUI 出图:把最终提示词交给它,出的图存进「设置 → ComfyUI」里的图片位置。
-/// 只在内存里记这次运行出过的图,存档案库时拿最新的一张做预览图。
+/// 记着出过的图(启动时从出图队列的记录里找回),存档案库时拿最新的一张做预览图。
 class ComfyRunner extends ChangeNotifier {
   ComfyRunner(this.config) {
     unawaited(_loadJobs());

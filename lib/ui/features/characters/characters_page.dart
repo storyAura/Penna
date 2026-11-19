@@ -22,9 +22,11 @@ part 'character_dialog.dart';
 /// 添加或修改角色的窗口交回来的内容;[image] 为 null 表示图没动。
 typedef _Draft = ({
   String name,
+  String ip,
   String alias,
   String intro,
   String prompt,
+  String clothing,
   List<CharacterOutfit> outfits,
   CharacterImage? image,
 });
@@ -174,9 +176,11 @@ class _CharactersPageState extends State<CharactersPage> {
       context: context,
       builder: (_) => _CharacterDialog(
         name: card?.name ?? from?.name ?? '',
+        ip: card?.ip ?? from?.series ?? '',
         alias: card?.alias ?? from?.alias ?? '',
         intro: card?.intro ?? '',
-        prompt: card?.prompt ?? (from == null ? '' : _fullPrompt(from)),
+        prompt: card?.prompt ?? (from == null ? '' : _traits(from)),
+        clothing: card?.clothing ?? from?.outfit ?? '',
         outfits: card?.outfits ?? const [],
         image: card?.image ?? '',
         editing: card != null,
@@ -192,13 +196,59 @@ class _CharactersPageState extends State<CharactersPage> {
     final saved = widget.store.put(
       id: card?.id,
       name: draft.name,
+      ip: draft.ip,
       alias: draft.alias,
       intro: draft.intro,
       prompt: draft.prompt,
+      clothing: draft.clothing,
       outfits: draft.outfits,
       image: webp == null ? picked : (bytes: webp, ext: 'webp'),
     );
     if (saved != null) showToast(context, tr('已存进角色库'));
+  }
+
+  /// 导入标准 JSON 的角色文件(导出的、Agent 整理的):同名的改那一个。
+  Future<void> _import() async {
+    final picked = await openFile(
+      acceptedTypeGroups: [
+        XTypeGroup(label: 'JSON', extensions: ['json']),
+      ],
+    );
+    if (picked == null || !mounted) return;
+    try {
+      final entries = parseCharacters(await File(picked.path).readAsString());
+      if (!mounted) return;
+      if (entries.isEmpty) {
+        return showToast(context, tr('没有能导入的角色'), warn: true);
+      }
+      final names = widget.store.importAll(entries);
+      showToast(context, tr('已导入 {0} 个角色', [names.length]));
+    } on FormatException {
+      if (mounted) showToast(context, tr('不是角色 JSON 文件'), warn: true);
+    } on FileSystemException catch (e) {
+      if (mounted) {
+        showToast(context, tr('读不了这个文件:{0}', [e.message]), warn: true);
+      }
+    }
+  }
+
+  /// 导出「我的」全部角色成一个 JSON 文件(不带图)。
+  Future<void> _export() async {
+    final at = await getSaveLocation(
+      suggestedName: 'penna-characters.json',
+      acceptedTypeGroups: [
+        XTypeGroup(label: 'JSON', extensions: ['json']),
+      ],
+    );
+    if (at == null) return;
+    try {
+      await File(at.path).writeAsString(widget.store.exportJson(), flush: true);
+      if (mounted) showToast(context, tr('已导出'));
+    } on FileSystemException catch (e) {
+      if (mounted) {
+        showToast(context, tr('导出失败:{0}', [e.message]), warn: true);
+      }
+    }
   }
 
   Future<void> _delete(CharacterCard card) async {
@@ -438,6 +488,23 @@ class _CharactersPageState extends State<CharactersPage> {
                     ),
                   ),
                   if (tab == _Tab.mine || tab == _Tab.all) ...[
+                    IconButton(
+                      tooltip: tr('导入 JSON'),
+                      iconSize: 16,
+                      visualDensity: VisualDensity.compact,
+                      color: PennaColors.slate500,
+                      icon: const Icon(Icons.file_download_outlined),
+                      onPressed: _import,
+                    ),
+                    IconButton(
+                      tooltip: tr('导出 JSON'),
+                      iconSize: 16,
+                      visualDensity: VisualDensity.compact,
+                      color: PennaColors.slate500,
+                      icon: const Icon(Icons.file_upload_outlined),
+                      onPressed: store.cards.isEmpty ? null : _export,
+                    ),
+                    const SizedBox(width: 4),
                     ViewSwitch(
                       grid: _grid,
                       onChanged: (g) => setState(() => _grid = g),
@@ -482,8 +549,9 @@ class _CharactersPageState extends State<CharactersPage> {
 }
 
 /// 内置角色的整条提示词:触发词、外貌、服装。
-String _fullPrompt(CharacterHit c) => [
-  characterTrigger(c),
-  c.looks,
-  c.outfit,
-].where((s) => s.isNotEmpty).join(', ');
+String _fullPrompt(CharacterHit c) =>
+    [_traits(c), c.outfit].where((s) => s.isNotEmpty).join(', ');
+
+/// 内置角色存成自己的角色时的特征:触发词、外貌(服装另放「默认服装」)。
+String _traits(CharacterHit c) =>
+    [characterTrigger(c), c.looks].where((s) => s.isNotEmpty).join(', ');

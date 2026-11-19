@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/harness/attachment.dart';
+import '../../core/blur_veil.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'image_viewer.dart';
@@ -85,9 +86,13 @@ class AttachmentStrip extends StatelessWidget {
     required this.attachments,
     this.onReuse,
     this.height = _previewHeight,
+    this.blur = false,
   });
 
   final List<Attachment> attachments;
+
+  /// 这些是出的图:「图片模糊」开着时先糊着(用户自己附的图不糊)。
+  final bool blur;
 
   /// 图片预览的高度(ComfyUI 出的图显示得大一些)。
   final double height;
@@ -106,26 +111,37 @@ class AttachmentStrip extends StatelessWidget {
           if (a.bytes == null)
             AttachmentChip(attachment: a)
           else
-            Tooltip(
-              message: a.name,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  onTap: () => showImageViewer(context, a, onReuse: onReuse),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.memory(
-                      a.bytes!,
-                      height: height,
-                      cacheHeight: (height * 2).round(),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => AttachmentChip(attachment: a),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+            Tooltip(message: a.name, child: _preview(context, a)),
       ],
+    );
+  }
+
+  Widget _preview(BuildContext context, Attachment a) {
+    final image = Image.memory(
+      a.bytes!,
+      height: height,
+      cacheHeight: (height * 2).round(),
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => AttachmentChip(attachment: a),
+    );
+    void open() => showImageViewer(
+      context,
+      a,
+      album: [
+        for (final x in attachments)
+          if (x.bytes != null) x,
+      ],
+      onReuse: onReuse,
+      shown: blur ? true : null,
+    );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: blur
+          ? BlurVeil(onOpen: open, child: image)
+          : MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(onTap: open, child: image),
+            ),
     );
   }
 }

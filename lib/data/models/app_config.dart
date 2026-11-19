@@ -445,6 +445,7 @@ class AppConfig {
     this.layoutSnap = defaultLayoutSnap,
     this.compressImages = true,
     this.chatIdeas = true,
+    this.blurImages = false,
     this.tutorialSeen = false,
     this.mascot = false,
     this.autoApprove = false,
@@ -536,6 +537,7 @@ class AppConfig {
           .toInt(),
       compressImages: m['compressImages'] as bool? ?? true,
       chatIdeas: m['chatIdeas'] as bool? ?? true,
+      blurImages: m['blurImages'] as bool? ?? false,
       // 旧设置里没有这一项:用过的人不再自动弹教程。
       tutorialSeen: m['tutorialSeen'] as bool? ?? true,
       mascot: m['mascot'] as bool? ?? false,
@@ -717,6 +719,9 @@ class AppConfig {
   /// 新对话里没说话时,用 Agent 的模型想几条创作点子摆在空白处。
   final bool chatIdeas;
 
+  /// 出的图、档案库的图先糊着,点一下才看清(只是显示上的处理;2026-11-17 用户要求,默认关)。
+  final bool blurImages;
+
   /// 看过(或跳过)新手教程;新装时为 false,启动时自动弹一次。
   final bool tutorialSeen;
 
@@ -789,6 +794,7 @@ class AppConfig {
     'layoutSnap': layoutSnap,
     'compressImages': compressImages,
     'chatIdeas': chatIdeas,
+    'blurImages': blurImages,
     'tutorialSeen': tutorialSeen,
     'mascot': mascot,
     'autoApprove': autoApprove,
@@ -883,6 +889,7 @@ class AppConfig {
     int? layoutSnap,
     bool? compressImages,
     bool? chatIdeas,
+    bool? blurImages,
     bool? tutorialSeen,
     bool? mascot,
     bool? autoApprove,
@@ -934,6 +941,7 @@ class AppConfig {
     layoutSnap: layoutSnap ?? this.layoutSnap,
     compressImages: compressImages ?? this.compressImages,
     chatIdeas: chatIdeas ?? this.chatIdeas,
+    blurImages: blurImages ?? this.blurImages,
     tutorialSeen: tutorialSeen ?? this.tutorialSeen,
     mascot: mascot ?? this.mascot,
     autoApprove: autoApprove ?? this.autoApprove,

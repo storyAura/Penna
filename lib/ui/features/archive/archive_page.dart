@@ -458,7 +458,12 @@ class _EntryCard extends StatelessWidget {
           if (entry.image.isNotEmpty) ...[
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: PreviewImage(path: entry.image, width: 96, height: 128),
+              child: PreviewImage(
+                path: entry.image,
+                width: 96,
+                height: 128,
+                veil: true,
+              ),
             ),
             const SizedBox(width: 12),
           ],
@@ -555,6 +560,7 @@ class _EntryTile extends StatelessWidget {
               path: entry.image,
               width: box.maxWidth,
               height: box.maxWidth * 4 / 3,
+              veil: true,
               blank: ColoredBox(
                 color: PennaColors.slate50,
                 child: Padding(

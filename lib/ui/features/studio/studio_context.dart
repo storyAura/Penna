@@ -210,9 +210,9 @@ extension StudioContext on StudioViewModel {
     for (final c in characters?.find(name) ?? const <CharacterCard>[])
       (
         name: c.name,
-        series: '',
+        series: c.ip,
         looks: '',
-        outfit: '',
+        outfit: c.clothing,
         prompt: c.prompt,
         intro: c.intro,
         outfits: c.outfits,
@@ -223,7 +223,6 @@ extension StudioContext on StudioViewModel {
   ];
 
   /// 回复里要存进角色库的角色:存进去,并在这条回复上记一笔。同名的换成新的。
-  /// 只存一个、而用户这次发来了图时,那张图就是它的图。
   void _deliverCharacters() {
     final store = characters;
     if (store == null || _messages.isEmpty) return;
@@ -239,18 +238,17 @@ extension StudioContext on StudioViewModel {
         .where((e) => e.value == picture?.mime)
         .firstOrNull
         ?.key;
-    final names = [
-      for (final s in saves)
-        if (store.put(
-              name: s.name,
-              prompt: s.prompt,
-              image: saves.length == 1 && picture != null && ext != null
-                  ? (bytes: picture.bytes!, ext: ext)
-                  : null,
-            ) !=
-            null)
-          s.name,
-    ];
+    final names = store.importAll(saves);
+    // 只存了一个时,用户这次发来的图就是它的图。
+    if (names.length == 1 && picture != null && ext != null) {
+      final card = store.cards.firstWhere((c) => c.name == names.single);
+      store.put(
+        id: card.id,
+        name: card.name,
+        prompt: card.prompt,
+        image: (bytes: picture.bytes!, ext: ext),
+      );
+    }
     if (names.isEmpty) return;
     _updateReply(
       (m) => m.copyWith(

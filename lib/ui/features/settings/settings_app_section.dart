@@ -353,6 +353,13 @@ class _ChatOptions extends StatelessWidget {
         ),
         gap,
         _toggle(
+          tr('图片模糊'),
+          tr('出的图和档案库的图点一下才显示'),
+          cfg.blurImages,
+          (v) => service.update(service.config.copyWith(blurImages: v)),
+        ),
+        gap,
+        _toggle(
           tr('对话建议'),
           tr('新对话里给几条创作点子'),
           cfg.chatIdeas,

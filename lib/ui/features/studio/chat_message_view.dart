@@ -206,6 +206,7 @@ class ChatMessageView extends StatelessWidget {
           ],
           onReuse: onReuseAttachment,
           height: _generatedHeight,
+          blur: true,
         ),
       ],
       if (message.images.any(isVideoFile)) ...[

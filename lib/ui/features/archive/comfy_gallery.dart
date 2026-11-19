@@ -10,6 +10,7 @@ import '../../../l10n/l10n.dart';
 import '../../core/gallery.dart';
 import '../../core/motion.dart';
 import '../../core/smooth_scroll.dart';
+import '../../core/blur_veil.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../settings/settings_sections.dart';
@@ -37,6 +38,10 @@ const _localHosts = {'127.0.0.1', 'localhost', '::1'};
 /// 能按文件夹筛(output 最外层单独一项);点开看原图;右键复制图片、复制当时的提示词、放回成稿。
 // ponytail: 云端的 ComfyUI 读不到子文件夹,历史没记着的也没有时刻(归在「更早」);
 // 硬盘上一次最多列 2 万张(新改的在前),界面一次显示 300 张。
+String _mimeOf(String name) =>
+    imageMimes[name.substring(name.lastIndexOf('.') + 1).toLowerCase()] ??
+    'image/png';
+
 class ComfyGallery extends StatefulWidget {
   const ComfyGallery({super.key, required this.vm, required this.onOpenStudio});
 
@@ -177,8 +182,7 @@ class _ComfyGalleryState extends State<ComfyGallery> {
   /// 原图,当成图片附件(看大图、复制都用它):硬盘上的直接读,别的从 ComfyUI 下载。
   Future<Attachment?> _full(ComfyShot shot) async {
     final name = '${shot.file['filename']}';
-    final ext = name.substring(name.lastIndexOf('.') + 1).toLowerCase();
-    final mime = imageMimes[ext] ?? 'image/png';
+    final mime = _mimeOf(name);
     final path = shot.path;
     if (path != null) {
       if (File(path).existsSync()) {
@@ -200,13 +204,29 @@ class _ComfyGalleryState extends State<ComfyGallery> {
     return null;
   }
 
-  Future<void> _open(ComfyShot shot) async {
+  /// 大图里左右翻的:眼前这个文件夹里硬盘上的图。
+  // ponytail: 云端的图要一张张下载,翻不了;只看点开的那张。
+  List<Attachment> _album() => [
+    for (final s in _shots ?? const <ComfyShot>[])
+      if (s.path case final path?
+          when _folder == null || shotFolder(s) == _folder)
+        Attachment.saved(
+          name: '${s.file['filename']}',
+          file: path,
+          mime: _mimeOf('${s.file['filename']}'),
+        ),
+  ];
+
+  /// [shown]:从看清的缩略图点开的(「图片模糊」开着时大图不再糊一遍)。
+  Future<void> _open(ComfyShot shot, {required bool shown}) async {
     if (_opening != null) return;
     setState(() => _opening = shot);
     final image = await _full(shot);
     if (!mounted) return;
     setState(() => _opening = null);
-    if (image != null) await showImageViewer(context, image);
+    if (image != null) {
+      await showImageViewer(context, image, album: _album(), shown: shown);
+    }
   }
 
   Future<void> _menu(ComfyShot shot, Offset at) async {
@@ -492,7 +512,7 @@ class _ComfyGalleryState extends State<ComfyGallery> {
     busy: s == _opening,
     url: runner.client.viewUrl(s.file, preview: true),
     headers: runner.client.headers,
-    onTap: () => _open(s),
+    onOpen: (shown) => _open(s, shown: shown),
     onMenu: (at) => _menu(s, at),
   );
 }
@@ -551,7 +571,7 @@ class _Tile extends StatelessWidget {
     required this.shot,
     required this.url,
     required this.headers,
-    required this.onTap,
+    required this.onOpen,
     required this.onMenu,
     this.row = false,
     this.busy = false,
@@ -565,7 +585,9 @@ class _Tile extends StatelessWidget {
   final ComfyShot shot;
   final String url;
   final Map<String, String> headers;
-  final VoidCallback onTap;
+
+  /// 点开看大图;参数是「从看清的缩略图点的」(点图片以外的地方是 false)。
+  final ValueChanged<bool> onOpen;
   final ValueChanged<Offset> onMenu;
 
   @override
@@ -577,7 +599,7 @@ class _Tile extends StatelessWidget {
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
-          onTap: onTap,
+          onTap: () => onOpen(false),
           onSecondaryTapUp: (d) => onMenu(d.globalPosition),
           child: row
               ? _row()
@@ -618,23 +640,25 @@ class _Tile extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (path != null)
-            Image.file(
-              File(path),
-              fit: BoxFit.cover,
-              cacheWidth: cacheWidth,
-              gaplessPlayback: true,
-              errorBuilder: broken,
-            )
-          else
-            Image.network(
-              url,
-              headers: headers,
-              fit: BoxFit.cover,
-              cacheWidth: cacheWidth,
-              gaplessPlayback: true,
-              errorBuilder: broken,
-            ),
+          BlurVeil(
+            onOpen: () => onOpen(true),
+            child: path != null
+                ? Image.file(
+                    File(path),
+                    fit: BoxFit.cover,
+                    cacheWidth: cacheWidth,
+                    gaplessPlayback: true,
+                    errorBuilder: broken,
+                  )
+                : Image.network(
+                    url,
+                    headers: headers,
+                    fit: BoxFit.cover,
+                    cacheWidth: cacheWidth,
+                    gaplessPlayback: true,
+                    errorBuilder: broken,
+                  ),
+          ),
           if (busy)
             const ColoredBox(
               color: Color(0x66000000),

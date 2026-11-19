@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import '../../data/models/app_config.dart';
 import '../../data/services/config_service.dart';
 import '../../l10n/l10n.dart';
+import 'blur_veil.dart';
 import 'theme.dart';
 import 'motion.dart';
 
@@ -15,6 +16,7 @@ import 'motion.dart';
 void applyLook(AppConfig cfg, {DateTime? now}) {
   PennaColors.useDark(_wantsDark(cfg, now ?? DateTime.now()));
   useLanguage(cfg.language);
+  blurImages.value = cfg.blurImages;
 }
 
 bool _wantsDark(AppConfig cfg, DateTime now) => cfg.darkAt(
@@ -87,6 +89,7 @@ class _LookSwitcherState extends State<LookSwitcher>
   void _refresh() {
     final cfg = widget.config.config;
     final now = widget.now();
+    blurImages.value = cfg.blurImages;
     final dark = _wantsDark(cfg, now) != PennaColors.isDark;
     // 点了模式但深浅色没变:记下的位置作废,不然下次到点从那里扩散。
     if (!dark) lookRevealOrigin = null;

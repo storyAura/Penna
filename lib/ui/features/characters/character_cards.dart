@@ -217,7 +217,7 @@ class _MineTile extends StatelessWidget {
               _iconButton(
                 Icons.content_copy,
                 tr('复制'),
-                () => copyWithToast(context, card.prompt, tr('已复制')),
+                () => copyWithToast(context, fullPromptOf(card), tr('已复制')),
               ),
               _iconButton(Icons.edit_outlined, tr('修改'), actions.onEdit),
               _iconButton(Icons.delete_outline, tr('删除'), actions.onDelete),
@@ -255,6 +255,15 @@ class _MineCard extends StatelessWidget {
                         TextSpan(
                           text: card.name,
                           children: [
+                            if (card.ip.isNotEmpty)
+                              TextSpan(
+                                text: '  ${card.ip}',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: PennaColors.primary,
+                                ),
+                              ),
                             if (card.alias.isNotEmpty)
                               TextSpan(
                                 text: '  ${card.alias}',
@@ -283,7 +292,7 @@ class _MineCard extends StatelessWidget {
                       label: tr('复制'),
                       icon: Icons.content_copy,
                       onPressed: () =>
-                          copyWithToast(context, card.prompt, tr('已复制')),
+                          copyWithToast(context, fullPromptOf(card), tr('已复制')),
                     ),
                     PennaButton(
                       label: tr('修改'),
@@ -309,7 +318,7 @@ class _MineCard extends StatelessWidget {
                   ),
                 const SizedBox(height: 4),
                 Text(
-                  card.prompt,
+                  fullPromptOf(card),
                   maxLines: 4,
                   overflow: TextOverflow.ellipsis,
                   style: monoStyle.copyWith(fontSize: 11.5),

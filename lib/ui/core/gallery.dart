@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/harness/attachment.dart';
 import '../../l10n/l10n.dart';
+import 'blur_veil.dart';
 import 'theme.dart';
 import 'widgets.dart';
 import 'motion.dart';
@@ -87,15 +88,26 @@ class PreviewImage extends StatelessWidget {
     required this.width,
     required this.height,
     this.blank,
+    this.veil = false,
   });
 
   final String path;
   final double width, height;
   final Widget? blank;
 
+  /// 「图片模糊」开着时先糊着(档案库的预览图;角色库的不糊)。
+  final bool veil;
+
   @override
   Widget build(BuildContext context) {
     final empty = blank ?? const SizedBox.shrink();
+    final image = Image.file(
+      File(path),
+      fit: BoxFit.cover,
+      // 只按显示的大小解码,大图不占内存。
+      cacheWidth: (width * 2).round(),
+      errorBuilder: (_, _, _) => empty,
+    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: SizedBox(
@@ -103,13 +115,9 @@ class PreviewImage extends StatelessWidget {
         height: height,
         child: path.isEmpty
             ? empty
-            : Image.file(
-                File(path),
-                fit: BoxFit.cover,
-                // 只按显示的大小解码,大图不占内存。
-                cacheWidth: (width * 2).round(),
-                errorBuilder: (_, _, _) => empty,
-              ),
+            : veil
+            ? BlurVeil(child: image)
+            : image,
       ),
     );
   }

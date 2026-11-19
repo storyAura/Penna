@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/harness/attachment.dart';
 import '../../../core/harness/comfyui.dart' show isVideoFile;
 import '../../../core/harness/draft_block.dart';
 import '../../../data/services/archive_store.dart';
+import '../../core/blur_veil.dart';
 import '../../core/theme.dart';
 import '../../core/smooth_scroll.dart';
 import '../../core/tour_spot.dart';
