@@ -7,9 +7,10 @@ part of 'studio_view_model.dart';
 // ponytail: 偏好只靠提示词起作用,程序不改推荐项的排序。
 extension StudioSoul on StudioViewModel {
   /// 系统提示里的【PennaSoul】;没接上记忆时是空的。
-  String get soulGuide => soul == null ? '' : soulPrompt(soul!.entries);
+  String get soulGuide =>
+      soul == null ? '' : soulPrompt(soul!.entries, cast: soul!.cast);
 
-  /// 用户这句话提到的角色各记一次(够数的记成偏好,不出提示条:平时不露面)。
+  /// 用户这句话提到的角色各记一次(并进「常用角色」,不出提示条:平时不露面)。
   void noteSoulUses(ChatMessage message) =>
       soul?.noteCharacters(_mentioned(message).keys);
 

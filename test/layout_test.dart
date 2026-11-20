@@ -399,6 +399,43 @@ void main() {
     expect(board.layout.boxes.single.name, '小绿');
   });
 
+  test('一条回复写了几张布局:一张一页放进同一个系列,没写 page 的也不盖掉前一张', () async {
+    final board = LayoutBoard();
+    final service = tempConfig();
+    service.update(
+      service.config.putLlm(
+        const LlmProfile(id: 'a', name: 'A', baseUrl: 'http://a', model: 'm'),
+      ),
+    );
+    String one(String name, String attrs) =>
+        '<layout$attrs>{"width": 832, "height": 1216, "items": '
+        '[{"name": "$name", "bbox": [0, 0, 400, 400]}],'
+        ' "bbox_coord_space": "abs", "bbox_format": "xyxy"}</layout>';
+    final reply =
+        '三张。${one('一', ' page="新系列" name="一" series="三连"')}'
+        '${one('二', ' page="新" name="二"')}${one('三', '')}';
+    final chat = StudioViewModel(
+      config: service,
+      layout: board,
+      layoutOnly: true,
+      streamChat: (_) => Stream.value(reply),
+    );
+
+    chat.send('出一个系列,三张');
+    await pumpEventQueue();
+    expect(chat.seriesName(chat.series), '三连');
+    expect(chat.seriesLength, 3);
+    expect(board.layout.boxes.single.name, '三');
+    final names = [
+      for (final p in chat.pages)
+        if (p.series == chat.series) p.blocks.map((b) => b.text).join(),
+    ];
+    expect(names[0], contains('"name":"一"'));
+    expect(names[1], contains('"name":"二"'));
+    expect(names[2], contains('"name":"三"'));
+    expect(splitLayouts(reply).map((l) => l.page), ['新系列', '新', null]);
+  });
+
   test('读旧版的布局对话存档(页是空的):画板上已有的布局收进眼前这页,不被清掉', () {
     final board = LayoutBoard()
       ..addBox(

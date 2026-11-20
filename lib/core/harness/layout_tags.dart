@@ -122,7 +122,28 @@ List<LayerOp>? parseLayers(String spec) {
 String forgetLayers(String reply) =>
     reply.replaceAll(_layersTag, '(这里调过一次图层,已放到画板上,内容省略;现在的样子看【布局画板】)');
 
-/// 把回复里的 `<layout>` 拆出来(有好几个时取最后一个):[json] 是里面的布局,
+/// 回复里每一个写完了的 `<layout>`,按先后:布局 JSON 和开始标签上的 page / name / series
+/// (区域控制一条回复排好几张,2026-11-21 用户反馈:让它一次出一个系列的几张只放上了一张)。
+List<({String json, String? page, String? name, String? series})> splitLayouts(
+  String reply,
+) => [
+  for (final m in _block.allMatches(reply))
+    if (m[2]!.trim().isNotEmpty)
+      () {
+        final attrs = {
+          for (final a in _layoutAttr.allMatches(m[1] ?? ''))
+            a[1]!: a[2]!.trim(),
+        };
+        return (
+          json: m[2]!.trim(),
+          page: attrs['page'],
+          name: attrs['name'],
+          series: attrs['series'],
+        );
+      }(),
+];
+
+/// 把回复里的 `<layout>` 拆出来(有好几个时取最后一个,一个个都要时用 [splitLayouts]):[json] 是里面的布局,
 /// [prose] 是去掉它之后给人看的话;还没写完的那一个先不显示,[complete] 为假。
 /// 开始标签上可以带 `page`(写进这个系列的第几页,或 `新系列`)、`name`(页名)、
 /// `series`(系列名),同成稿的 `<draft>`。

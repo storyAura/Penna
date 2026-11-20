@@ -1673,6 +1673,7 @@ const en = <String, String>{
   '记住的约定和偏好': 'Remembered rules and preferences',
   '约定': 'Rules',
   '还没有': 'None yet',
+  '常用角色': 'Frequent characters',
   '偏好': 'Preferences',
   '{0} 次': '{0}×',
   '已加入 PennaSoul 记录': 'Added to PennaSoul',

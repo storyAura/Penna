@@ -594,6 +594,8 @@ Future<String?> askName(
   String title,
   String initial, {
   String? hint,
+  String? label,
+  int maxLines = 1,
 }) {
   var text = initial;
   return showDialog<String>(
@@ -601,10 +603,11 @@ Future<String?> askName(
     builder: (context) => AlertDialog(
       title: Text(title, style: const TextStyle(fontSize: 16)),
       content: SizedBox(
-        width: 320,
+        width: maxLines > 1 ? 480 : 320,
         child: PennaField(
-          label: tr('名字'),
+          label: label ?? tr('名字'),
           hint: hint ?? tr('留空就用默认的'),
+          maxLines: maxLines,
           value: initial,
           onChanged: (v) => text = v,
         ),

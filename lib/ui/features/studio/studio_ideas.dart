@@ -3,18 +3,41 @@ part of 'studio_view_model.dart';
 /// 每批点子最多几条。
 const _ideaCount = 4;
 
-/// 内置角色从图最多的前这么多个里抽:大家认得的。
-const _ideaPopular = 2000;
-
 /// Preset 正文最多带多少字给模型参考画风。
 const _ideaPresetMax = 4000;
 
 /// PennaSoul 的偏好最多带几条给模型。
 const _ideaLikes = 8;
 
+/// 记着最近出过的点子最多几条(叫模型别重复)。
+const _ideaPastMax = 24;
+
+/// 一个常用角色占全部提到次数的这么多以上,才拿来出点子(2026-11-21 用户反馈:
+/// 以前每批都从自己存的、收藏的和热门角色里抽,点子被角色占满,还常是没画过的人)。
+const _ideaCastShare = 0.25;
+
+/// 每条点子随机给一个方向,免得一批批都是「给某某画一套衣服」。
+const _ideaAngles = [
+  '季节或天气',
+  '节日或纪念日',
+  '一件日常小事',
+  '某个职业或身份',
+  '一处具体的地点',
+  '一天里的某个时段和光线',
+  '一种情绪或关系',
+  '一样道具或食物',
+  '一段旅行或出行',
+  '动物或植物',
+  '一种运动或爱好',
+  '一个意外的瞬间',
+];
+
 /// 新对话的空白处摆几条创作点子:用 Agent 的模型现想,点一条填进输入框。
 /// 点子的类型照眼前的 Preset 来(2026-11-16 用户要求:写视频的 Preset 出视频的点子),
 /// 往 PennaSoul 记着的偏好上靠。对话里一有话就作废,下一场新对话重想;换了 Preset 也重想。
+/// 2026-11-21 用户反馈点子被角色占满、不跟 Preset、老重复:角色只用占比很大的常用角色
+/// (最多一条),名字照界面语言;每条随机给一个方向,出过的叫模型别重复。
+// ponytail: 出过的点子只记在这次运行里,重启后从头记。
 extension StudioIdeas on StudioViewModel {
   /// 眼前的点子;还没要或正在要时是 null,要过但没要到是空的。
   List<String>? get ideaList => _ideas;
@@ -54,6 +77,7 @@ extension StudioIdeas on StudioViewModel {
   Future<void> _fetchIdeas(int run) async {
     final cfg = config.config;
     final preset = cfg.activePreset;
+    final random = Random();
     var found = const <String>[];
     try {
       final reply = await streamWithFailover(
@@ -66,7 +90,14 @@ extension StudioIdeas on StudioViewModel {
               soul?.entries ?? const [],
             ),
           },
-          {'role': 'user', 'content': _ideasAsk(_ideaCast(Random()))},
+          {
+            'role': 'user',
+            'content': _ideasAsk(
+              _ideaCast(cfg.language),
+              (_ideaAngles.toList()..shuffle(random)).take(_ideaCount).toList(),
+              _pastIdeas,
+            ),
+          },
         ], piercing: ''),
         this.streamChat,
       ).join();
@@ -78,56 +109,65 @@ extension StudioIdeas on StudioViewModel {
     if (_disposed || run != _ideasRun) return;
     _ideasBusy = false;
     _ideas = found;
+    final past = [..._pastIdeas, ...found];
+    _pastIdeas = List.unmodifiable(
+      past.skip((past.length - _ideaPastMax).clamp(0, past.length)),
+    );
     _changed();
   }
 
-  /// 程序替模型抽好这批用的角色:先从用户自己存的和收藏的里抽一半,
-  /// 再从内置角色库的热门角色里补满 [_ideaCount] 个,不重复。
-  List<String> _ideaCast(Random random) {
-    final store = characters;
-    final mine = <String>{
-      if (store != null) ...[
-        for (final c in store.cards) c.name.trim(),
-        ...store.favoriteCharacters,
-      ],
-    }.where((n) => n.isNotEmpty).toList()..shuffle(random);
-    final cast = <String>{...mine.take(_ideaCount ~/ 2).map(_ideaName)};
-    final popular = characterDict?.all.take(_ideaPopular).toList() ?? const [];
-    for (
-      var tries = 0;
-      cast.length < _ideaCount && popular.isNotEmpty && tries < 20;
-      tries++
-    ) {
-      cast.add(_ideaName(popular[random.nextInt(popular.length)].name));
-    }
-    // 内置库也没有时,把自己的剩下的补上。
-    cast.addAll(
-      mine.skip(_ideaCount ~/ 2).take(_ideaCount - cast.length).map(_ideaName),
-    );
-    return cast.toList();
+  /// 拿来出点子的角色:PennaSoul 里占比很大的常用角色(最多两个),
+  /// 名字照界面语言写。没有这样的角色就不点名角色。
+  List<String> _ideaCast(String language) {
+    final store = soul;
+    if (store == null) return const [];
+    final total = store.castTotal;
+    return [
+      for (final c in store.cast)
+        if (c.count >= total * _ideaCastShare) _ideaName(c.name, language),
+    ].take(2).toList();
   }
 
-  /// 显示给模型的角色名:内置的用第一个别名(中文名)加作品,没有别名就把下划线换成空格。
-  String _ideaName(String name) {
+  /// 显示给模型的角色名:自己存的照原名;内置的挑界面语言的那个别名,
+  /// 英文界面用英文名(去掉括号里的作品)。
+  String _ideaName(String name, String language) {
     final hit = characterDict?.byName(name);
     if (hit == null) return name;
-    final alias = hit.alias.split(RegExp('[,,]')).first.trim();
-    final shown = alias.isNotEmpty ? alias : name.replaceAll('_', ' ');
-    final series = hit.series.replaceAll('_', ' ').trim();
-    return series.isEmpty ? shown : '$shown($series)';
+    final english = name
+        .replaceAll('_', ' ')
+        .replaceAll(RegExp(r'\s*\(.*\)$'), '');
+    if (language == 'en') return english;
+    final kana = RegExp('[぀-ヿ]');
+    final han = RegExp('[㐀-鿿]');
+    final aliases = [
+      for (final a in hit.alias.split(RegExp('[,,]')))
+        if (a.trim().isNotEmpty) a.trim(),
+    ];
+    final pick = language == 'ja'
+        ? aliases.where(kana.hasMatch).firstOrNull ??
+              aliases.where(han.hasMatch).firstOrNull
+        : aliases
+              .where((a) => han.hasMatch(a) && !kana.hasMatch(a))
+              .firstOrNull;
+    return pick ?? english;
   }
 
-  String _ideasAsk(List<String> cast) => cast.isEmpty
-      ? '角色你来挑,用知名的动漫、游戏角色,四条各不相同。'
-      : '这批的角色已经抽好,每条用一个,按这个顺序:${cast.join('、')}。'
-            '名字照写,括号里的作品名不用写进点子。';
+  String _ideasAsk(List<String> cast, List<String> angles, List<String> past) =>
+      [
+        '这批 $_ideaCount 条各从一个方向想(按顺序):${angles.join('、')}。',
+        if (cast.isEmpty)
+          '不要点名具体的作品角色,写画面里是什么样的人或东西就行。'
+        else
+          '用户最常画的是 ${cast.join('、')}:只有一条用其中一个(名字照写),其余的不点名具体角色。',
+        if (past.isNotEmpty) '前面已经出过下面这些,不要重复,题材、句式和开头都要换:\n${past.join('\n')}',
+      ].join('\n');
 
   String _ideasPrompt(String language, String preset, List<SoulEntry> memory) {
     final what = manga != null
-        ? '「用某角色画一篇什么漫画」,带一个情节转折'
+        ? '一篇短漫画:谁、发生了什么、一个情节转折'
         : layoutOnly
-        ? '「让某角色和谁同框做什么」,写清谁在哪'
-        : '「给某角色画什么」或「用某角色画什么」,带上服装、动作或场景';
+        ? '一张多人或多物的画面:谁在哪、在做什么'
+        : '一张画:主体、在做什么、在哪里';
     final lang = switch (language) {
       'en' => '英文',
       'ja' => '日文',
@@ -140,20 +180,18 @@ extension StudioIdeas on StudioViewModel {
         if (e.kind == soulLike) e,
     ].take(_ideaLikes);
     return [
+      '你给提示词工作台的用户出创作点子,点子要贴着用户这会儿用的 Preset。',
       if (style.isNotEmpty)
-        '【用户当前的 Preset】下面是用户这会儿用的设定。点子是什么、题材和句式都照它的用途来:'
+        '【用户当前的 Preset】点子是什么、题材和画风都照它的用途来:'
             '它写视频提示词,点子就是一段视频(谁、做什么动作、镜头怎么走);写写实摄影就是一张照片;'
-            '写插画就是一幅插画。不要照它的输出格式写:\n'
+            '写插画就是一幅插画;它专写某类题材就出那类题材。不要照它的输出格式写:\n'
             '${style.length > _ideaPresetMax ? style.substring(0, _ideaPresetMax) : style}',
       if (likes.isNotEmpty)
-        '【用户的偏好】平时常用的(次数多的更重)。一半左右的点子往这些上靠,别条条都一样:\n'
-            '${likes.map((e) => '- ${e.text}(${e.hits} 次)').join('\n')}',
-      '你给提示词工作台的用户出创作点子。写 $_ideaCount 条,句式默认是$what'
-          '(Preset 是写视频之类别的用途时,照它改成那种说法),'
-          '例如「给芙莉莲画一套夏日浴衣」「用阿尼亚画她第一次上烹饪课」。'
-          '点子要贴着角色本身:服装、表情、日常场景、和别人的互动、季节节日;画风和题材跟上面的 Preset 一致。'
-          '不要赛博朋克、全息、霓虹、未来科技、机甲、太空这类科幻元素,除非角色本来就出自这类作品。'
-          '每条一行,不超过 30 个字,具体、有画面感。'
+        '【用户明说过的偏好】有一两条往这些上靠就够了,别条条都一样:\n'
+            '${likes.map((e) => '- ${e.text}').join('\n')}',
+      '写 $_ideaCount 条,没有 Preset 指明别的用途时每条是$what。'
+          '不要赛博朋克、全息、霓虹、未来科技、机甲、太空这类科幻元素,除非 Preset 本来就写这类。'
+          '每条一行,不超过 30 个字,具体、有画面感;四条的句式各不相同,不要都用「给…画…」「用…画…」开头。'
           '只写点子本身,不编号,不加引号,不解释。用$lang写。',
     ].join('\n\n');
   }

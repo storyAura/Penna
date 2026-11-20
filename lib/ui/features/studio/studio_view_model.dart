@@ -280,6 +280,9 @@ class StudioViewModel extends ChangeNotifier {
   /// 眼前这份点子是按哪个 Preset 想的(换了 Preset 就重想)。
   String? _ideasFor;
 
+  /// 这次运行里出过的点子(最近的在后),下一批叫模型别重复。
+  List<String> _pastIdeas = const [];
+
   /// 布局页右边那场对话用的:系统提示只讲布局,回复里的 `<layout>` 放到 [layout] 上,
   /// 不往成稿里送。界面和工作台的对话是同一个 `ChatPane`。
   final bool layoutOnly;

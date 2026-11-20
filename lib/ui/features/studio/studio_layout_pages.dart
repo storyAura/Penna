@@ -96,11 +96,33 @@ extension StudioLayoutPages on StudioViewModel {
     required LayoutKeep keep,
     VoidCallback? first,
   }) {
-    final board = layout;
-    if (board == null) return null;
-    final made = splitLayout(reply);
+    if (layout == null || !splitLayout(reply).complete) return null;
+    final all = splitLayouts(reply);
+    final notes = <String>[];
+    var placed = false;
+    for (final (i, made) in all.indexed) {
+      // 一条回复排了好几张:后面没写 page 的各开新的一页,不盖掉前一张。
+      final page = i > 0 && made.page == null && layoutOnly ? '新' : made.page;
+      final note = _placeOne(
+        (json: made.json, page: page, name: made.name, series: made.series),
+        keep: keep,
+        first: placed ? null : first,
+      );
+      if (note == null) continue;
+      placed = true;
+      if (note.isNotEmpty) notes.add(note);
+    }
+    return placed ? notes.join(' / ') : null;
+  }
+
+  /// 放一张布局(见 [_placeLayout]);读不了是 null,放不上的原因在返回的那一句里。
+  String? _placeOne(
+    ({String json, String? page, String? name, String? series}) made, {
+    required LayoutKeep keep,
+    VoidCallback? first,
+  }) {
+    final board = layout!;
     final json = made.json;
-    if (!made.complete || json == null) return null;
     final l0 = board.layout;
     // 先看读不读得了,免得读不了还白开一页。
     if (parseMossLayout(json, width: l0.width, height: l0.height) == null) {

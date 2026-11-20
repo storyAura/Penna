@@ -30,31 +30,59 @@ void main() {
     expect(soul.find('提到小绿就是自己存的小绿'), isNull);
   });
 
-  test('同一个角色提到够三次才记成偏好,之后再提加分量', () {
+  test('常用角色合成一份:够三次才列出来,不占偏好的条目;能单独删一个', () {
     final soul = SoulStore();
-    expect(soul.noteCharacters(['芙莉莲']), isEmpty);
-    expect(soul.noteCharacters(['芙莉莲', '希罗']), isEmpty);
-    final added = soul.noteCharacters(['芙莉莲']);
-    expect(added.single.text, '常用角色:芙莉莲');
-    expect(soul.entries.single.kind, soulLike);
     soul.noteCharacters(['芙莉莲']);
-    expect(soul.find('常用角色:芙莉莲')!.hits, 2);
+    soul.noteCharacters(['芙莉莲', '希罗']);
+    expect(soul.cast, isEmpty);
+    soul.noteCharacters(['芙莉莲']);
+    soul.noteCharacters(['芙莉莲']);
+    expect(soul.cast.single, (name: '芙莉莲', count: 4));
+    expect(soul.castTotal, 5);
+    expect(soul.entries, isEmpty);
+    expect(soulPrompt(soul.entries, cast: soul.cast), contains('常用角色'));
+    expect(soulPrompt(soul.entries, cast: soul.cast), contains('芙莉莲(4)'));
+    soul.forgetCharacter('芙莉莲');
+    expect(soul.cast, isEmpty);
+  });
+
+  test('约定能改字,改成空的就删掉', () {
+    final soul = SoulStore();
+    final rule = soul.remember(soulRule, '旧的');
+    soul.edit(rule.id, ' 新的 ');
+    expect(soul.entries.single.text, '新的');
+    expect(soul.entries.single.id, rule.id);
+    soul.edit(rule.id, '');
+    expect(soul.entries, isEmpty);
   });
 
   test('存盘读回一样;读不了的文件留底', () async {
     final dir = Directory.systemTemp.createTempSync('penna-soul');
     addTearDown(() => dir.deleteSync(recursive: true));
     final file = File('${dir.path}/soul.json');
-    final soul = SoulStore(file)
+    SoulStore(file)
       ..remember(soulRule, '约定 A')
       ..noteCharacters(['x']);
     final back = SoulStore(file);
     await back.load();
     expect(back.entries.single.text, '约定 A');
     // 次数也记着:再提两次就够三次。
-    expect(back.noteCharacters(['x']), isEmpty);
-    expect(back.noteCharacters(['x']), hasLength(1));
-    expect(soul.entries, hasLength(1));
+    back.noteCharacters(['x']);
+    expect(back.cast, isEmpty);
+    back.noteCharacters(['x']);
+    expect(back.cast.single.count, 3);
+
+    // 旧版:每个常用角色一条偏好,没够数的在 uses 里。读进来并成一份。
+    file.writeAsStringSync(
+      '{"entries":[{"id":"s1","kind":"like","text":"常用角色:希罗","hits":5},'
+      '{"id":"s2","kind":"like","text":"喜欢水彩","hits":1}],"uses":{"艾玛":2}}',
+    );
+    final old = SoulStore(file);
+    await old.load();
+    expect(old.entries.single.text, '喜欢水彩');
+    expect(old.cast.single, (name: '希罗', count: 7));
+    old.noteCharacters(['艾玛']);
+    expect(old.cast.map((c) => c.name), ['希罗', '艾玛']);
 
     file.writeAsStringSync('坏的');
     final broken = SoulStore(file);
@@ -103,7 +131,9 @@ void main() {
     await pumpEventQueue();
     final system = seen.first.messages.first['content']!;
     expect(system, contains('【PennaSoul】'));
-    expect(system, contains('[s1] 喜欢水彩(1 次)'));
+    expect(system, contains('[s1] 喜欢水彩'));
+    // 记事本的事不进 PennaSoul。
+    expect(system, contains('不写这个'));
     expect(system, contains('<soul-remember kind="rule">'));
     final rule = soul.find('提到小绿就是用户自己存的小绿')!;
     expect(rule.kind, soulRule);
@@ -116,7 +146,7 @@ void main() {
     expect(vm.messages.last.toolSummary, contains('喜欢水彩'));
   });
 
-  test('用户提到角色就记一次,够三次记成偏好', () async {
+  test('用户提到角色就记一次,够三次算进常用角色', () async {
     final config = tempConfig()..update(const AppConfig().putLlm(_llm));
     final vm = StudioViewModel(
       config: config,
@@ -130,7 +160,7 @@ void main() {
       vm.send('画希罗 $i');
       await pumpEventQueue();
     }
-    expect(soul.find('常用角色:希罗'), isNotNull);
+    expect(soul.cast.single, (name: '希罗', count: 3));
   });
 
   test('对话点子照眼前的 Preset 出,带上偏好;换了 Preset 重想', () async {

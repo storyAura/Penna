@@ -572,6 +572,16 @@ void main() {
       );
     });
 
+    test('自己存的角色用了内置角色的叫法:只算自己存的那个', () async {
+      final store = CharacterStore()
+        ..put(name: '小雨', alias: '甘雨', prompt: 'my girl');
+      final vm = _studio(['好了'], store: store);
+
+      vm.send('画甘雨在海边');
+      await pumpEventQueue();
+      expect(vm.messages.last.toolSummary, '已按名字查了角色库:小雨');
+    });
+
     test('点了上一条的选项:查回来的资料里写明这是回答,不要再问一遍', () async {
       final seen = <LlmRequest>[];
       final store = CharacterStore()..put(name: 'ganyu', prompt: 'my ganyu');
@@ -589,7 +599,7 @@ void main() {
       await pumpEventQueue();
       final asked = seen.last.messages.last['content']!;
       expect(asked, contains('用户这句话是在回答你上一条用 <options> 问的问题'));
-      expect(asked, contains('不要再问一遍'));
+      expect(asked, contains('同名的不要再问'));
     });
   });
 
@@ -624,8 +634,8 @@ void main() {
       expect(handed, contains('触发词:ganyu (genshin impact), genshin impact'));
       expect(handed, contains('外貌:1girl, goat horns, blue hair'));
       expect(handed, contains('服装:neck bell'));
-      // 自己存的和内置的撞了名:要先问用户是哪一个。
-      expect(handed, contains('先用 <options> 问用户指的是哪一个'));
+      // 自己存的和内置的撞了名:默认用自己存的,不问(2026-11-21 用户要求)。
+      expect(handed, contains('默认就是用户自己存的那个'));
       expect(vm.messages[2].toolSummary, '查了角色库 · 3 个');
       expect(vm.messages.last.text, '好了');
       expect(vm.isStreaming, isFalse);

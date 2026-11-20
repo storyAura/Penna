@@ -49,8 +49,16 @@ typedef SoulNote = ({String kind, String text});
 /// 系统提示里偏好最多列几条(按分量从重到轻)。
 const _maxLikesInPrompt = 20;
 
-/// 系统提示里的【PennaSoul】:记着的约定和偏好,以及两个标签怎么写。
-String soulPrompt(List<SoulEntry> entries) {
+/// 系统提示里常用角色最多列几个。
+const _maxCastInPrompt = 8;
+
+/// 系统提示里的【PennaSoul】:记着的约定、偏好、常用角色,以及两个标签怎么写。
+/// 什么时候记照 ChatGPT / Claude 记忆的做法:用户明说要长期记住才记,不从一场对话里猜;
+/// 要改一条照 mem0 的 UPDATE:删掉旧的再记新的,不叠两条。
+String soulPrompt(
+  List<SoulEntry> entries, {
+  List<({String name, int count})> cast = const [],
+}) {
   final rules = [
     for (final e in entries)
       if (e.kind == soulRule) e,
@@ -65,13 +73,18 @@ String soulPrompt(List<SoulEntry> entries) {
       '约定(必须照办,比技能里"先问用户"的要求优先;用户这次明说的和约定冲突时照这次的):\n'
           '${rules.map((e) => '- [${e.id}] ${e.text}').join('\n')}',
     if (likes.isNotEmpty)
-      '偏好(出点子、给建议、排 <options> 的推荐项时往这些上靠,次数多的更重;用户这次说的优先):\n'
-          '${likes.map((e) => '- [${e.id}] ${e.text}(${e.hits} 次)').join('\n')}',
-    '用户明说"以后都这样""记住""我说的 X 就是…",或纠正你、做了长期的决定时,'
+      '偏好(出点子、给建议、排 <options> 的推荐项时往这些上靠;用户这次说的优先):\n'
+          '${likes.map((e) => '- [${e.id}] ${e.text}').join('\n')}',
+    if (cast.isNotEmpty)
+      '常用角色(用户平时提到的次数,只说明他常画谁;这次没提到就不要自己加进画面):'
+          '${cast.take(_maxCastInPrompt).map((c) => '${c.name}(${c.count})').join('、')}',
+    '什么时候记:只在用户明说要你长期记住时(「记住」「以后都」「每次都」「我说的 X 就是…」),'
         '在回复最后写 <$soulRememberTag kind="rule">一句话写清这个约定</$soulRememberTag>;'
-        '看出用户反复用同一种画风、题材、构图或提示词写法时,写 '
-        '<$soulRememberTag kind="like">一句话写清偏好</$soulRememberTag>。'
-        '只记以后还用得上的,不记这一次的具体需求;已经记着的不重复写。'
+        '用户明说自己长期喜欢什么、要你以后往上靠时写 kind="like"。'
+        '这些不记:这一次、这一组画面的内容(服装、动作、情节、题材、体位);从对话里猜出来的喜好;'
+        '角色的长相、服装、设定(那是角色库的事);用户要存进记事本的(他说「记事本」「存起来」时写 <save-note>,不写这个);'
+        '程序已经在做的事(同名角色默认用用户自己存的,用户提到的角色程序自己数次数)。拿不准就不记。'
+        '已经记着的不重复写;要改某条时先写 <$soulForgetTag>旧的编号</$soulForgetTag> 再记新的;'
         '用户要取消某条时写 <$soulForgetTag>编号</$soulForgetTag>。',
   ].join('\n');
 }

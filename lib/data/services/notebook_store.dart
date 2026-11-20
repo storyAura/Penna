@@ -81,9 +81,11 @@ class NotebookStore extends ChangeNotifier {
   /// 没有(或 [title] 空着)就接在最后。名字比的时候不分大小写、不看首尾空白。
   void putNote(String bookName, String title, String text) {
     String key(String s) => s.trim().toLowerCase();
+    // 模型照系统提示抄名字时常连书名号一起写(「风格」)。
+    final name = bookName.replaceAll(RegExp('[「」『』]'), '').trim();
     final book =
-        _books.where((b) => key(b.name) == key(bookName)).firstOrNull?.id ??
-        addBook(bookName);
+        _books.where((b) => key(b.name) == key(name)).firstOrNull?.id ??
+        addBook(name);
     final notes = _books.firstWhere((b) => b.id == book).notes;
     final same = title.trim().isEmpty
         ? null

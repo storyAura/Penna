@@ -28,6 +28,12 @@ void main() {
     expect(store.books, isEmpty);
   });
 
+  test('Agent 存一条:本子名带书名号也对上已有的本子', () {
+    final store = NotebookStore()..addBook('风格');
+    store.putNote('「风格」', '纪实', 'film grain');
+    expect(store.books.single.notes.single.title, '纪实');
+  });
+
   test('存进文件、读回来一样;读不了的文件留底', () async {
     final dir = Directory.systemTemp.createTempSync('penna-notes-');
     addTearDown(() => dir.deleteSync(recursive: true));

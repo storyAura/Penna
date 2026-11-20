@@ -308,6 +308,11 @@ class ChatMessageView extends StatelessWidget {
     final made = splitNewSkill(splitAskLayout(tools.prose).prose);
     final newSkill = made.skill;
     final laid = splitLayout(made.prose);
+    // 一条回复可以排好几张:写完的各一张卡片,还在写的那张接在最后。
+    final layouts = [
+      for (final l in splitLayouts(made.prose)) l.json,
+      if (!laid.complete && laid.json != null) laid.json!,
+    ];
     // 透视、灯光标签由程序放到画板上,聊天里只留回复上那一笔记录。
     final asked = splitOptions(
       splitLighting(splitPerspective(splitLayers(laid.prose).prose).prose)
@@ -424,17 +429,15 @@ class ChatMessageView extends StatelessWidget {
           ),
         ),
       ],
-      if (laid.json != null) ...[
-        if (prose.isNotEmpty || drafts.isNotEmpty || newSkill != null)
+      for (final (i, json) in layouts.indexed) ...[
+        if (i > 0 || prose.isNotEmpty || drafts.isNotEmpty || newSkill != null)
           const SizedBox(height: 10),
         PopIn(
           child: LayoutCard(
-            json: laid.json!,
-            complete: laid.complete,
-            writing: streaming && !laid.complete,
-            onAdopt: onAdoptLayout == null
-                ? null
-                : () => onAdoptLayout!(laid.json!),
+            json: json,
+            complete: laid.complete || i < layouts.length - 1,
+            writing: streaming && !laid.complete && i == layouts.length - 1,
+            onAdopt: onAdoptLayout == null ? null : () => onAdoptLayout!(json),
             onOpen: onOpenLayout,
           ),
         ),

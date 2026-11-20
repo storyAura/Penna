@@ -14,15 +14,29 @@ extension StudioAutoLookup on StudioViewModel {
     final text = message.text;
     if (text.trim().isEmpty) return const {};
     final out = <String, List<CharacterHit>>{};
-    // 用户自己存的排前面:同一个叫法也对上内置的时,结果里会叫模型先问是哪一个。
-    for (final card in characters?.find(text) ?? const <CharacterCard>[]) {
+    // 用户自己存的排前面,同一个叫法默认就是它。
+    final own = characters?.find(text) ?? const <CharacterCard>[];
+    for (final card in own) {
       if (out.length < _maxAuto) out[card.name] = findCharacters(card.name);
     }
     final seen = {
       for (final hits in out.values)
         for (final h in hits) h.name,
     };
-    for (final name in _mentions?.inText(text, limit: _maxAuto) ?? const []) {
+    // 自己存的角色的名字和别名先从句子里挖掉,内置库只认剩下的:
+    // 「艾玛」是自己存的樱羽艾玛,不再另算一个 emma (project moon)(用户反馈)。
+    var rest = text;
+    for (final card in own) {
+      for (final n in [card.name, ...CharacterStore.aliasesOf(card)]) {
+        if (n.trim().isNotEmpty) {
+          rest = rest.replaceAll(
+            RegExp(RegExp.escape(n.trim()), caseSensitive: false),
+            ' ',
+          );
+        }
+      }
+    }
+    for (final name in _mentions?.inText(rest, limit: _maxAuto) ?? const []) {
       if (out.length >= _maxAuto || seen.contains(name)) continue;
       final hit = characterDict!.byName(name)!;
       final hits = characterDict!.withForms([hit], perHit: 6);

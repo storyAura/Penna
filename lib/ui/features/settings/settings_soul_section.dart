@@ -14,7 +14,14 @@ class SoulSection extends StatelessWidget {
   final SoulStore soul;
 
   Future<void> _add(BuildContext context) async {
-    final text = await askName(context, tr('添加约定'), '');
+    final text = await askName(
+      context,
+      tr('添加约定'),
+      '',
+      label: tr('约定'),
+      hint: '',
+      maxLines: 4,
+    );
     if (text != null && text.trim().isNotEmpty) soul.remember(soulRule, text);
   }
 
@@ -24,6 +31,7 @@ class SoulSection extends StatelessWidget {
     builder: (context, _) {
       final rules = soul.entries.where((e) => e.kind == soulRule).toList();
       final likes = soul.entries.where((e) => e.kind != soulRule).toList();
+      final cast = soul.cast;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -63,13 +71,44 @@ class SoulSection extends StatelessWidget {
               ],
             ),
           ),
+          gap,
+          PennaCard(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(tr('常用角色'), style: titleStyle),
+                const SizedBox(height: 8),
+                if (cast.isEmpty)
+                  Text(tr('还没有'), style: hintStyle)
+                else
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final c in cast)
+                        InputChip(
+                          label: Text(
+                            '${c.name}  ${c.count}',
+                            style: const TextStyle(fontSize: 12.5),
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          deleteIcon: const Icon(Icons.close, size: 14),
+                          deleteButtonTooltipMessage: tr('删除'),
+                          onDeleted: () => soul.forgetCharacter(c.name),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
         ],
       );
     },
   );
 }
 
-/// 一条记忆:原话、偏好记了几次、删除。
+/// 一条记忆:原话、编辑、删除。
 class _SoulRow extends StatelessWidget {
   const _SoulRow({required this.entry, required this.soul});
 
@@ -80,8 +119,24 @@ class _SoulRow extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     children: [
       Expanded(child: Text(entry.text, style: const TextStyle(fontSize: 13))),
-      if (entry.kind != soulRule)
-        Text(tr('{0} 次', [entry.hits]), style: hintStyle),
+      IconButton(
+        tooltip: tr('编辑'),
+        iconSize: 16,
+        visualDensity: VisualDensity.compact,
+        color: PennaColors.slate400,
+        icon: const Icon(Icons.edit_outlined),
+        onPressed: () async {
+          final text = await askName(
+            context,
+            tr('编辑'),
+            entry.text,
+            label: entry.kind == soulRule ? tr('约定') : tr('偏好'),
+            hint: '',
+            maxLines: 4,
+          );
+          if (text != null) soul.edit(entry.id, text);
+        },
+      ),
       IconButton(
         tooltip: tr('删除'),
         iconSize: 16,
