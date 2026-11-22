@@ -1668,6 +1668,7 @@ const en = <String, String>{
   '音频': 'Audio',
   '图像': 'Image',
   '上传素材': 'Uploads',
+  '可选': 'Optional',
   '不传,用工作流里的': "Use the workflow's file",
   'MiniMax H3 视频': 'MiniMax H3 Video',
   'PennaSoul 没存上:{0}': 'PennaSoul was not saved: {0}',

@@ -1641,6 +1641,7 @@ const zhHant = <String, String>{
   '音频': '音訊',
   '图像': '圖像',
   '上传素材': '上傳素材',
+  '可选': '可選',
   '不传,用工作流里的': '不上傳,用工作流程裡的',
   'MiniMax H3 视频': 'MiniMax H3 影片',
   'PennaSoul 没存上:{0}': 'PennaSoul 沒存上:{0}',

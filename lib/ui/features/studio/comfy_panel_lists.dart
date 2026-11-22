@@ -98,7 +98,9 @@ class _UploadRow extends StatelessWidget {
                       style: const TextStyle(fontSize: 12),
                     ),
                     Text(
-                      _short(chosen ?? slot.value),
+                      chosen == null && slot.value.trim().isEmpty
+                          ? tr('可选')
+                          : _short(chosen ?? slot.value),
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 11,

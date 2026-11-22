@@ -581,7 +581,7 @@ class ComfyClient {
     } else {
       base = parseApiWorkflow(workflow);
     }
-    if (uploads.isNotEmpty) base = await _withUploads(base, uploads);
+    base = await _withUploads(base, uploads);
     final prepared = prepareWorkflow(base, prompt, size: size);
     // 进度按 client_id 发到对应的 WebSocket 上:先连上再排队。
     final clientId = 'penna-${Random().nextInt(1 << 32)}';

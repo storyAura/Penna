@@ -544,6 +544,42 @@ void main() {
       dir.deleteSync(recursive: true);
     });
 
+    test('文件名留空又没选的参考图算可选:去掉节点和接它的线', () async {
+      final wf = {
+        ...defaultWorkflow('m.safetensors'),
+        '20': {
+          'class_type': 'LoadImage',
+          'inputs': {'image': ''},
+        },
+        '22': {
+          'class_type': 'LoadImage',
+          'inputs': {'image': 'keep.png'},
+        },
+        '23': {
+          'class_type': 'ImageBatch',
+          'inputs': {
+            'image1': ['22', 0],
+            'image2': ['20', 0],
+          },
+        },
+        '21': {
+          'class_type': 'PreviewImage',
+          'inputs': {
+            'images': ['23', 0],
+          },
+        },
+      };
+      final client = ComfyClient('http://127.0.0.1:${server.port}')
+        ..poll = Duration.zero;
+      await client.run(jsonEncode(wf), 'edit');
+      final prompt = queued['prompt'] as Map;
+      expect(prompt.containsKey('20'), isFalse);
+      expect((prompt['22'] as Map)['inputs']['image'], 'keep.png');
+      expect((prompt['23'] as Map)['inputs'], {
+        'image1': ['22', 0],
+      });
+    });
+
     test('Agent 写了出图标签:出图,图贴回那条回复', () async {
       final service = tempConfig();
       service.update(

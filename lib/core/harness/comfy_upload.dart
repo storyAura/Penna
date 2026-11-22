@@ -95,7 +95,8 @@ extension ComfyUploads on ComfyClient {
   }
 
   /// 传好 [uploads](节点编号 → 本机路径)里的文件,换掉那几个节点的输入(不改原来的)。
-  /// 对不上节点的跳过(工作流改过了)。
+  /// 对不上节点的跳过(工作流改过了)。工作流里文件名留空、又没选文件的节点算可选素材:
+  /// 整个去掉,接它的输入也去掉(同 ComfyUI 里绕过一个加载节点)。
   Future<Map<String, Object?>> _withUploads(
     Map<String, Object?> wf,
     Map<String, String> uploads,
@@ -103,8 +104,16 @@ extension ComfyUploads on ComfyClient {
     final out = jsonDecode(jsonEncode(wf)) as Map<String, Object?>;
     for (final slot in uploadSlots(out)) {
       final path = uploads[slot.node];
-      if (path == null) continue;
-      _inputs(out[slot.node])[slot.key] = await upload(path);
+      if (path != null) {
+        _inputs(out[slot.node])[slot.key] = await upload(path);
+      } else if (slot.value.trim().isEmpty) {
+        out.remove(slot.node);
+        for (final node in out.values) {
+          _inputs(node).removeWhere(
+            (_, v) => v is List && v.isNotEmpty && '${v[0]}' == slot.node,
+          );
+        }
+      }
     }
     return out;
   }
