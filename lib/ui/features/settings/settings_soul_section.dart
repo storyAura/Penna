@@ -25,7 +25,15 @@ class ExperimentalSection extends StatelessWidget {
         !await confirmDelete(
           context,
           tr('开启 PennaSoul'),
-          tr('记住的内容可能污染之后的提示词。'),
+          tr(
+            'PennaSoul 会跨对话记住你明确要求记下的约定和偏好,之后每次对话自动交给 Agent。\n\n'
+            '开启后可能出现的问题:\n'
+            '· 约定会带进每一次对话,Agent 一律照办,写无关的画面时也可能被它带偏。\n'
+            '· 偏好和常用角色会影响创作点子,点子可能反复围着同一类题材或角色。\n'
+            '· 记下的内容可能不准确,把某一次画面里的服装、动作或情节当成长期喜好。\n'
+            '· 工作台、区域控制、漫画分镜和副聊天共用同一份记录,一处记下处处生效。\n\n'
+            '提示词出现跑偏时,回到这里关掉 PennaSoul,或删掉相关的记录。',
+          ),
           action: tr('开启'),
         )) {
       return;

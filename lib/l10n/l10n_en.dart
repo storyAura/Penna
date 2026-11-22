@@ -1682,7 +1682,20 @@ const en = <String, String>{
   '尚在试验': 'Still in testing',
   '跨对话记住约定,可能污染提示词': 'Remembers rules across chats; may pollute prompts',
   '开启 PennaSoul': 'Turn on PennaSoul',
-  '记住的内容可能污染之后的提示词。': 'What it remembers may pollute later prompts.',
+  'PennaSoul 会跨对话记住你明确要求记下的约定和偏好,之后每次对话自动交给 Agent。\n\n'
+          '开启后可能出现的问题:\n'
+          '· 约定会带进每一次对话,Agent 一律照办,写无关的画面时也可能被它带偏。\n'
+          '· 偏好和常用角色会影响创作点子,点子可能反复围着同一类题材或角色。\n'
+          '· 记下的内容可能不准确,把某一次画面里的服装、动作或情节当成长期喜好。\n'
+          '· 工作台、区域控制、漫画分镜和副聊天共用同一份记录,一处记下处处生效。\n\n'
+          '提示词出现跑偏时,回到这里关掉 PennaSoul,或删掉相关的记录。':
+      'PennaSoul remembers the rules and preferences you explicitly ask it to keep, across conversations, and passes them to the Agent in every later conversation.\n\n'
+      'Possible problems once it is on:\n'
+      '· Rules are added to every conversation and always followed, so they can steer unrelated pictures as well.\n'
+      '· Preferences and frequent characters shape chat ideas, which may keep circling the same subjects or characters.\n'
+      '· What gets remembered may be inaccurate, turning the outfit, pose or plot of a single picture into a long-term taste.\n'
+      '· The Workbench, Region Control, Manga Storyboard and side chats share one record, so an item saved in one place applies everywhere.\n\n'
+      'If prompts start drifting, come back here to turn PennaSoul off or delete the related items.',
   '开启': 'Turn on',
   '约定': 'Rules',
   '还没有': 'None yet',
