@@ -109,19 +109,30 @@ void main() {
       ),
     );
     final runner = ComfyRunner(config);
+    // 和程序里一样摆在窗口右边,面板往左边弹。
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SizedBox(
-            width: 300,
-            child: ListenableBuilder(
-              listenable: Listenable.merge([config, runner]),
-              builder: (_, _) => ComfyPanel(runner: runner, config: config),
+          body: Align(
+            alignment: Alignment.centerRight,
+            child: SizedBox(
+              width: 300,
+              child: ListenableBuilder(
+                listenable: Listenable.merge([config, runner]),
+                builder: (_, _) => ComfyPanel(runner: runner, config: config),
+              ),
             ),
           ),
         ),
       ),
     );
+    await tester.tap(find.text('1024 × 1024'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(sizePadKey), findsOneWidget);
+    // 面板弹在旁边、不盖住这个框:再点一下收起来,再点又打开。
+    await tester.tap(find.text('1024 × 1024'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(sizePadKey), findsNothing);
     await tester.tap(find.text('1024 × 1024'));
     await tester.pumpAndSettle();
     expect(find.byKey(sizePadKey), findsOneWidget);

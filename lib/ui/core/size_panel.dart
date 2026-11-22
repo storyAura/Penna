@@ -12,6 +12,9 @@ typedef PanelSize = ({int width, int height});
 /// 拖动板的边长(逻辑像素)。
 const _padSide = 240.0;
 
+/// 面板整个的宽(拖动板加两边各 12 的留白),摆弹出位置用。
+const sizePanelWidth = _padSide + 24;
+
 /// 拖动板(测试里拿它找)。
 const sizePadKey = Key('layout-size-pad');
 
@@ -352,7 +355,8 @@ class _SizeTileState extends State<_SizeTile> {
             child: AnimatedContainer(
               duration: Motion.of(context, Motion.base),
               curve: Motion.swift,
-              width: 56,
+              // 一排三个正好铺满面板:(240 - 两道 6 的间隔) / 3。
+              width: (_padSide - 12) / 3,
               padding: const EdgeInsets.fromLTRB(2, 6, 2, 5),
               decoration: BoxDecoration(
                 color: on ? PennaColors.primaryBg : PennaColors.slate50,

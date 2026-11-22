@@ -94,12 +94,14 @@ class _SizeMenu extends StatelessWidget {
           side: BorderSide(color: PennaColors.border),
         ),
       ),
+      // 面板很高,往下弹会被挪上来盖住这个框,再点就收不回去:弹到侧栏左边,和框顶对齐。
+      alignment: AlignmentDirectional.topStart,
     ),
-    alignmentOffset: const Offset(0, 4),
+    alignmentOffset: const Offset(-sizePanelWidth - 12, 0),
     menuChildren: [
-      // MenuAnchor 自己不带动画:打开时从上往下轻轻浮出,和下拉菜单一致。
+      // MenuAnchor 自己不带动画:打开时从右往左轻轻浮出。
       PopIn.popover(
-        from: Alignment.topCenter,
+        from: Alignment.centerRight,
         child: ListenableBuilder(
           listenable: Listenable.merge([runner, runner.config]),
           builder: (context, _) {
