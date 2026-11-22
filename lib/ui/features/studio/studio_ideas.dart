@@ -12,9 +12,21 @@ const _ideaLikes = 8;
 /// 记着最近出过的点子最多几条(叫模型别重复)。
 const _ideaPastMax = 24;
 
-/// 一个常用角色占全部提到次数的这么多以上,才拿来出点子(2026-11-21 用户反馈:
-/// 以前每批都从自己存的、收藏的和热门角色里抽,点子被角色占满,还常是没画过的人)。
-const _ideaCastShare = 0.25;
+/// 这么多批点子里有一批带上一个常用角色(2026-11-23 用户要求:按提到的次数加权随机抽,
+/// 比例写死;更早的 11-21 反馈:以前每批都抽角色,点子被角色占满)。
+const ideaCastChance = 0.3;
+
+/// 出点子用的常用角色:[ideaCastChance] 的机会抽一个,提到次数越多越容易抽中;
+/// 这批不带角色或没有常用角色时是 null。
+String? pickIdeaCast(List<({String name, int count})> cast, Random random) {
+  if (cast.isEmpty || random.nextDouble() >= ideaCastChance) return null;
+  var ticket = random.nextInt(cast.fold(0, (a, c) => a + c.count));
+  for (final c in cast) {
+    ticket -= c.count;
+    if (ticket < 0) return c.name;
+  }
+  return cast.last.name;
+}
 
 /// 每条点子随机给一个方向,免得一批批都是「给某某画一套衣服」。
 const _ideaAngles = [
@@ -35,8 +47,9 @@ const _ideaAngles = [
 /// 新对话的空白处摆几条创作点子:用 Agent 的模型现想,点一条填进输入框。
 /// 点子的类型照眼前的 Preset 来(2026-11-16 用户要求:写视频的 Preset 出视频的点子),
 /// 往 PennaSoul 记着的偏好上靠。对话里一有话就作废,下一场新对话重想;换了 Preset 也重想。
-/// 2026-11-21 用户反馈点子被角色占满、不跟 Preset、老重复:角色只用占比很大的常用角色
-/// (最多一条),名字照界面语言;每条随机给一个方向,出过的叫模型别重复。
+/// 2026-11-21 用户反馈点子被角色占满、不跟 Preset、老重复:常用角色按 [pickIdeaCast]
+/// 偶尔带一个(最多一条),名字照界面语言;每条随机给一个方向,出过的叫模型别重复。
+/// PennaSoul 没开时偏好和常用角色都不用。
 // ponytail: 出过的点子只记在这次运行里,重启后从头记。
 extension StudioIdeas on StudioViewModel {
   /// 眼前的点子;还没要或正在要时是 null,要过但没要到是空的。
@@ -87,13 +100,13 @@ extension StudioIdeas on StudioViewModel {
             'content': _ideasPrompt(
               cfg.language,
               preset.systemPrompt,
-              soul?.entries ?? const [],
+              soulOn ? soul!.entries : const [],
             ),
           },
           {
             'role': 'user',
             'content': _ideasAsk(
-              _ideaCast(cfg.language),
+              _ideaCast(cfg.language, random),
               (_ideaAngles.toList()..shuffle(random)).take(_ideaCount).toList(),
               _pastIdeas,
             ),
@@ -116,16 +129,12 @@ extension StudioIdeas on StudioViewModel {
     _changed();
   }
 
-  /// 拿来出点子的角色:PennaSoul 里占比很大的常用角色(最多两个),
-  /// 名字照界面语言写。没有这样的角色就不点名角色。
-  List<String> _ideaCast(String language) {
-    final store = soul;
-    if (store == null) return const [];
-    final total = store.castTotal;
-    return [
-      for (final c in store.cast)
-        if (c.count >= total * _ideaCastShare) _ideaName(c.name, language),
-    ].take(2).toList();
+  /// 拿来出点子的角色:PennaSoul 的常用角色里按次数抽的那一个([pickIdeaCast]),
+  /// 名字照界面语言写。这批没抽到就不点名角色。
+  List<String> _ideaCast(String language, Random random) {
+    if (!soulOn) return const [];
+    final name = pickIdeaCast(soul!.cast, random);
+    return name == null ? const [] : [_ideaName(name, language)];
   }
 
   /// 显示给模型的角色名:自己存的照原名;内置的挑界面语言的那个别名,
@@ -158,7 +167,7 @@ extension StudioIdeas on StudioViewModel {
         if (cast.isEmpty)
           '不要点名具体的作品角色,写画面里是什么样的人或东西就行。'
         else
-          '用户最常画的是 ${cast.join('、')}:只有一条用其中一个(名字照写),其余的不点名具体角色。',
+          '其中一条画用户常画的 ${cast.join('、')}(名字照写),其余的不点名具体角色。',
         if (past.isNotEmpty) '前面已经出过下面这些,不要重复,题材、句式和开头都要换:\n${past.join('\n')}',
       ].join('\n');
 

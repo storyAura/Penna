@@ -443,7 +443,7 @@ class _ChatPaneState extends State<ChatPane> with _Attachments<ChatPane> {
         onOpenLayout: widget.onOpenLayout,
         onReuseAttachment: _reuse,
         comfy: widget.vm.comfy,
-        soul: widget.vm.soul,
+        soul: widget.vm.soulOn ? widget.vm.soul : null,
         onGenerate: (prompt) =>
             widget.vm.generateReply(message, prompt: prompt),
         streaming: widget.vm.isStreaming && last,

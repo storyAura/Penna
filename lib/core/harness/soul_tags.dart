@@ -46,41 +46,39 @@ typedef SoulNote = ({String kind, String text});
   return (prose: prose.trim(), remember: remember, forget: forget);
 }
 
-/// 系统提示里偏好最多列几条(按分量从重到轻)。
-const _maxLikesInPrompt = 20;
+/// 用户这句话里有这些词才收 `<soul-remember>`(2026-11-23 用户反馈:模型从对话里猜着记,
+/// 画面内容被记成偏好,污染了之后的提示词;只靠提示词管不住,程序把关)。
+final _askedToKeep = RegExp(
+  r'记住|记着|记下|别忘|以后|往后|今后|每次|一直|总是|永远|默认|記住|記著|記下|以後'
+  r'|覚え|いつも|今後|毎回|ずっと'
+  r'|remember|always|from now on|every time|by default|going forward',
+  caseSensitive: false,
+);
 
-/// 系统提示里常用角色最多列几个。
-const _maxCastInPrompt = 8;
+/// 用户这句话是不是明说了要长期记住。
+bool askedToRemember(String userText) => _askedToKeep.hasMatch(userText);
 
-/// 系统提示里的【PennaSoul】:记着的约定、偏好、常用角色,以及两个标签怎么写。
+/// 去掉回复里的 `<soul-remember>`(没收下的那些,免得回复下面出提示条)。
+String dropSoulRemember(String reply) => reply.replaceAll(_remember, '');
+
+/// 系统提示里的【PennaSoul】:记着的约定,以及两个标签怎么写。
+/// 偏好和常用角色不进来(2026-11-23 用户反馈:它们把每次写的提示词都往同一类画面上带;
+/// 只给对话点子用,见 `studio_ideas.dart`)。
 /// 什么时候记照 ChatGPT / Claude 记忆的做法:用户明说要长期记住才记,不从一场对话里猜;
 /// 要改一条照 mem0 的 UPDATE:删掉旧的再记新的,不叠两条。
-String soulPrompt(
-  List<SoulEntry> entries, {
-  List<({String name, int count})> cast = const [],
-}) {
+String soulPrompt(List<SoulEntry> entries) {
   final rules = [
     for (final e in entries)
       if (e.kind == soulRule) e,
   ];
-  final likes = [
-    for (final e in entries)
-      if (e.kind != soulRule) e,
-  ].take(_maxLikesInPrompt);
   return [
-    '【PennaSoul】用户的长期约定和偏好,跨对话记着(用户没问就不要提起这个记录本身)。',
+    '【PennaSoul】用户的长期约定,跨对话记着(用户没问就不要提起这个记录本身)。',
     if (rules.isNotEmpty)
       '约定(必须照办,比技能里"先问用户"的要求优先;用户这次明说的和约定冲突时照这次的):\n'
           '${rules.map((e) => '- [${e.id}] ${e.text}').join('\n')}',
-    if (likes.isNotEmpty)
-      '偏好(出点子、给建议、排 <options> 的推荐项时往这些上靠;用户这次说的优先):\n'
-          '${likes.map((e) => '- [${e.id}] ${e.text}').join('\n')}',
-    if (cast.isNotEmpty)
-      '常用角色(用户平时提到的次数,只说明他常画谁;这次没提到就不要自己加进画面):'
-          '${cast.take(_maxCastInPrompt).map((c) => '${c.name}(${c.count})').join('、')}',
     '什么时候记:只在用户明说要你长期记住时(「记住」「以后都」「每次都」「我说的 X 就是…」),'
         '在回复最后写 <$soulRememberTag kind="rule">一句话写清这个约定</$soulRememberTag>;'
-        '用户明说自己长期喜欢什么、要你以后往上靠时写 kind="like"。'
+        '用户明说自己长期喜欢什么时写 kind="like"(只拿来出创作点子,写提示词时不用)。'
         '这些不记:这一次、这一组画面的内容(服装、动作、情节、题材、体位);从对话里猜出来的喜好;'
         '角色的长相、服装、设定(那是角色库的事);用户要存进记事本的(他说「记事本」「存起来」时写 <save-note>,不写这个);'
         '程序已经在做的事(同名角色默认用用户自己存的,用户提到的角色程序自己数次数)。拿不准就不记。'

@@ -40,8 +40,8 @@ void main() {
     expect(soul.cast.single, (name: '芙莉莲', count: 4));
     expect(soul.castTotal, 5);
     expect(soul.entries, isEmpty);
-    expect(soulPrompt(soul.entries, cast: soul.cast), contains('常用角色'));
-    expect(soulPrompt(soul.entries, cast: soul.cast), contains('芙莉莲(4)'));
+    // 常用角色不进系统提示(只给对话点子用)。
+    expect(soulPrompt(soul.entries), isNot(contains('芙莉莲')));
     soul.forgetCharacter('芙莉莲');
     expect(soul.cast, isEmpty);
   });
@@ -109,13 +109,51 @@ void main() {
     expect(splitSoul('写完了<soul-remember kind="rule">半').prose, '写完了');
   });
 
-  test('系统提示带着约定和偏好;回复里记的说完存上,删的删掉并记在回复上', () async {
+  test('认得用户明说要记住的话', () {
+    expect(askedToRemember('以后我说小绿就是我自己存的那个'), isTrue);
+    expect(askedToRemember('Remember: always use watercolor'), isTrue);
+    expect(askedToRemember('これ覚えておいて'), isTrue);
+    expect(askedToRemember('给希罗画一套蕾丝水手服'), isFalse);
+  });
+
+  test('没开 PennaSoul:系统提示不带、不数角色、回复里的记忆标签去掉不记', () async {
+    final seen = <LlmRequest>[];
+    final config = tempConfig()..update(const AppConfig().putLlm(_llm));
+    final vm = StudioViewModel(
+      config: config,
+      characters: CharacterStore()..put(name: '希罗', prompt: 'x'),
+      streamChat: (r) {
+        seen.add(r);
+        return Stream.value(
+          '好。<soul-remember kind="rule">喜欢水彩</soul-remember>',
+        );
+      },
+    );
+    addTearDown(vm.dispose);
+    final soul = SoulStore()..remember(soulRule, '约定 A');
+    vm.soul = soul;
+    for (var i = 0; i < 3; i++) {
+      vm.send('以后都画希罗 $i');
+      await pumpEventQueue();
+    }
+    expect(
+      seen.first.messages.first['content'],
+      isNot(contains('【PennaSoul】')),
+    );
+    expect(soul.cast, isEmpty);
+    expect(soul.find('喜欢水彩'), isNull);
+    expect(vm.messages.last.text, isNot(contains('soul-remember')));
+  });
+
+  test('系统提示只带约定;用户明说要记才记,没说的标签去掉;删的删掉并记在回复上', () async {
     final seen = <LlmRequest>[];
     final replies = [
       '记住了。<soul-remember kind="rule">提到小绿就是用户自己存的小绿</soul-remember>',
+      '好。<soul-remember kind="like">喜欢蕾丝水手服</soul-remember>',
       '取消了。<soul-forget>s1</soul-forget>',
     ];
-    final config = tempConfig()..update(const AppConfig().putLlm(_llm));
+    final config = tempConfig()
+      ..update(const AppConfig(soulOn: true).putLlm(_llm));
     final vm = StudioViewModel(
       config: config,
       streamChat: (r) {
@@ -131,12 +169,20 @@ void main() {
     await pumpEventQueue();
     final system = seen.first.messages.first['content']!;
     expect(system, contains('【PennaSoul】'));
-    expect(system, contains('[s1] 喜欢水彩'));
+    // 偏好不进写提示词的系统提示。
+    expect(system, isNot(contains('喜欢水彩')));
     // 记事本的事不进 PennaSoul。
     expect(system, contains('不写这个'));
     expect(system, contains('<soul-remember kind="rule">'));
     final rule = soul.find('提到小绿就是用户自己存的小绿')!;
     expect(rule.kind, soulRule);
+    expect(seen.last.messages.first['content'], isNot(contains('[s1]')));
+
+    // 用户没说要记:不收,标签从回复里去掉(不出提示条)。
+    vm.send('给希罗画一套蕾丝水手服');
+    await pumpEventQueue();
+    expect(soul.find('喜欢蕾丝水手服'), isNull);
+    expect(vm.messages.last.text, '好。');
 
     vm.send('取消小绿那个约定');
     await pumpEventQueue();
@@ -147,7 +193,8 @@ void main() {
   });
 
   test('用户提到角色就记一次,够三次算进常用角色', () async {
-    final config = tempConfig()..update(const AppConfig().putLlm(_llm));
+    final config = tempConfig()
+      ..update(const AppConfig(soulOn: true).putLlm(_llm));
     final vm = StudioViewModel(
       config: config,
       characters: CharacterStore()..put(name: '希罗', prompt: 'x'),
@@ -165,7 +212,8 @@ void main() {
 
   test('对话点子照眼前的 Preset 出,带上偏好;换了 Preset 重想', () async {
     final seen = <LlmRequest>[];
-    final config = tempConfig()..update(const AppConfig().putLlm(_llm));
+    final config = tempConfig()
+      ..update(const AppConfig(soulOn: true).putLlm(_llm));
     final vm = StudioViewModel(
       config: config,
       characterDict: CharacterDict.parse(
@@ -200,7 +248,8 @@ void main() {
 
   test('副聊天和漫画分镜的对话也带着 PennaSoul,副聊天记的同样存上', () async {
     final seen = <LlmRequest>[];
-    final config = tempConfig()..update(const AppConfig().putLlm(_llm));
+    final config = tempConfig()
+      ..update(const AppConfig(soulOn: true).putLlm(_llm));
     final soul = SoulStore()..remember(soulRule, '提到小绿就是自己存的小绿');
     final vm = StudioViewModel(
       config: config,
@@ -216,7 +265,7 @@ void main() {
     final side = SideChat(vm);
     vm.side = side;
 
-    side.send('帮我看看');
+    side.send('以后都用厚涂');
     await pumpEventQueue();
     expect(seen.single.messages.first['content'], contains('提到小绿就是自己存的小绿'));
     expect(soul.find('喜欢厚涂')?.kind, soulLike);

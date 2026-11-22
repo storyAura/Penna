@@ -1,11 +1,71 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/services/config_service.dart';
 import '../../../data/services/soul_store.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'settings_agent_sections.dart' show hintStyle;
 import 'settings_sections.dart';
+
+/// 「设置 → 实验性功能」(2026-11-23 用户要求):还没定型的功能各一个开关,默认关。
+/// 现在只有 PennaSoul;以后的实验性功能也加在这一页。
+class ExperimentalSection extends StatelessWidget {
+  const ExperimentalSection({
+    super.key,
+    required this.service,
+    required this.soul,
+  });
+
+  final ConfigService service;
+  final SoulStore soul;
+
+  Future<void> _toggleSoul(BuildContext context, bool on) async {
+    if (on &&
+        !await confirmDelete(
+          context,
+          tr('开启 PennaSoul'),
+          tr('记住的内容可能污染之后的提示词。'),
+          action: tr('开启'),
+        )) {
+      return;
+    }
+    service.update(service.config.copyWith(soulOn: on));
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: service,
+    builder: (context, _) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionHeading(tr('实验性功能'), tr('尚在试验')),
+        PennaCard(
+          padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('PennaSoul', style: titleStyle),
+                    Text(tr('跨对话记住约定,可能污染提示词'), style: hintStyle),
+                  ],
+                ),
+              ),
+              Switch(
+                value: service.config.soulOn,
+                onChanged: (v) => _toggleSoul(context, v),
+              ),
+            ],
+          ),
+        ),
+        gap,
+        SoulSection(soul: soul),
+      ],
+    ),
+  );
+}
 
 /// PennaSoul:Agent 记着的约定和偏好。在这里看、加约定、删掉不要的。
 class SoulSection extends StatelessWidget {
@@ -35,7 +95,6 @@ class SoulSection extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SectionHeading('PennaSoul', tr('记住的约定和偏好')),
           PennaCard(
             padding: const EdgeInsets.all(14),
             child: Column(

@@ -445,6 +445,7 @@ class AppConfig {
     this.layoutSnap = defaultLayoutSnap,
     this.compressImages = true,
     this.chatIdeas = true,
+    this.soulOn = false,
     this.blurImages = false,
     this.tutorialSeen = false,
     this.mascot = false,
@@ -537,6 +538,7 @@ class AppConfig {
           .toInt(),
       compressImages: m['compressImages'] as bool? ?? true,
       chatIdeas: m['chatIdeas'] as bool? ?? true,
+      soulOn: m['soulOn'] as bool? ?? false,
       blurImages: m['blurImages'] as bool? ?? false,
       // 旧设置里没有这一项:用过的人不再自动弹教程。
       tutorialSeen: m['tutorialSeen'] as bool? ?? true,
@@ -719,6 +721,10 @@ class AppConfig {
   /// 新对话里没说话时,用 Agent 的模型想几条创作点子摆在空白处。
   final bool chatIdeas;
 
+  /// 实验性功能 PennaSoul 开着(2026-11-23 用户要求,默认关:记忆会污染提示词)。
+  /// 关着时系统提示不带它、不数角色、不收记忆标签,记着的数据留着。
+  final bool soulOn;
+
   /// 出的图、档案库的图先糊着,点一下才看清(只是显示上的处理;2026-11-17 用户要求,默认关)。
   final bool blurImages;
 
@@ -794,6 +800,7 @@ class AppConfig {
     'layoutSnap': layoutSnap,
     'compressImages': compressImages,
     'chatIdeas': chatIdeas,
+    'soulOn': soulOn,
     'blurImages': blurImages,
     'tutorialSeen': tutorialSeen,
     'mascot': mascot,
@@ -889,6 +896,7 @@ class AppConfig {
     int? layoutSnap,
     bool? compressImages,
     bool? chatIdeas,
+    bool? soulOn,
     bool? blurImages,
     bool? tutorialSeen,
     bool? mascot,
@@ -941,6 +949,7 @@ class AppConfig {
     layoutSnap: layoutSnap ?? this.layoutSnap,
     compressImages: compressImages ?? this.compressImages,
     chatIdeas: chatIdeas ?? this.chatIdeas,
+    soulOn: soulOn ?? this.soulOn,
     blurImages: blurImages ?? this.blurImages,
     tutorialSeen: tutorialSeen ?? this.tutorialSeen,
     mascot: mascot ?? this.mascot,

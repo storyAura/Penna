@@ -35,7 +35,7 @@ Penna is a tool for writing **positive prompts** for text-to-image models, cover
 - **Local Interrogate**: 20 built-in taggers and 15 vision models, plus online models.
 - **Tags and characters**: about 76,000 Danbooru tags and 74,000 characters built in, looked up by the Agent before writing.
 - **ComfyUI generation**: connects to a local or cloud ComfyUI, generates from the final prompt in one click with live progress, supports video output and reference uploads, lets the Agent generate in chat and creates an Archive preview on save.
-- **PennaSoul**: remembers your long-term rules and preferences and loads them with every conversation, so suggestions and questions fit your habits.
+- **PennaSoul** (experimental): remembers your long-term rules and loads them with every conversation, so chats fit your habits.
 - **Model APIs**: OpenAI-compatible APIs, the Google API and Grok account sign-in, chained as ordered fallbacks.
 - **More**: Skills, Archive, a Pose library, Notes, an Activity tree, MCP, four interface languages, dark mode, a guided tour with the mascot Story and in-app updates.
 

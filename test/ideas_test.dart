@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/characters/character_dict.dart';
@@ -75,9 +76,28 @@ void main() {
     expect(asked, 2);
   });
 
-  test('只有占比很大的常用角色才用,名字照界面语言', () async {
+  test('常用角色三成的机会抽一个,次数越多越容易抽中', () {
+    const cast = [(name: '希罗', count: 30), (name: '艾玛', count: 10)];
+    // 骰子掷到三成以外:不带角色。
+    expect(pickIdeaCast(cast, _Dice(0.3, 0)), isNull);
+    expect(pickIdeaCast(const [], _Dice(0, 0)), isNull);
+    // 签号 0–29 是希罗,30–39 是艾玛。
+    expect(pickIdeaCast(cast, _Dice(0.29, 29)), '希罗');
+    expect(pickIdeaCast(cast, _Dice(0.1, 30)), '艾玛');
+    final random = Random(1);
+    final picks = [for (var i = 0; i < 4000; i++) pickIdeaCast(cast, random)];
+    final some = picks.whereType<String>();
+    expect(some.length / picks.length, closeTo(ideaCastChance, 0.03));
+    expect(
+      some.where((n) => n == '希罗').length / some.length,
+      closeTo(0.75, 0.05),
+    );
+  });
+
+  test('点子里的常用角色名字照界面语言;没开 PennaSoul 不用', () async {
     LlmRequest? seen;
-    final config = tempConfig()..update(const AppConfig().putLlm(_llm));
+    final config = tempConfig()
+      ..update(const AppConfig(soulOn: true).putLlm(_llm));
     final vm = StudioViewModel(
       config: config,
       characterDict: CharacterDict.parse(
@@ -95,25 +115,48 @@ void main() {
     for (var i = 0; i < 6; i++) {
       soul.noteCharacters(['kaname madoka']);
     }
-    // 只提过三次、占比不到四分之一的不用。
-    for (var i = 0; i < 3; i++) {
-      soul.noteCharacters(['希罗']);
-    }
-    for (var i = 0; i < 10; i++) {
-      soul.noteCharacters(['路人 $i']);
+
+    // 三成的机会才带角色:换几批总会抽到(连着 60 批都没抽到的机会不到十亿分之一)。
+    Future<String> askWithCast() async {
+      for (var i = 0; i < 60; i++) {
+        vm.refreshIdeas();
+        await pumpEventQueue();
+        final ask = seen!.messages.last['content']!;
+        if (!ask.contains('不要点名具体的作品角色')) return ask;
+      }
+      fail('60 批都没带角色');
     }
 
-    vm.wantIdeas();
-    await pumpEventQueue();
-    var ask = seen!.messages.last['content']!;
+    var ask = await askWithCast();
     expect(ask, contains('鹿目圆'));
     expect(ask, isNot(contains('アルティメット')));
-    expect(ask, isNot(contains('希罗')));
 
     config.update(config.config.copyWith(language: 'ja'));
-    vm.refreshIdeas();
-    await pumpEventQueue();
-    ask = seen!.messages.last['content']!;
+    ask = await askWithCast();
     expect(ask, contains('アルティメットまどか'));
+
+    config.update(config.config.copyWith(soulOn: false));
+    for (var i = 0; i < 10; i++) {
+      vm.refreshIdeas();
+      await pumpEventQueue();
+      expect(seen!.messages.last['content'], contains('不要点名具体的作品角色'));
+    }
   });
+}
+
+/// 掷出固定点数的骰子:[roll] 给 nextDouble,[ticket] 给 nextInt。
+class _Dice implements Random {
+  _Dice(this.roll, this.ticket);
+
+  final double roll;
+  final int ticket;
+
+  @override
+  double nextDouble() => roll;
+
+  @override
+  int nextInt(int max) => ticket;
+
+  @override
+  bool nextBool() => false;
 }

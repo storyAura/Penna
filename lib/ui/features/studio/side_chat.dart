@@ -450,11 +450,19 @@ class SideChat extends ChangeNotifier {
             if (_peek() || _lookup() || _askLayout()) return;
             _deliver();
             // PennaSoul 的标签和主聊天一样照做(记的在回复下面出提示条)。
-            final soul = main.applySoul(_messages.last.text);
-            if (soul != null) {
+            final soul = main.applySoul(
+              _messages.last.text,
+              _messages.where((m) => m.fromUser && !m.tool).lastOrNull?.text ??
+                  '',
+            );
+            if (soul.text != _messages.last.text || soul.note != null) {
               _update(
-                (m) =>
-                    m.copyWith(toolSummary: [?m.toolSummary, soul].join(' · ')),
+                (m) => m.copyWith(
+                  text: soul.text,
+                  toolSummary: soul.note == null
+                      ? m.toolSummary
+                      : [?m.toolSummary, soul.note].join(' · '),
+                ),
               );
               main.sideChanged();
             }
