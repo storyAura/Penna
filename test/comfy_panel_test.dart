@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/comfy_workflow.dart';
 import 'package:penna/core/harness/comfyui.dart';
 import 'package:penna/data/models/app_config.dart';
+import 'package:penna/ui/core/size_panel.dart';
 import 'package:penna/ui/features/studio/comfy_panel.dart';
 import 'package:penna/core/harness/attachment.dart';
 import 'package:penna/ui/features/studio/studio_view_model.dart';
@@ -91,6 +92,55 @@ void main() {
     await tester.tap(find.text('柔和'));
     await tester.pumpAndSettle();
     expect(runner.loraPreset?.name, '柔和');
+  });
+
+  // 2026-11-22:画面大小换成和区域控制一样的分辨率面板,常用尺寸能存能删。
+  testWidgets('画面大小点开是分辨率面板:点常用尺寸换过去,存下的尺寸写进设置', (tester) async {
+    final config = tempConfig();
+    config.update(
+      config.config.copyWith(
+        comfy: const ComfySettings()
+            .putFlow((
+              id: 'f',
+              name: 'T2I',
+              text: jsonEncode(defaultWorkflow('m.safetensors')),
+            ))
+            .copyWith(flowId: 'f'),
+      ),
+    );
+    final runner = ComfyRunner(config);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 300,
+            child: ListenableBuilder(
+              listenable: Listenable.merge([config, runner]),
+              builder: (_, _) => ComfyPanel(runner: runner, config: config),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('1024 × 1024'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(sizePadKey), findsOneWidget);
+
+    await tester.tap(find.text('832×1216'));
+    await tester.pumpAndSettle();
+    expect(latentSize(runner.workflow!), (width: 832, height: 1216));
+
+    runner.edit((wf) => setLatentSize(wf, (width: 640, height: 960)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.bookmark_add_outlined));
+    await tester.pumpAndSettle();
+    expect(runner.sizes.last, (width: 640, height: 960));
+    expect(
+      ComfySettings.fromJson(
+        jsonDecode(jsonEncode(config.config.comfy.toJson())),
+      ).sizes.last,
+      (width: 640, height: 960),
+    );
   });
 
   // 2026-11-22:对话里附的图出图时按先后填进参考图格子;侧栏的工作流能拖着排。

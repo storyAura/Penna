@@ -241,7 +241,7 @@ void main() {
       expect(jsonEncode(wf), contains(comfyPromptMark), reason: name);
       expect(latentNodeIds(wf), hasLength(1), reason: name);
       expect(modelSlots(wf), isNotEmpty, reason: name);
-      expect(uploadSlots(wf).length, greaterThan(1), reason: name);
+      expect(samplerSlots(wf), isNotEmpty, reason: name);
       expect(
         prepareWorkflow(wf, 'a cat', size: (width: 832, height: 1216)),
         isNotEmpty,

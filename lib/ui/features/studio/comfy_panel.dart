@@ -10,6 +10,7 @@ import '../../../data/models/app_config.dart';
 import '../../../data/services/config_service.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
+import '../../core/size_panel.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'comfy_runner.dart';

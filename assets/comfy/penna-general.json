@@ -1,0 +1,1604 @@
+{
+  "id": "a3952c6a-99a7-4fdf-89a3-da7be5cf04b3",
+  "revision": 2,
+  "last_node_id": 126,
+  "last_link_id": 211,
+  "nodes": [
+    {
+      "id": 16,
+      "type": "KSampler",
+      "pos": [
+        2067.4970158225765,
+        90.18171212751929
+      ],
+      "size": [
+        341.49017997970805,
+        726.5578386418686
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 195
+        },
+        {
+          "label": "positive",
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 210
+        },
+        {
+          "label": "negative",
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 209
+        },
+        {
+          "label": "latent_image",
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 192
+        },
+        {
+          "label": "seed",
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        },
+        {
+          "label": "steps",
+          "name": "steps",
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": null
+        },
+        {
+          "label": "cfg",
+          "name": "cfg",
+          "type": "FLOAT",
+          "widget": {
+            "name": "cfg"
+          },
+          "link": null
+        },
+        {
+          "label": "sampler_name",
+          "name": "sampler_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "sampler_name"
+          },
+          "link": null
+        },
+        {
+          "label": "scheduler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "label": "denoise",
+          "name": "denoise",
+          "type": "FLOAT",
+          "widget": {
+            "name": "denoise"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "LATENT",
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            22
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.40.0",
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        1110767015677577,
+        "randomize",
+        8,
+        1,
+        "euler",
+        "sgm_uniform",
+        1
+      ],
+      "widgets_values_named": {
+        "seed": 1110767015677577,
+        "control_after_generate": "randomize",
+        "steps": 8,
+        "cfg": 1,
+        "sampler_name": "euler",
+        "scheduler": "sgm_uniform",
+        "denoise": 1
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 17,
+      "type": "VAEDecode",
+      "pos": [
+        2086.7854330410537,
+        884.2385822621915
+      ],
+      "size": [
+        291.7210490258781,
+        142.74480483429534
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "samples",
+          "name": "samples",
+          "type": "LATENT",
+          "link": 22
+        },
+        {
+          "label": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "link": 183
+        }
+      ],
+      "outputs": [
+        {
+          "label": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            182
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.40.0",
+        "Node name for S&R": "VAEDecode"
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 18,
+      "type": "SaveImage",
+      "pos": [
+        1512.4996742545823,
+        45.70048111564052
+      ],
+      "size": [
+        521.9447732639367,
+        940.2898537544903
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 182
+        },
+        {
+          "label": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "links": []
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.40.0",
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "%date:yy_MM_dd%/Penna"
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "%date:yy_MM_dd%/Penna"
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 93,
+      "type": "UNETLoader",
+      "pos": [
+        -432.94827419703967,
+        62.58770919758027
+      ],
+      "size": [
+        371.8214183316834,
+        103.65168090961086
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "unet_name",
+          "name": "unet_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "unet_name"
+          },
+          "link": null
+        },
+        {
+          "label": "weight_dtype",
+          "name": "weight_dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "weight_dtype"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "MODEL",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            197
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.1",
+        "Node name for S&R": "UNETLoader"
+      },
+      "widgets_values": [
+        "moss_image_base_bf16.safetensors",
+        "default"
+      ],
+      "widgets_values_named": {
+        "unet_name": "moss_image_base_bf16.safetensors",
+        "weight_dtype": "default"
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 94,
+      "type": "CLIPLoader",
+      "pos": [
+        -433.9167620766547,
+        209.06430240088505
+      ],
+      "size": [
+        370.0658766363098,
+        123.55541695373847
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "clip_name",
+          "name": "clip_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name"
+          },
+          "link": null
+        },
+        {
+          "label": "type",
+          "name": "type",
+          "type": "COMBO",
+          "widget": {
+            "name": "type"
+          },
+          "link": null
+        },
+        {
+          "label": "device",
+          "name": "device",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "CLIP",
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            204,
+            208
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.1",
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "moss_image_qwen35_9b_bf16.safetensors",
+        "stable_diffusion",
+        "default"
+      ],
+      "widgets_values_named": {
+        "clip_name": "moss_image_qwen35_9b_bf16.safetensors",
+        "type": "stable_diffusion",
+        "device": "default"
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 95,
+      "type": "VAELoader",
+      "pos": [
+        -433.38204982418847,
+        372.91211260727295
+      ],
+      "size": [
+        389.33179159660256,
+        118.00630535571548
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "vae_name",
+          "name": "vae_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "vae_name"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "VAE",
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            183
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.1",
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "moss_image_vae.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "moss_image_vae.safetensors"
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 96,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        496.42451132450947,
+        87.6947410587187
+      ],
+      "size": [
+        367.6710712407919,
+        82
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 4,
+      "inputs": [
+        {
+          "label": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 207
+        },
+        {
+          "label": "lora_name",
+          "name": "lora_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_name"
+          },
+          "link": null
+        },
+        {
+          "label": "strength_model",
+          "name": "strength_model",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength_model"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "MODEL",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            161
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.1",
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "widgets_values": [
+        "Moss-base\\Moss-base Turbo 8 steps dmd2.safetensors",
+        1
+      ],
+      "widgets_values_named": {
+        "lora_name": "Moss-base\\Moss-base Turbo 8 steps dmd2.safetensors",
+        "strength_model": 1
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 97,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        499.520365724796,
+        216.83703015086678
+      ],
+      "size": [
+        358.2466797214033,
+        83.71352573079787
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 4,
+      "inputs": [
+        {
+          "label": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 161
+        },
+        {
+          "label": "lora_name",
+          "name": "lora_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_name"
+          },
+          "link": null
+        },
+        {
+          "label": "strength_model",
+          "name": "strength_model",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength_model"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "MODEL",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            168
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.1",
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "widgets_values": [
+        "Moss-base\\Res1999style-comfy.safetensors",
+        1
+      ],
+      "widgets_values_named": {
+        "lora_name": "Moss-base\\Res1999style-comfy.safetensors",
+        "strength_model": 1
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 98,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        501.53941901653,
+        350.3514599607106
+      ],
+      "size": [
+        358.2466797214033,
+        83.71352573079787
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 4,
+      "inputs": [
+        {
+          "label": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 168
+        },
+        {
+          "label": "lora_name",
+          "name": "lora_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_name"
+          },
+          "link": null
+        },
+        {
+          "label": "strength_model",
+          "name": "strength_model",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength_model"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "MODEL",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            167
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.1",
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "widgets_values": [
+        "Moss-base\\si_mossbase_r32_muon_e20_20261027_e19.safetensors",
+        1
+      ],
+      "widgets_values_named": {
+        "lora_name": "Moss-base\\si_mossbase_r32_muon_e20_20261027_e19.safetensors",
+        "strength_model": 1
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 99,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        501.9161567446924,
+        485.78954761688726
+      ],
+      "size": [
+        358.2466797214033,
+        83.71352573079787
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 4,
+      "inputs": [
+        {
+          "label": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 167
+        },
+        {
+          "label": "lora_name",
+          "name": "lora_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_name"
+          },
+          "link": null
+        },
+        {
+          "label": "strength_model",
+          "name": "strength_model",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength_model"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "MODEL",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            194
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.1",
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "widgets_values": [
+        "Moss-base\\sfisdis_moss_v1.0_by.xiaobai.safetensors",
+        1
+      ],
+      "widgets_values_named": {
+        "lora_name": "Moss-base\\sfisdis_moss_v1.0_by.xiaobai.safetensors",
+        "strength_model": 1
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 104,
+      "type": "EmptyLatentImage",
+      "pos": [
+        -447.41132414494894,
+        754.3367492967924
+      ],
+      "size": [
+        397.3378545020486,
+        128.78212613957862
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "width",
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": null
+        },
+        {
+          "label": "height",
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": null
+        },
+        {
+          "label": "batch_size",
+          "name": "batch_size",
+          "type": "INT",
+          "widget": {
+            "name": "batch_size"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "LATENT",
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            192
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.45.2",
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        832,
+        1216,
+        1
+      ],
+      "widgets_values_named": {
+        "width": 832,
+        "height": 1216,
+        "batch_size": 1
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 105,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        503.80610754329416,
+        618.3016281483269
+      ],
+      "size": [
+        358.2466797214033,
+        83.71352573079787
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 4,
+      "inputs": [
+        {
+          "label": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 194
+        },
+        {
+          "label": "lora_name",
+          "name": "lora_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_name"
+          },
+          "link": null
+        },
+        {
+          "label": "strength_model",
+          "name": "strength_model",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength_model"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "MODEL",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            196
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.1",
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "widgets_values": [
+        "Moss-base\\sfisdis_moss_v1.0_by.xiaobai.safetensors",
+        1
+      ],
+      "widgets_values_named": {
+        "lora_name": "Moss-base\\sfisdis_moss_v1.0_by.xiaobai.safetensors",
+        "strength_model": 1
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 106,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        505.38505342175694,
+        766.9859708544492
+      ],
+      "size": [
+        358.2466797214033,
+        83.71352573079787
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 4,
+      "inputs": [
+        {
+          "label": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 196
+        },
+        {
+          "label": "lora_name",
+          "name": "lora_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_name"
+          },
+          "link": null
+        },
+        {
+          "label": "strength_model",
+          "name": "strength_model",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength_model"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "MODEL",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            195
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.42.1",
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "widgets_values": [
+        "Moss-base\\sfisdis_moss_v1.0_by.xiaobai.safetensors",
+        1
+      ],
+      "widgets_values_named": {
+        "lora_name": "Moss-base\\sfisdis_moss_v1.0_by.xiaobai.safetensors",
+        "strength_model": 1
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 107,
+      "type": "CheckpointLoaderSimple",
+      "pos": [
+        -444.9874000794983,
+        533.7455754406276
+      ],
+      "size": [
+        399.401758401146,
+        106.56762865398957
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "ckpt_name",
+          "name": "ckpt_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "ckpt_name"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "MODEL",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": null
+        },
+        {
+          "label": "CLIP",
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": null
+        },
+        {
+          "label": "VAE",
+          "name": "VAE",
+          "type": "VAE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.45.2",
+        "Node name for S&R": "CheckpointLoaderSimple"
+      },
+      "widgets_values": [
+        "anishadow_v20.safetensors"
+      ],
+      "widgets_values_named": {
+        "ckpt_name": "anishadow_v20.safetensors"
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 108,
+      "type": "Power Lora Loader (rgthree)",
+      "pos": [
+        23.477520184751015,
+        77.5161335609543
+      ],
+      "size": [
+        420.80050547040594,
+        806.6581946656067
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "dir": 3,
+          "label": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 197
+        },
+        {
+          "dir": 3,
+          "label": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 204
+        }
+      ],
+      "outputs": [
+        {
+          "dir": 4,
+          "label": "MODEL",
+          "name": "MODEL",
+          "shape": 3,
+          "type": "MODEL",
+          "links": [
+            207
+          ]
+        },
+        {
+          "dir": 4,
+          "label": "CLIP",
+          "name": "CLIP",
+          "shape": 3,
+          "type": "CLIP",
+          "links": [
+            205
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "rgthree-comfy",
+        "ver": "07c5eab7c73721e313e3be58e150f7f886a5a62f",
+        "Show Strengths": "Single Strength"
+      },
+      "widgets_values": [
+        {},
+        {
+          "type": "PowerLoraLoaderHeaderWidget"
+        },
+        {},
+        ""
+      ],
+      "widgets_values_named": {
+        "divider": {},
+        "PowerLoraLoaderHeaderWidget": {
+          "type": "PowerLoraLoaderHeaderWidget"
+        },
+        "divider#2": {},
+        "➕ Add Lora": ""
+      },
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 109,
+      "type": "Reroute",
+      "pos": [
+        646.1288285447544,
+        928.7351463725264
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "",
+          "name": "",
+          "type": "*",
+          "link": 205
+        }
+      ],
+      "outputs": [
+        {
+          "label": "",
+          "name": "",
+          "type": "CLIP",
+          "links": [
+            211
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 112,
+      "type": "CLIPTextEncode",
+      "pos": [
+        901.9924150809019,
+        807.3908247237083
+      ],
+      "size": [
+        560.048236328689,
+        90.34072226049841
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 208
+        },
+        {
+          "label": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "CONDITIONING",
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            209
+          ]
+        }
+      ],
+      "title": "Negative Conditioning",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.45.2",
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "worst quality, bad anatomy, watermark, jpeg artifact"
+      ],
+      "widgets_values_named": {
+        "text": "worst quality, bad anatomy, watermark, jpeg artifact"
+      },
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 115,
+      "type": "MarkdownNote",
+      "pos": [
+        481.9595365868311,
+        -383.54630501142464
+      ],
+      "size": [
+        391.51414292688037,
+        365.43836326565315
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "WorkFlows Note",
+      "properties": {},
+      "widgets_values": [
+        "## LoRA Loading — Native Loaders / LoRA 加载\n\n使用 **ComfyUI 原生 LoRA 加载器**，无需安装额外的自定义节点。\n\n加载多个 LoRA 时，请依次串联加载节点，并分别设置权重。不使用 LoRA 时，可将模型加载区域的输出直接连接到后续节点。\n\nUse **ComfyUI’s built-in LoRA loaders**. No additional custom nodes are required.\n\nTo apply multiple LoRAs, chain the loader nodes and set the strength of each LoRA individually. If no LoRA is needed, connect the model-loading outputs directly to the downstream nodes."
+      ],
+      "widgets_values_named": {
+        "text": "## LoRA Loading — Native Loaders / LoRA 加载\n\n使用 **ComfyUI 原生 LoRA 加载器**，无需安装额外的自定义节点。\n\n加载多个 LoRA 时，请依次串联加载节点，并分别设置权重。不使用 LoRA 时，可将模型加载区域的输出直接连接到后续节点。\n\nUse **ComfyUI’s built-in LoRA loaders**. No additional custom nodes are required.\n\nTo apply multiple LoRAs, chain the loader nodes and set the strength of each LoRA individually. If no LoRA is needed, connect the model-loading outputs directly to the downstream nodes."
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 117,
+      "type": "MarkdownNote",
+      "pos": [
+        -4.165116574857066,
+        -384.0994441812651
+      ],
+      "size": [
+        459.56736795420795,
+        364.65013688117136
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "WorkFlows Note",
+      "properties": {},
+      "widgets_values": [
+        "## LoRA Loading — Power LoRA Loader / LoRA 加载\n\n使用 **Power LoRA Loader** 在同一个节点中管理多个 LoRA，并分别调整权重，无需串联多个加载节点。\n\n此方式需要额外安装 **rgthree-comfy** 自定义节点包。\n\nUse **Power LoRA Loader** to manage multiple LoRAs and adjust their strengths individually within a single node, without chaining multiple loaders.\n\nThis option requires the **rgthree-comfy** custom node package."
+      ],
+      "widgets_values_named": {
+        "text": "## LoRA Loading — Power LoRA Loader / LoRA 加载\n\n使用 **Power LoRA Loader** 在同一个节点中管理多个 LoRA，并分别调整权重，无需串联多个加载节点。\n\n此方式需要额外安装 **rgthree-comfy** 自定义节点包。\n\nUse **Power LoRA Loader** to manage multiple LoRAs and adjust their strengths individually within a single node, without chaining multiple loaders.\n\nThis option requires the **rgthree-comfy** custom node package."
+      },
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 119,
+      "type": "CLIPTextEncode",
+      "pos": [
+        911.1504543953804,
+        80.3630934055759
+      ],
+      "size": [
+        570.591285297824,
+        606.4164686168699
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 211
+        },
+        {
+          "label": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "CONDITIONING",
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            210
+          ]
+        }
+      ],
+      "title": "Positive Conditioning",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.45.2",
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "{{prompt}}"
+      ],
+      "widgets_values_named": {
+        "text": "{{prompt}}"
+      },
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 121,
+      "type": "MarkdownNote",
+      "pos": [
+        -1010.496543387675,
+        29.93159004739414
+      ],
+      "size": [
+        522.4400702573666,
+        865.254601041946
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Workflows Note",
+      "properties": {},
+      "widgets_values": [
+        "## Penna 标准工作流 / Penna Standard Workflow\n\n适用于 Penna 的 ComfyUI 标准工作流，按模型加载、LoRA 加载、画布设置、提示词输入和图像输出分区排列。\n\n## 快速开始\n\n1. 安装工作流所需的自定义节点，并下载对应模型。\n2. 在 **Load / 模型加载** 区域选择扩散模型、文本编码器和 VAE。\n3. 在 **LoRA Loading / LoRA 加载** 区域添加兼容的 LoRA，并按需调整权重。\n4. 在 **Latent / 画布设置** 区域设置图像宽高。\n5. 在 **Prompt / 提示词** 区域输入提示词，然后运行工作流。\n\n## 注意事项\n\n- LoRA 必须与所选底模兼容。\n- 切换 LoRA 加载方式前，请检查实际生效的节点连线。\n- 如果 Penna 配置引用了节点 ID 或输入名称，请勿随意修改，以免影响参数传递。\n\n## 项目与反馈\n\n[Penna GitHub 仓库](https://github.com/storyAura/penna)\n\n反馈问题时，请附上工作流文件、模型名称和完整报错信息。\n\nA standard ComfyUI workflow for Penna, organized into model loading, LoRA loading, latent settings, prompt input, and image output.\n\n## Quick Start\n\n1. Install the required custom nodes and download the models used by this workflow.\n2. Select the diffusion model, text encoder, and VAE in the **Load** section.\n3. Add or select compatible LoRAs in the **LoRA Loading** section and adjust their strengths as needed.\n4. Set the image dimensions in the **Latent** section.\n5. Enter your prompt in the **Prompt** section, then run the workflow.\n\n## Notes\n\n- Use LoRAs that are compatible with the selected base model.\n- Check the active connections before switching between LoRA loading setups.\n- Keep the node IDs and input names unchanged if they are referenced by your Penna configuration.\n\n## Project & Feedback\n\n[Penna on GitHub](https://github.com/storyAura/penna)\n\nWhen reporting an issue, include your workflow file, model names, and the full error message."
+      ],
+      "widgets_values_named": {
+        "text": "## Penna 标准工作流 / Penna Standard Workflow\n\n适用于 Penna 的 ComfyUI 标准工作流，按模型加载、LoRA 加载、画布设置、提示词输入和图像输出分区排列。\n\n## 快速开始\n\n1. 安装工作流所需的自定义节点，并下载对应模型。\n2. 在 **Load / 模型加载** 区域选择扩散模型、文本编码器和 VAE。\n3. 在 **LoRA Loading / LoRA 加载** 区域添加兼容的 LoRA，并按需调整权重。\n4. 在 **Latent / 画布设置** 区域设置图像宽高。\n5. 在 **Prompt / 提示词** 区域输入提示词，然后运行工作流。\n\n## 注意事项\n\n- LoRA 必须与所选底模兼容。\n- 切换 LoRA 加载方式前，请检查实际生效的节点连线。\n- 如果 Penna 配置引用了节点 ID 或输入名称，请勿随意修改，以免影响参数传递。\n\n## 项目与反馈\n\n[Penna GitHub 仓库](https://github.com/storyAura/penna)\n\n反馈问题时，请附上工作流文件、模型名称和完整报错信息。\n\nA standard ComfyUI workflow for Penna, organized into model loading, LoRA loading, latent settings, prompt input, and image output.\n\n## Quick Start\n\n1. Install the required custom nodes and download the models used by this workflow.\n2. Select the diffusion model, text encoder, and VAE in the **Load** section.\n3. Add or select compatible LoRAs in the **LoRA Loading** section and adjust their strengths as needed.\n4. Set the image dimensions in the **Latent** section.\n5. Enter your prompt in the **Prompt** section, then run the workflow.\n\n## Notes\n\n- Use LoRAs that are compatible with the selected base model.\n- Check the active connections before switching between LoRA loading setups.\n- Keep the node IDs and input names unchanged if they are referenced by your Penna configuration.\n\n## Project & Feedback\n\n[Penna on GitHub](https://github.com/storyAura/penna)\n\nWhen reporting an issue, include your workflow file, model names, and the full error message."
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 123,
+      "type": "MarkdownNote",
+      "pos": [
+        -457.37903224752523,
+        -378.062808569717
+      ],
+      "size": [
+        419.3536451160437,
+        361.5372983419977
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "WorkFlows Note",
+      "properties": {},
+      "widgets_values": [
+        "## Model Loading / 模型加载\n\n支持两种模型加载方式，按模型文件的格式选择其中一种即可：\n\n1. **Checkpoint 加载**：使用整合式 Checkpoint 加载模型。\n2. **分离加载**：分别选择并加载 UNet、CLIP 和 VAE。\n\n切换时，请确认后续节点连接到了所选加载方式的输出。\n\nTwo model loading options are available. Choose the one that matches your model files:\n\n1. **Checkpoint loading**: Load the model from a bundled checkpoint.\n2. **Separate loading**: Select and load the UNet, CLIP, and VAE individually.\n\nWhen switching, make sure the downstream nodes are connected to the outputs of your chosen setup."
+      ],
+      "widgets_values_named": {
+        "text": "## Model Loading / 模型加载\n\n支持两种模型加载方式，按模型文件的格式选择其中一种即可：\n\n1. **Checkpoint 加载**：使用整合式 Checkpoint 加载模型。\n2. **分离加载**：分别选择并加载 UNet、CLIP 和 VAE。\n\n切换时，请确认后续节点连接到了所选加载方式的输出。\n\nTwo model loading options are available. Choose the one that matches your model files:\n\n1. **Checkpoint loading**: Load the model from a bundled checkpoint.\n2. **Separate loading**: Select and load the UNet, CLIP, and VAE individually.\n\nWhen switching, make sure the downstream nodes are connected to the outputs of your chosen setup."
+      },
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 125,
+      "type": "MarkdownNote",
+      "pos": [
+        2445.059857015535,
+        53.38252860452233
+      ],
+      "size": [
+        371.89927531985177,
+        760.5226157408781
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "WorkFlows Note",
+      "properties": {},
+      "widgets_values": [
+        "## Sampling Settings / 采样设置\n\n采样参数需要根据所选底模及其蒸馏版本调整，不能直接套用同一组设置。\n\n- **采样器与调度器**：优先使用模型发布者推荐的组合。\n- **步数与 CFG**：按模型说明设置。加速或蒸馏模型与常规模型的推荐值可能不同；部分 LoRA 也有额外要求。\n- **降噪强度**：文生图通常设为 `1.0`；图生图或重绘时，根据希望保留原图的程度调整。\n- **随机种子**：对比参数效果时固定种子；需要不同结果时再随机化。\n\n当前节点中的 `8 steps / CFG 1.0 / euler / sgm_uniform` 仅是Moos-image工作流的配置，不是所有模型的通用推荐值。切换模型后，请重新检查这些参数。\n\nSampling settings must be adjusted for the selected base model and its distilled variant. One configuration does not fit all models.\n\n- **Sampler and scheduler**: Start with the combination recommended by the model publisher.\n- **Steps and CFG**: Follow the model’s guidance. Accelerated or distilled models may require different values from standard models; some LoRAs also have specific requirements.\n- **Denoise**: Typically set to `1.0` for text-to-image generation. For image-to-image or inpainting, adjust it according to how much of the original image you want to preserve.\n- **Seed**: Keep it fixed when comparing settings. Randomize it when you want different results.\n\nThe current settings of `8 steps / CFG 1.0 / euler / sgm_uniform` belong to this Moos-image workflow and are not universal recommendations. Review them whenever you switch models."
+      ],
+      "widgets_values_named": {
+        "text": "## Sampling Settings / 采样设置\n\n采样参数需要根据所选底模及其蒸馏版本调整，不能直接套用同一组设置。\n\n- **采样器与调度器**：优先使用模型发布者推荐的组合。\n- **步数与 CFG**：按模型说明设置。加速或蒸馏模型与常规模型的推荐值可能不同；部分 LoRA 也有额外要求。\n- **降噪强度**：文生图通常设为 `1.0`；图生图或重绘时，根据希望保留原图的程度调整。\n- **随机种子**：对比参数效果时固定种子；需要不同结果时再随机化。\n\n当前节点中的 `8 steps / CFG 1.0 / euler / sgm_uniform` 仅是Moos-image工作流的配置，不是所有模型的通用推荐值。切换模型后，请重新检查这些参数。\n\nSampling settings must be adjusted for the selected base model and its distilled variant. One configuration does not fit all models.\n\n- **Sampler and scheduler**: Start with the combination recommended by the model publisher.\n- **Steps and CFG**: Follow the model’s guidance. Accelerated or distilled models may require different values from standard models; some LoRAs also have specific requirements.\n- **Denoise**: Typically set to `1.0` for text-to-image generation. For image-to-image or inpainting, adjust it according to how much of the original image you want to preserve.\n- **Seed**: Keep it fixed when comparing settings. Randomize it when you want different results.\n\nThe current settings of `8 steps / CFG 1.0 / euler / sgm_uniform` belong to this Moos-image workflow and are not universal recommendations. Review them whenever you switch models."
+      },
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 126,
+      "type": "MarkdownNote",
+      "pos": [
+        -6.526350629041609,
+        -798.3164816394383
+      ],
+      "size": [
+        883.7633528651866,
+        381.0158699092704
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "WorkFlows Note",
+      "properties": {},
+      "widgets_values": [
+        "## LoRA Loading Options / LoRA 加载方式\n\n两种加载方式二选一，使用时请启用所选区域，并将另一区域设为旁路（Bypass），避免重复叠加 LoRA。\n\n- **LoRA Loading 1**：使用 Power LoRA Loader，在单个节点内管理多个 LoRA，需要安装 rgthree-comfy。\n- **LoRA Loading 2**：使用 ComfyUI 原生加载器，串联多个节点加载 LoRA，无需额外安装自定义节点。\n\nChoose one loading option. Enable the selected section and bypass the other to avoid applying LoRAs twice.\n\n- **LoRA Loading 1**: Use Power LoRA Loader to manage multiple LoRAs within a single node. Requires rgthree-comfy.\n- **LoRA Loading 2**: Use ComfyUI’s built-in loaders, chaining nodes to apply multiple LoRAs. No additional custom nodes are required."
+      ],
+      "widgets_values_named": {
+        "text": "## LoRA Loading Options / LoRA 加载方式\n\n两种加载方式二选一，使用时请启用所选区域，并将另一区域设为旁路（Bypass），避免重复叠加 LoRA。\n\n- **LoRA Loading 1**：使用 Power LoRA Loader，在单个节点内管理多个 LoRA，需要安装 rgthree-comfy。\n- **LoRA Loading 2**：使用 ComfyUI 原生加载器，串联多个节点加载 LoRA，无需额外安装自定义节点。\n\nChoose one loading option. Enable the selected section and bypass the other to avoid applying LoRAs twice.\n\n- **LoRA Loading 1**: Use Power LoRA Loader to manage multiple LoRAs within a single node. Requires rgthree-comfy.\n- **LoRA Loading 2**: Use ComfyUI’s built-in loaders, chaining nodes to apply multiple LoRAs. No additional custom nodes are required."
+      },
+      "color": "#223",
+      "bgcolor": "#335"
+    }
+  ],
+  "links": [
+    [
+      22,
+      16,
+      0,
+      17,
+      0,
+      "LATENT"
+    ],
+    [
+      161,
+      96,
+      0,
+      97,
+      0,
+      "MODEL"
+    ],
+    [
+      167,
+      98,
+      0,
+      99,
+      0,
+      "MODEL"
+    ],
+    [
+      168,
+      97,
+      0,
+      98,
+      0,
+      "MODEL"
+    ],
+    [
+      182,
+      17,
+      0,
+      18,
+      0,
+      "IMAGE"
+    ],
+    [
+      183,
+      95,
+      0,
+      17,
+      1,
+      "VAE"
+    ],
+    [
+      192,
+      104,
+      0,
+      16,
+      3,
+      "LATENT"
+    ],
+    [
+      194,
+      99,
+      0,
+      105,
+      0,
+      "MODEL"
+    ],
+    [
+      195,
+      106,
+      0,
+      16,
+      0,
+      "MODEL"
+    ],
+    [
+      196,
+      105,
+      0,
+      106,
+      0,
+      "MODEL"
+    ],
+    [
+      197,
+      93,
+      0,
+      108,
+      0,
+      "MODEL"
+    ],
+    [
+      204,
+      94,
+      0,
+      108,
+      1,
+      "CLIP"
+    ],
+    [
+      205,
+      108,
+      1,
+      109,
+      0,
+      "CLIP"
+    ],
+    [
+      207,
+      108,
+      0,
+      96,
+      0,
+      "MODEL"
+    ],
+    [
+      208,
+      94,
+      0,
+      112,
+      0,
+      "CLIP"
+    ],
+    [
+      209,
+      112,
+      0,
+      16,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      210,
+      119,
+      0,
+      16,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      211,
+      109,
+      0,
+      119,
+      0,
+      "CLIP"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Penna.Model.separate Load",
+      "bounding": [
+        -466.44562028903135,
+        -1.481830179479349,
+        430.2411406023592,
+        664.5012916799523
+      ],
+      "color": "#444",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Penna.Prompt.positive Positive Conditioning",
+      "bounding": [
+        893.4514109112265,
+        7.801486831415133,
+        593.3102443480359,
+        709.3700897780682
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Penna.LoRA.native LoRA Loading 2",
+      "bounding": [
+        482.7306294208916,
+        4.684685467679249,
+        400.62976063364243,
+        910.8556396886178
+      ],
+      "color": "#a1309b",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Penna.LoRA.power LoRA Loading 1",
+      "bounding": [
+        -13.62233450318669,
+        4.80501052075783,
+        478.1358983038916,
+        906.2557133337826
+      ],
+      "color": "#444",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "Penna.Latent Latent",
+      "bounding": [
+        -468.255297994331,
+        684.7958998406518,
+        432.2201995473177,
+        213.82694674471395
+      ],
+      "color": "#444",
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "Penna.Sampler Ksample",
+      "bounding": [
+        2057.4970158225765,
+        20.181712127519308,
+        373.3324274258325,
+        816.1192441372526
+      ],
+      "color": "#8AA",
+      "flags": {}
+    },
+    {
+      "id": 8,
+      "title": "Penna.Prompt.negative Negative Conditioning",
+      "bounding": [
+        895.139559482301,
+        736.3446565903768,
+        582.2716430492061,
+        172.618101622494
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 9,
+      "title": "Penna.Output.save Save",
+      "bounding": [
+        1502.4996742545823,
+        3.700481115640521,
+        541.9447732639367,
+        992.2898537544903
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7247295000000091,
+      "offset": [
+        1166.7392722657987,
+        831.1674766827769
+      ]
+    },
+    "frontendVersion": "1.58.5"
+  },
+  "version": 0.4
+}

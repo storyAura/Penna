@@ -244,6 +244,30 @@ extension ComfyFlows on ComfyRunner {
     return file.path;
   }
 
+  /// 侧栏「画面大小」存下的常用尺寸。
+  List<ComfySize> get sizes => _settings.sizes;
+
+  /// 存下 [size];存满 [ComfySettings.maxSizes] 个时不存,返回 false。
+  bool saveSize(ComfySize size) {
+    if (sizes.contains(size)) return true;
+    if (sizes.length >= ComfySettings.maxSizes) return false;
+    _put(_settings.copyWith(sizes: [...sizes, size]));
+    _changed();
+    return true;
+  }
+
+  void removeSize(ComfySize size) {
+    _put(
+      _settings.copyWith(
+        sizes: [
+          for (final s in sizes)
+            if (s != size) s,
+        ],
+      ),
+    );
+    _changed();
+  }
+
   /// 侧栏下拉里拖动工作流换顺序(设置里的列表跟着变)。
   void moveFlow(int from, int to) {
     if (_settings.flows.isEmpty) return;

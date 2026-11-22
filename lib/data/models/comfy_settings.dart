@@ -25,6 +25,17 @@ typedef LoraSetting = ({String name, double strength, bool on});
 /// 存下来的一套 LoRA 配置;[flow] 是它属于哪个工作流(各工作流的配置互不相干)。
 typedef LoraPreset = ({String flow, String name, List<LoraSetting> loras});
 
+/// 侧栏「画面大小」里存下的常用尺寸,新装时是这几个(SDXL 一类按一百万像素左右排的)。
+const comfyDefaultSizes = <({int width, int height})>[
+  (width: 1024, height: 1024),
+  (width: 896, height: 1152),
+  (width: 832, height: 1216),
+  (width: 768, height: 1344),
+  (width: 1152, height: 896),
+  (width: 1216, height: 832),
+  (width: 1344, height: 768),
+];
+
 /// 把 [list] 里第 [from] 个挪到第 [to] 个的位置(拖动排序用,[to] 是挪完之后的位置)。
 List<T> moved<T>(List<T> list, int from, int to) {
   final out = [...list];
@@ -47,6 +58,7 @@ class ComfySettings {
     this.imageDir = '',
     this.autoGenerate = true,
     this.outputDirs = const {},
+    this.sizes = comfyDefaultSizes,
   });
 
   /// 读设置。旧版只有一个地址(`url`)和一个工作流(`workflow`、`workflowName`),照样读成列表;
@@ -148,6 +160,13 @@ class ComfySettings {
             if (key is String && value is String && value.isNotEmpty)
               key: value,
       }),
+      sizes: m['sizes'] is List
+          ? List.unmodifiable([
+              for (final v in m['sizes'] as List)
+                if (v is List && v.length == 2 && v[0] is int && v[1] is int)
+                  (width: v[0] as int, height: v[1] as int),
+            ])
+          : comfyDefaultSizes,
     );
   }
 
@@ -180,6 +199,12 @@ class ComfySettings {
   /// 各台 ComfyUI 的输出文件夹(按服务器 id;档案库「图片」分区读它)。
   /// 没填的本机 ComfyUI 照它的启动参数自己找。
   final Map<String, String> outputDirs;
+
+  /// 侧栏「画面大小」里存下的常用尺寸(各工作流共用)。
+  final List<({int width, int height})> sizes;
+
+  /// 最多存几个常用尺寸。
+  static const maxSizes = 12;
 
   /// 眼前那一台(id 对不上时用第一台)。
   ComfyServer get server =>
@@ -220,6 +245,9 @@ class ComfySettings {
     'imageDir': imageDir,
     'autoGenerate': autoGenerate,
     if (outputDirs.isNotEmpty) 'outputDirs': outputDirs,
+    'sizes': [
+      for (final s in sizes) [s.width, s.height],
+    ],
   };
 
   ComfySettings copyWith({
@@ -233,6 +261,7 @@ class ComfySettings {
     String? imageDir,
     bool? autoGenerate,
     Map<String, String>? outputDirs,
+    List<({int width, int height})>? sizes,
   }) => ComfySettings(
     servers: servers == null ? this.servers : List.unmodifiable(servers),
     serverId: serverId ?? this.serverId,
@@ -250,6 +279,7 @@ class ComfySettings {
     outputDirs: outputDirs == null
         ? this.outputDirs
         : Map.unmodifiable(outputDirs),
+    sizes: sizes == null ? this.sizes : List.unmodifiable(sizes),
   );
 
   /// 新增或替换一台(按 id)。

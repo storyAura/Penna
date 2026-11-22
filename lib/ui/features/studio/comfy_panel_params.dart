@@ -1,15 +1,7 @@
 part of 'comfy_panel.dart';
 
-/// 画面大小的几个常用档(SDXL 一类按一百万像素左右排的)。
-const _sizePresets = <ComfySize>[
-  (width: 1024, height: 1024),
-  (width: 896, height: 1152),
-  (width: 832, height: 1216),
-  (width: 768, height: 1344),
-  (width: 1152, height: 896),
-  (width: 1216, height: 832),
-  (width: 1344, height: 768),
-];
+/// 侧栏分辨率面板里宽高取它的倍数(视频模型多要 32 的倍数,图像模型也都认)。
+const _comfySnap = 32;
 
 String _sizeLabel(ComfySize s) => '${s.width} × ${s.height}';
 
@@ -44,38 +36,7 @@ List<Widget> _params(
       ),
     if (size != null) ...[
       _heading(tr('画面大小')),
-      _Menu<String>(
-        leading: Icon(
-          Icons.aspect_ratio,
-          size: 14,
-          color: PennaColors.slate500,
-        ),
-        label: _sizeLabel(size),
-        items: [
-          for (final s in _sizePresets)
-            (value: _sizeLabel(s), label: _sizeLabel(s)),
-          (value: '', label: tr('自定义')),
-        ],
-        selected: _sizeLabel(size),
-        onSelected: (picked) async {
-          var next = _sizePresets
-              .where((s) => _sizeLabel(s) == picked)
-              .firstOrNull;
-          if (next == null) {
-            final asked = await _askText(
-              context,
-              tr('画面大小(宽x高)'),
-              initial: '${size.width}x${size.height}',
-            );
-            final m = RegExp(r'^\s*(\d+)\s*[x×*]\s*(\d+)\s*$')
-                .firstMatch(asked ?? '');
-            if (m == null) return;
-            next = (width: int.parse(m[1]!), height: int.parse(m[2]!));
-          }
-          final s = next;
-          report(runner.edit((wf) => setLatentSize(wf, s)));
-        },
-      ),
+      _SizeMenu(runner: runner, size: size, report: report),
     ],
     for (final s in samplers)
       _Fold(
@@ -108,6 +69,64 @@ List<Widget> _params(
         ],
       ),
   ];
+}
+
+/// 画面大小:点开是分辨率面板(拖动板定宽高,下面是存下的常用尺寸,能存能删)。
+class _SizeMenu extends StatelessWidget {
+  const _SizeMenu({
+    required this.runner,
+    required this.size,
+    required this.report,
+  });
+
+  final ComfyRunner runner;
+  final ComfySize size;
+  final void Function(String?) report;
+
+  @override
+  Widget build(BuildContext context) => MenuAnchor(
+    style: MenuStyle(
+      padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+      backgroundColor: WidgetStatePropertyAll(PennaColors.card),
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: PennaColors.border),
+        ),
+      ),
+    ),
+    alignmentOffset: const Offset(0, 4),
+    menuChildren: [
+      // MenuAnchor 自己不带动画:打开时从上往下轻轻浮出,和下拉菜单一致。
+      PopIn.popover(
+        from: Alignment.topCenter,
+        child: ListenableBuilder(
+          listenable: Listenable.merge([runner, runner.config]),
+          builder: (context, _) {
+            final wf = runner.workflow;
+            final now = (wf == null ? null : latentSize(wf)) ?? size;
+            return SizePanel(
+              size: now,
+              onSize: (s) => report(runner.edit((wf) => setLatentSize(wf, s))),
+              sizes: runner.sizes,
+              onSave: () => runner.saveSize(now),
+              onRemove: runner.removeSize,
+              maxSizes: ComfySettings.maxSizes,
+              snap: () => _comfySnap,
+            );
+          },
+        ),
+      ),
+    ],
+    builder: (context, menu, _) => InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: () => menu.isOpen ? menu.close() : menu.open(),
+      child: _menuBox(
+        _sizeLabel(size),
+        Icon(Icons.aspect_ratio, size: 14, color: PennaColors.slate500),
+      ),
+    ),
+  );
 }
 
 /// 一块参数:标题一行,点了展开 / 收起,默认收起。
