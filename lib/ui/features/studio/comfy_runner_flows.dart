@@ -207,6 +207,50 @@ extension ComfyFlows on ComfyRunner {
     _changed();
   }
 
+  /// 对话里附的图按先后填进眼前工作流的图片格子,多出来的格子清掉(留空的出图时跳过);
+  /// 图存进「文档\Penna\comfy_inputs」,文件名取内容的哈希。返回填了几张(格子本来就是这几张时是 0)。
+  // ponytail: 排着队还没出的单子出图时读的也是这时填好的格子。
+  int fillUploads(List<Attachment> images) {
+    final slots = [
+      for (final s in uploads)
+        if (s.kind == 'image') s,
+    ];
+    final files = [
+      for (final a in images)
+        if (a.bytes case final bytes? when bytes.isNotEmpty)
+          _saveInput(bytes, a.mime),
+    ];
+    if (slots.isEmpty || files.isEmpty) return 0;
+    var next = _settings;
+    for (final (i, slot) in slots.indexed) {
+      next = next.putInput(flowId, slot.node, files.elementAtOrNull(i));
+    }
+    if (mapEquals(next.inputs[flowId], _settings.inputs[flowId])) return 0;
+    _put(next);
+    _changed();
+    return min(files.length, slots.length);
+  }
+
+  String _saveInput(Uint8List bytes, String? mime) {
+    final ext = mime == 'image/jpeg' ? 'jpg' : mime?.split('/').last ?? 'png';
+    final dir = Directory(
+      '${config.dir.path}${Platform.pathSeparator}comfy_inputs',
+    )..createSync(recursive: true);
+    final file = File(
+      '${dir.path}${Platform.pathSeparator}'
+      '${sha1.convert(bytes).toString().substring(0, 16)}.$ext',
+    );
+    if (!file.existsSync()) file.writeAsBytesSync(bytes, flush: true);
+    return file.path;
+  }
+
+  /// 侧栏下拉里拖动工作流换顺序(设置里的列表跟着变)。
+  void moveFlow(int from, int to) {
+    if (_settings.flows.isEmpty) return;
+    _put(_settings.moveFlow(from, to));
+    _changed();
+  }
+
   /// 记下眼前这个工作流用的是哪一套。
   void _useLoraPreset(String name) => _put(
     _settings.copyWith(loraPresetOf: {..._settings.loraPresetOf, flowId: name}),

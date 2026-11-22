@@ -7,11 +7,34 @@ part of 'comfy_panel.dart';
   _ => (tr('图像'), Icons.image_outlined),
 };
 
+/// 图片文件的宽高(只读文件头);读不了是 null。
+Future<ComfySize?> _imageSize(String path) async {
+  try {
+    final buffer = await ui.ImmutableBuffer.fromUint8List(
+      await File(path).readAsBytes(),
+    );
+    final image = await ui.ImageDescriptor.encoded(buffer);
+    final size = (width: image.width, height: image.height);
+    image.dispose();
+    buffer.dispose();
+    return size;
+  } on Object {
+    return null;
+  }
+}
+
 /// 要上传的素材:工作流里有几个加载图片 / 视频 / 音频的节点就有几行。
-List<Widget> _uploads(BuildContext context, ComfyRunner runner) {
+/// 工作流能改画面大小时,选好的图旁边有「用这张图的尺寸」。
+List<Widget> _uploads(
+  BuildContext context,
+  ComfyRunner runner,
+  ComfyWorkflow wf,
+  void Function(String?) report,
+) {
   final slots = runner.uploads;
   if (slots.isEmpty) return const [];
   final files = runner.uploadFiles;
+  final sized = latentSize(wf) != null;
   return [
     _heading('${tr('上传素材')} · ${slots.length}'),
     for (final (i, slot) in slots.indexed)
@@ -32,12 +55,26 @@ List<Widget> _uploads(BuildContext context, ComfyRunner runner) {
           if (picked != null) runner.setUpload(slot.node, picked.path);
         },
         onClear: () => runner.setUpload(slot.node, null),
+        onPreview: (path) =>
+            showImageViewer(context, comfyImageAttachment(path), shown: true),
+        // ponytail: 照图片原尺寸(取 8 的倍数),大图出图也大;要按面积缩时再加。
+        onUseSize: !sized
+            ? null
+            : (path) async {
+                final size = await _imageSize(path);
+                report(
+                  size == null
+                      ? tr('读不了这张图的尺寸')
+                      : runner.edit((wf) => setLatentSize(wf, size)),
+                );
+              },
       ),
   ];
 }
 
 /// 一个要上传的素材:图标、名字(节点标题,没有时是「图片 1」)、选的文件;
-/// 没选时灰字显示工作流里原来写的。点了选文件,叉掉回到原来的。
+/// 没选时灰字显示工作流里原来写的。点了选文件,叉掉回到原来的;
+/// 选好的图点缩略图看大图,[onUseSize] 把画面大小改成这张图的。
 class _UploadRow extends StatelessWidget {
   const _UploadRow({
     super.key,
@@ -46,12 +83,16 @@ class _UploadRow extends StatelessWidget {
     required this.file,
     required this.onPick,
     required this.onClear,
+    required this.onPreview,
+    required this.onUseSize,
   });
 
   final UploadSlot slot;
   final int number;
   final String? file;
   final VoidCallback onPick, onClear;
+  final ValueChanged<String> onPreview;
+  final ValueChanged<String>? onUseSize;
 
   @override
   Widget build(BuildContext context) {
@@ -60,6 +101,7 @@ class _UploadRow extends StatelessWidget {
         ? '$kind $number'
         : slot.title;
     final chosen = file;
+    final picture = chosen != null && slot.kind == 'image';
     return InkWell(
       borderRadius: BorderRadius.circular(4),
       onTap: onPick,
@@ -67,17 +109,24 @@ class _UploadRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
         child: Row(
           children: [
-            if (chosen != null && slot.kind == 'image')
-              ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: Image.file(
-                  File(chosen),
-                  width: 24,
-                  height: 24,
-                  cacheWidth: 48,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) =>
-                      Icon(icon, size: 16, color: PennaColors.slate500),
+            if (picture)
+              Tooltip(
+                message: tr('查看大图'),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(3),
+                  onTap: () => onPreview(chosen),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: Image.file(
+                      File(chosen),
+                      width: 24,
+                      height: 24,
+                      cacheWidth: 48,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) =>
+                          Icon(icon, size: 16, color: PennaColors.slate500),
+                    ),
+                  ),
                 ),
               )
             else
@@ -113,6 +162,15 @@ class _UploadRow extends StatelessWidget {
                 ),
               ),
             ),
+            if (picture && onUseSize != null)
+              IconButton(
+                tooltip: tr('用这张图的尺寸'),
+                iconSize: 14,
+                visualDensity: VisualDensity.compact,
+                color: PennaColors.slate400,
+                icon: const Icon(Icons.aspect_ratio),
+                onPressed: () => onUseSize!(chosen),
+              ),
             if (chosen != null)
               IconButton(
                 tooltip: tr('不传,用工作流里的'),
@@ -131,23 +189,27 @@ class _UploadRow extends StatelessWidget {
   }
 }
 
-/// LoRA 配置的下拉:点一套就用它,叉掉删除,按住把手拖着换顺序,最后一项「新建」。
+/// 能拖着排的下拉(LoRA 配置、工作流):点一项就用它,按住把手拖着换顺序;
+/// 给了 [onRemove] 每项后面有叉,给了 [onCreate] 最后一项是「新建」。
 class _PresetMenu extends StatelessWidget {
   const _PresetMenu({
     required this.label,
-    required this.names,
+    required this.items,
     required this.selected,
     required this.onSelected,
-    required this.onCreate,
-    required this.onRemove,
     required this.onReorder,
+    this.onCreate,
+    this.onRemove,
+    this.icon,
   });
 
   final String label;
-  final List<String> names;
+  final List<({String value, String label})> items;
   final String? selected;
-  final ValueChanged<String> onSelected, onRemove;
-  final VoidCallback onCreate;
+  final ValueChanged<String> onSelected;
+  final ValueChanged<String>? onRemove;
+  final VoidCallback? onCreate;
+  final IconData? icon;
 
   /// 第 from 个挪到第 to 个(挪完之后的位置)。
   final void Function(int from, int to) onReorder;
@@ -167,26 +229,27 @@ class _PresetMenu extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 220, maxWidth: 300),
       items: [
         _ReorderEntry(
-          names: names,
+          items: items,
           selected: selected,
           onRemove: onRemove,
           onReorder: onReorder,
         ),
-        PopupMenuItem<String>(
-          value: '',
-          height: 34,
-          child: Row(
-            children: [
-              Icon(Icons.add, size: 14, color: PennaColors.primary),
-              const SizedBox(width: 6),
-              Text(tr('新建'), style: const TextStyle(fontSize: 12.5)),
-            ],
+        if (onCreate != null)
+          PopupMenuItem<String>(
+            value: '',
+            height: 34,
+            child: Row(
+              children: [
+                Icon(Icons.add, size: 14, color: PennaColors.primary),
+                const SizedBox(width: 6),
+                Text(tr('新建'), style: const TextStyle(fontSize: 12.5)),
+              ],
+            ),
           ),
-        ),
       ],
     );
     if (picked == null) return;
-    picked.isEmpty ? onCreate() : onSelected(picked);
+    picked.isEmpty ? onCreate?.call() : onSelected(picked);
   }
 
   @override
@@ -196,7 +259,7 @@ class _PresetMenu extends StatelessWidget {
       onTap: () => _open(context),
       child: _menuBox(
         label,
-        Icon(Icons.layers_outlined, size: 14, color: PennaColors.slate500),
+        icon == null ? null : Icon(icon, size: 14, color: PennaColors.slate500),
       ),
     ),
   );
@@ -205,29 +268,29 @@ class _PresetMenu extends StatelessWidget {
 /// 弹出菜单里能拖着排的那几项。顺序在这里先换(菜单不会跟着外面重建),同时交出去存。
 class _ReorderEntry extends PopupMenuEntry<String> {
   const _ReorderEntry({
-    required this.names,
+    required this.items,
     required this.selected,
     required this.onRemove,
     required this.onReorder,
   });
 
-  final List<String> names;
+  final List<({String value, String label})> items;
   final String? selected;
-  final ValueChanged<String> onRemove;
+  final ValueChanged<String>? onRemove;
   final void Function(int from, int to) onReorder;
 
   @override
-  double get height => 34.0 * names.length;
+  double get height => 34.0 * items.length;
 
   @override
-  bool represents(String? value) => names.contains(value);
+  bool represents(String? value) => items.any((i) => i.value == value);
 
   @override
   State<_ReorderEntry> createState() => _ReorderEntryState();
 }
 
 class _ReorderEntryState extends State<_ReorderEntry> {
-  late List<String> _names = [...widget.names];
+  late var _items = [...widget.items];
 
   // 定死宽高:弹出菜单要先量各项的固有宽度,可滚动的列表量不出来,
   // 定死了菜单就直接用这个尺寸,不往里量。
@@ -238,15 +301,15 @@ class _ReorderEntryState extends State<_ReorderEntry> {
     child: ReorderableListView.builder(
       physics: const NeverScrollableScrollPhysics(),
       buildDefaultDragHandles: false,
-      itemCount: _names.length,
+      itemCount: _items.length,
       onReorderItem: (from, to) {
-        setState(() => _names = moved(_names, from, to));
+        setState(() => _items = moved(_items, from, to));
         widget.onReorder(from, to);
       },
       itemBuilder: (context, i) {
-        final name = _names[i];
+        final (:value, :label) = _items[i];
         return SizedBox(
-          key: ValueKey(name),
+          key: ValueKey(value),
           height: 34,
           child: Row(
             children: [
@@ -266,21 +329,21 @@ class _ReorderEntryState extends State<_ReorderEntry> {
               ),
               Expanded(
                 child: InkWell(
-                  onTap: () => Navigator.pop(context, name),
+                  onTap: () => Navigator.pop(context, value),
                   child: SizedBox.expand(
                     child: Row(
                       children: [
                         Icon(
                           Icons.check,
                           size: 14,
-                          color: name == widget.selected
+                          color: value == widget.selected
                               ? PennaColors.primary
                               : Colors.transparent,
                         ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            name,
+                            label,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 12.5),
                           ),
@@ -290,17 +353,20 @@ class _ReorderEntryState extends State<_ReorderEntry> {
                   ),
                 ),
               ),
-              IconButton(
-                tooltip: tr('删除'),
-                iconSize: 14,
-                visualDensity: VisualDensity.compact,
-                color: PennaColors.slate400,
-                icon: const Icon(Icons.close),
-                onPressed: () {
-                  widget.onRemove(name);
-                  Navigator.pop(context);
-                },
-              ),
+              if (widget.onRemove case final remove?)
+                IconButton(
+                  tooltip: tr('删除'),
+                  iconSize: 14,
+                  visualDensity: VisualDensity.compact,
+                  color: PennaColors.slate400,
+                  icon: const Icon(Icons.close),
+                  onPressed: () {
+                    remove(value);
+                    Navigator.pop(context);
+                  },
+                )
+              else
+                const SizedBox(width: 8),
             ],
           ),
         );

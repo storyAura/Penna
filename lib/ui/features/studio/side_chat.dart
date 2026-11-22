@@ -341,6 +341,7 @@ class SideChat extends ChangeNotifier {
       reply.time,
       _updateAt(reply.time),
       written: written,
+      refs: StudioComfy.refImagesBefore(_messages, reply.time),
     );
   }
 
@@ -364,6 +365,7 @@ class SideChat extends ChangeNotifier {
     reply.time,
     _updateAt(reply.time),
     prompt: prompt,
+    refs: StudioComfy.refImagesBefore(_messages, reply.time),
   );
 
   /// 区域控制那边:写完的 `<layout>` 和主聊天的一样放到画板上(照 page 新开一页、
@@ -380,7 +382,12 @@ class SideChat extends ChangeNotifier {
     }
     // 布局放好之后再出图,和主聊天一样。
     final reply = _messages.last;
-    main.deliverComfy(reply.text, reply.time, _updateAt(reply.time));
+    main.deliverComfy(
+      reply.text,
+      reply.time,
+      _updateAt(reply.time),
+      refs: StudioComfy.refImagesBefore(_messages, reply.time),
+    );
   }
 
   /// 漫画分镜那边:写完的 `<storyboard>` 放进分镜,记一笔在这条回复上。

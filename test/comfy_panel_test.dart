@@ -1,12 +1,15 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/comfy_workflow.dart';
 import 'package:penna/core/harness/comfyui.dart';
 import 'package:penna/data/models/app_config.dart';
 import 'package:penna/ui/features/studio/comfy_panel.dart';
-import 'package:penna/ui/features/studio/comfy_runner.dart';
+import 'package:penna/core/harness/attachment.dart';
+import 'package:penna/ui/features/studio/studio_view_model.dart';
 
 import 'fixtures.dart';
 
@@ -88,5 +91,77 @@ void main() {
     await tester.tap(find.text('柔和'));
     await tester.pumpAndSettle();
     expect(runner.loraPreset?.name, '柔和');
+  });
+
+  // 2026-11-22:对话里附的图出图时按先后填进参考图格子;侧栏的工作流能拖着排。
+  test('对话里最近一条附了图的消息,图按先后填进参考图格子,多的格子清掉', () {
+    Attachment png(int n) => Attachment.image(
+      name: '$n.png',
+      mime: 'image/png',
+      bytes: Uint8List.fromList([n]),
+    );
+    final t = DateTime(2026);
+    final messages = [
+      ChatMessage(fromUser: true, text: '旧图', time: t, attachments: [png(9)]),
+      ChatMessage(
+        fromUser: true,
+        text: '改成这样',
+        time: t.add(const Duration(seconds: 1)),
+        attachments: [png(1), png(2)],
+      ),
+      ChatMessage(
+        fromUser: true,
+        text: '再亮一点',
+        time: t.add(const Duration(seconds: 2)),
+      ),
+      ChatMessage(
+        fromUser: false,
+        text: '<generate-image></generate-image>',
+        time: t.add(const Duration(seconds: 3)),
+      ),
+    ];
+    final refs = StudioComfy.refImagesBefore(
+      messages,
+      t.add(const Duration(seconds: 3)),
+    );
+    expect(refs.map((a) => a.name), ['1.png', '2.png']);
+
+    final wf = {
+      ...defaultWorkflow('m.safetensors'),
+      for (final id in ['20', '21', '22'])
+        id: {
+          'class_type': 'LoadImage',
+          'inputs': {'image': ''},
+        },
+      '30': {
+        'class_type': 'PreviewImage',
+        'inputs': {
+          'images': ['20', 0],
+          'b': ['21', 0],
+          'c': ['22', 0],
+        },
+      },
+    };
+    final config = tempConfig();
+    config.update(
+      config.config.copyWith(
+        comfy: const ComfySettings()
+            .putFlow((id: 'a', name: 'A', text: '{}'))
+            .putFlow((id: 'f', name: 'Edit', text: jsonEncode(wf)))
+            .copyWith(flowId: 'f')
+            .putInput('f', '22', 'old.png'),
+      ),
+    );
+    final runner = ComfyRunner(config);
+    expect(runner.fillUploads(refs), 2);
+    final files = runner.uploadFiles;
+    expect(files.keys, unorderedEquals(['20', '21']));
+    expect(File(files['20']!).readAsBytesSync(), [1]);
+    expect(File(files['21']!).readAsBytesSync(), [2]);
+    // 同样的图再填一次:格子没变,不算填了。
+    expect(runner.fillUploads(refs), 0);
+
+    runner.moveFlow(1, 0);
+    expect(config.config.comfy.flows.map((f) => f.id), ['f', 'a']);
   });
 }

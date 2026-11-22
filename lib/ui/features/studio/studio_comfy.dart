@@ -78,6 +78,7 @@ extension StudioComfy on StudioViewModel {
       reply.time,
       _updateAt(reply.time),
       written: written,
+      refs: refImagesBefore(_messages, reply.time),
     );
   }
 
@@ -87,6 +88,7 @@ extension StudioComfy on StudioViewModel {
     reply.time,
     _updateAt(reply.time),
     prompt: prompt,
+    refs: refImagesBefore(_messages, reply.time),
   );
 
   /// 回复里的 ComfyUI 标签(主聊天、副聊天共用):写了 `<comfy-workflow>` 先换工作流,
@@ -98,6 +100,7 @@ extension StudioComfy on StudioViewModel {
     DateTime at,
     void Function(ChatMessage Function(ChatMessage)) update, {
     Set<int> written = const {},
+    List<Attachment> refs = const [],
   }) {
     final prose = splitNewSkill(reply).prose;
     final flows = splitToolTag(prose, comfyWorkflowTag).queries;
@@ -134,25 +137,28 @@ extension StudioComfy on StudioViewModel {
             ? finalPrompt
             : _joined(labels: false, blocks: _pages[i].blocks);
         if (text.trim().isNotEmpty) {
-          generateFor(reply, at, update, prompt: text);
+          generateFor(reply, at, update, prompt: text, refs: refs);
         }
       }
       return;
     }
     if (!config.config.comfy.autoGenerate) return;
-    generateFor(reply, at, update);
+    generateFor(reply, at, update, refs: refs);
   }
 
   /// 出图,不等它(要几十秒),出完贴回 [at] 那条回复,出错记在它上面。
   /// [prompt] 不给就用回复里出图标签写的,标签里没写就用眼前这页的最终提示词
-  /// (这条回复的成稿已经放上去了)。
+  /// (这条回复的成稿已经放上去了)。[refs] 是对话里附的图,先填进工作流的参考图格子。
   // ponytail: 成稿成了待确认改动时用的还是改之前的;要求模型这时把提示词写进标签。
   void generateFor(
     String reply,
     DateTime at,
     void Function(ChatMessage Function(ChatMessage)) update, {
     String? prompt,
+    List<Attachment> refs = const [],
   }) {
+    final filled = comfy.fillUploads(refs);
+    if (filled > 0) _noteOn(update, tr('已填入参考图 {0} 张', [filled]));
     final asked = splitGenerate(splitNewSkill(reply).prose);
     // 区域控制那边始终用画板上的布局(标签里写的不算,模型拼不对 JSON)。
     final text =
@@ -173,6 +179,24 @@ extension StudioComfy on StudioViewModel {
         );
       }
     }());
+  }
+
+  /// [messages] 里 [at] 那条回复之前、最近一条附了图的用户消息里的图。
+  static List<Attachment> refImagesBefore(
+    List<ChatMessage> messages,
+    DateTime at,
+  ) {
+    final end = messages.indexWhere((m) => !m.fromUser && m.time == at);
+    for (final m
+        in messages.take(end < 0 ? messages.length : end).toList().reversed) {
+      if (!m.fromUser || m.tool) continue;
+      final images = [
+        for (final a in m.attachments)
+          if (a.isImage) a,
+      ];
+      if (images.isNotEmpty) return images;
+    }
+    return const [];
   }
 
   void _noteOn(

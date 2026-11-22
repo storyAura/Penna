@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import '../../core/motion.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'comfy_runner.dart';
+import 'image_viewer.dart';
 
 part 'comfy_panel_lists.dart';
 part 'comfy_panel_params.dart';
@@ -78,16 +80,18 @@ class ComfyPanel extends StatelessWidget {
           ),
         ),
         _heading(tr('工作流')),
-        _Menu<String>(
+        // 按住把手拖着换顺序,设置里的工作流列表跟着变。
+        _PresetMenu(
           label: runner.workflowName,
           items: [
             for (final f in runner.flowChoices) (value: f.id, label: f.name),
           ],
           selected: runner.flowId,
           onSelected: runner.selectFlow,
+          onReorder: runner.moveFlow,
         ),
         if (wf != null) ..._params(context, runner, wf, report),
-        if (wf != null) ..._uploads(context, runner),
+        if (wf != null) ..._uploads(context, runner, wf, report),
         if (wf != null) ..._loras(context, wf, report),
       ],
     );
@@ -126,7 +130,11 @@ class ComfyPanel extends StatelessWidget {
           Expanded(
             child: _PresetMenu(
               label: runner.loraPreset?.name ?? tr('LoRA 配置'),
-              names: [for (final p in runner.loraPresets) p.name],
+              items: [
+                for (final p in runner.loraPresets)
+                  (value: p.name, label: p.name),
+              ],
+              icon: Icons.layers_outlined,
               selected: runner.loraPreset?.name,
               onSelected: (name) => report(
                 runner.applyLoraPreset(
