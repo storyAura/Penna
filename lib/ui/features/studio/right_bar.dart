@@ -329,6 +329,20 @@ class _RightBarState extends State<RightBar> {
               color: piercing ? PennaColors.primary : PennaColors.slate500,
             ),
           ),
+          _StripButton(
+            tooltip: cfg.blurImages ? tr('图片模糊:开') : tr('图片模糊:关'),
+            selected: cfg.blurImages,
+            onTap: () => widget.config.update(
+              cfg.copyWith(blurImages: !cfg.blurImages),
+            ),
+            child: Icon(
+              cfg.blurImages ? Icons.blur_on : Icons.blur_off,
+              size: 16,
+              color: cfg.blurImages
+                  ? PennaColors.primary
+                  : PennaColors.slate500,
+            ),
+          ),
         ],
       ),
     );

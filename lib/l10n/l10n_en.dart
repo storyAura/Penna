@@ -1521,6 +1521,8 @@ const en = <String, String>{
   '对话建议': 'Chat ideas',
   '新对话里给几条创作点子': 'Suggest a few ideas in new chats',
   '图片模糊': 'Blur images',
+  '图片模糊:开': 'Blur images: on',
+  '图片模糊:关': 'Blur images: off',
   '出的图和档案库的图点一下才显示': 'Click generated and archived images to show',
   '看大图': 'View full size',
   '未填模型': 'No model',
