@@ -168,6 +168,13 @@ String expandComfyText(String text, Map<String, Object?> wf, DateTime now) {
   });
 }
 
+/// 随 Penna 带的标准工作流(名字、资源路径),「设置 → ComfyUI」里「内置工作流」加进列表。
+/// 按组名协议标好;文件名留空的参考图是可选素材。
+const standardWorkflows = [
+  ('Qwen-Image 2.1 Edit', 'assets/comfy/qwen-image-2.1-edit.json'),
+  ('MiniMax H3 Video', 'assets/comfy/minimax-h3-video.json'),
+];
+
 /// 没导入工作流时用的:最基本的文生图,模型用 ComfyUI 里的 [checkpoint]。
 Map<String, Object?> defaultWorkflow(String checkpoint) => {
   '4': {

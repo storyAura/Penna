@@ -235,6 +235,20 @@ void main() {
     expect(isVideoFile('a.png'), isFalse);
   });
 
+  test('内置的标准工作流都读得出:提示词、画面大小、输出、参考图', () {
+    for (final (name, asset) in standardWorkflows) {
+      final wf = parseApiWorkflow(File(asset).readAsStringSync());
+      expect(jsonEncode(wf), contains(comfyPromptMark), reason: name);
+      expect(latentNodeIds(wf), hasLength(1), reason: name);
+      expect(modelSlots(wf), isNotEmpty, reason: name);
+      expect(uploadSlots(wf).length, greaterThan(1), reason: name);
+      expect(
+        prepareWorkflow(wf, 'a cat', size: (width: 832, height: 1216)),
+        isNotEmpty,
+      );
+    }
+  });
+
   test('认出要上传素材的节点:图片、视频、音频,模型加载器不算', () {
     final slots = uploadSlots({
       '1': {

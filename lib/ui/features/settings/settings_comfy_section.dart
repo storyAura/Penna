@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/harness/comfyui.dart';
 import '../../../data/models/app_config.dart';
@@ -66,6 +67,23 @@ class _ComfySectionState extends State<ComfySection> {
         showToast(context, tr('读不了「{0}」', [picked.name]), warn: true);
       }
     }
+  }
+
+  /// 从随 Penna 带的标准工作流里挑一个加进列表(菜单在 [button] 下面),加了就换成它。
+  Future<void> _addStandard(BuildContext button) async {
+    final box = button.findRenderObject()! as RenderBox;
+    final picked = await popMenu(
+      context,
+      box.localToGlobal(Offset(0, box.size.height)),
+      [for (final (name, _) in standardWorkflows) name],
+    );
+    final asset = standardWorkflows.where((f) => f.$1 == picked).firstOrNull;
+    if (asset == null) return;
+    final text = await rootBundle.loadString(asset.$2);
+    final id = '${DateTime.now().microsecondsSinceEpoch}';
+    _put(
+      _comfy.putFlow((id: id, name: asset.$1, text: text)).copyWith(flowId: id),
+    );
   }
 
   Future<void> _removeFlow(ComfyFlow flow) async {
@@ -220,6 +238,15 @@ class _ComfySectionState extends State<ComfySection> {
               Row(
                 children: [
                   Expanded(child: Text(tr('工作流'), style: titleStyle)),
+                  Builder(
+                    builder: (button) => PennaButton(
+                      label: tr('内置工作流'),
+                      icon: Icons.inventory_2_outlined,
+                      borderColor: PennaColors.border,
+                      onPressed: () => _addStandard(button),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
                   PennaButton(
                     label: tr('导入工作流'),
                     icon: Icons.file_open_outlined,

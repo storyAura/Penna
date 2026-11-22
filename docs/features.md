@@ -162,7 +162,7 @@ Skill 是一份写法说明(`SKILL.md`),决定 Agent 按什么方式写提示词
 Penna 以 ComfyUI 为出图后端,通过 ComfyUI 自带的接口通信,无需安装插件。
 
 - **连接**:「设置 → ComfyUI」可添加多台 ComfyUI(本机或云端),各自填写名称、地址与 Key(以 Bearer 方式发送),测试连接显示延迟;本机默认 `http://127.0.0.1:8188`。
-- **工作流**:未导入工作流时使用内置的文生图工作流,模型取 ComfyUI 中的第一个。可以导入多个工作流,随时切换,在设置中改名、复制与拖动排序;ComfyUI 普通保存的 JSON 和「导出 (API)」的 JSON 都可以导入。普通保存的工作流按 ComfyUI 的规则转换:只保留连到存图节点的部分,绕过、静音的节点和 Reroute 自动穿过,rgthree Power Lora Loader 照常读取。提示词写入正面提示词框(沿采样器的 positive 连线查找,支持 FluxGuidance、BasicGuider);框中写有 `{{prompt}}` 时以它为准。每次出图重新随机种子。
+- **工作流**:未导入工作流时使用内置的文生图工作流,模型取 ComfyUI 中的第一个。可以导入多个工作流,随时切换,在设置中改名、复制与拖动排序;ComfyUI 普通保存的 JSON 和「导出 (API)」的 JSON 都可以导入。「内置工作流」提供按组名约定标好的标准工作流:Qwen-Image 2.1 Edit(图像编辑,最多 6 张参考图)和 MiniMax H3 Video(参考图生成带声音的视频,最多 4 张参考图)。普通保存的工作流按 ComfyUI 的规则转换:只保留连到存图节点的部分,绕过、静音的节点和 Reroute 自动穿过,rgthree Power Lora Loader 照常读取。提示词写入正面提示词框(沿采样器的 positive 连线查找,支持 FluxGuidance、BasicGuider);框中写有 `{{prompt}}` 时以它为准。每次出图重新随机种子。
 - **组名约定**:普通保存的工作流里,组标题的第一个词写成 `Penna.` 开头的记号时,Penna 按组认出部件,记号后面可以接任意说明文字,例如 `Penna.Prompt.positive 正向提示词`。`Penna.Prompt.positive` 组里的文字框写入提示词,`Penna.Latent` 组里的节点决定画面大小,`Penna.Output` 开头的组标出输出节点;节点框的中心落在组框里即属于该组。其余记号(`Penna.Model.separate`、`Penna.Model.checkpoint`、`Penna.LoRA.power`、`Penna.LoRA.native`、`Penna.Prompt.negative`、`Penna.Sampler`)用于标注各部分。
 - **出图**:「最终提示词」卡片上的「出图」把当前提示词交给 ComfyUI;系列不止一页时旁边有「系列出图」,从第 1 页起按顺序把整个系列排进队列,超过 60 张先确认。下半区「成稿汇总」旁的「出图」页签显示排队与生成进度和出过的大图(重新打开软件后仍保留最近 40 张),点击查看原图。
 - **侧栏**:工作台与区域控制工作台的最右侧有一列侧栏图标,包括 ComfyUI、历史对话与穿甲弹开关,面板半透明地展开在对话上方。ComfyUI 面板显示连接状态与延迟,可下拉切换 ComfyUI 和工作流;显示工作流使用的模型,设置画面大小(常用尺寸或自定义宽高),调整采样器的步数、CFG、采样器、调度器与降噪(默认收起);读取工作流中的 LoRA 加载器(官方 LoRA 加载器、仅模型、rgthree Power Lora Loader、各类 LoRA Stack),开关 LoRA、调整权重、添加或去掉 LoRA、拖动排序,修改直接保存到工作流。当前的 LoRA 组合可以存成一套配置,多套配置之间一键切换;每个工作流的配置各自独立,可拖动排序。
