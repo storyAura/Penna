@@ -1678,6 +1678,8 @@ const en = <String, String>{
   'MiniMax H3 视频': 'MiniMax H3 Video',
   'PennaSoul 没存上:{0}': 'PennaSoul was not saved: {0}',
   '添加约定': 'Add rule',
+  '删除了第 {0} 页': 'Deleted page {0}',
+  '页没删掉:{0}': 'Page not deleted: {0}',
   '实验性功能': 'Experimental',
   '尚在试验': 'Still in testing',
   '跨对话记住约定,可能污染提示词': 'Remembers rules across chats; may pollute prompts',

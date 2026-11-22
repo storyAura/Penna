@@ -382,6 +382,33 @@ extension StudioPages on StudioViewModel {
       if (i == 0 || pages[i - 1].series != p.series) p.series,
   ];
 
+  /// Agent 写的 `<draft page="N" delete></draft>`:删掉本系列的这几页([pages] 是标签上的页码,
+  /// 按删之前数;null 是眼前这页)。先把页码都换成下标再一起删,删一页不会挪动后面的页码。
+  /// 有一个页码对不上就都不删。[problem] 是删不了的原因,[note] 是删了哪几页。
+  // ponytail: 同一条回复里又删又写时,写的页码按删之后数(先删再写)。
+  ({String? problem, String? note}) deleteDraftPages(Iterable<String?> pages) {
+    final mine = [
+      for (final (i, p) in _pages.indexed)
+        if (p.series == series) i,
+    ];
+    final at = <int>{};
+    final numbers = <int>{};
+    for (final page in pages) {
+      final n = page == null ? pageNumber(_page) : int.tryParse(page.trim());
+      if (n == null || n < 1 || n > mine.length) {
+        return (problem: tr('没有第 {0} 页', [page ?? '']), note: null);
+      }
+      at.add(mine[n - 1]);
+      numbers.add(n);
+    }
+    final problem = removePages(at);
+    if (problem != null) return (problem: problem, note: null);
+    return (
+      problem: null,
+      note: tr('删除了第 {0} 页', [(numbers.toList()..sort()).join(tr('、'))]),
+    );
+  }
+
   /// 一次删掉好几个系列(批量管理);删不了返回原因。
   String? removeSeriesMany(Iterable<int> ids) {
     for (final s in ids.toList()) {

@@ -269,6 +269,8 @@ class _Brand extends StatelessWidget {
   }
 }
 
+void _quit() => exit(0);
+
 class PennaApp extends StatefulWidget {
   const PennaApp({
     super.key,
@@ -282,9 +284,13 @@ class PennaApp extends StatefulWidget {
     required this.local,
     required this.poses,
     this.showTutorial = false,
+    this.quit = _quit,
   });
 
   final bool showTutorial;
+
+  /// 关窗时存完之后退出进程;测试里换掉,免得把测试进程一起关了。
+  final void Function() quit;
 
   final StudioViewModel layoutChat;
 
@@ -327,9 +333,12 @@ class _PennaAppState extends State<PennaApp> with WindowListener {
       widget.mangaChat?.manga?.flush();
       widget.vm.layout?.flush();
       await widget.config.flushed();
+      await widget.vm.comfy.flushed();
       await widget.local.stopServer();
     } finally {
-      await windowManager.destroy();
+      // 该存的都存完了,直接退出。以前走 windowManager.destroy() 让引擎正常收尾,
+      // 这些步骤 20 毫秒就做完,进程却时常还要再等 5 秒才退(2026-11-23 用户反馈关软件卡半天,实测)。
+      widget.quit();
     }
   }
 

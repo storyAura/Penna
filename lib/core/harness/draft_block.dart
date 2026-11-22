@@ -13,9 +13,14 @@ class AgentDraft {
     this.name,
     this.series,
     this.replace = false,
+    this.delete = false,
   });
 
   final List<DraftSection> sections;
+
+  /// `<draft page="N" delete></draft>`:删掉这一页(2026-11-23 用户反馈:以前没有删页的写法,
+  /// 叫 Agent 删一页,它只能把那页的段都写空,结果是清空页面)。
+  final bool delete;
 
   /// `<draft replace>`:整篇重写,放进去时整篇换掉,没写到的旧段都删掉(不按标注并进去)。
   final bool replace;
@@ -54,7 +59,9 @@ final _zhInline = RegExp(r'[ \t]*(?=〔[译譯訳]〕)');
 
 /// 成稿的开始标签,可以带页码和名字:
 /// `<draft>`、`<draft page="3">`、`<draft page="新" name="远景" series="午后客厅">`。
-final _open = RegExp(r'<draft((?:\s+(?:[a-z]+\s*=\s*"[^"\n]*"|replace))*)\s*>');
+final _open = RegExp(
+  r'<draft((?:\s+(?:[a-z]+\s*=\s*"[^"\n]*"|replace|delete))*)\s*>',
+);
 final _attr = RegExp(r'([a-z]+)\s*=\s*"([^"\n]*)"');
 const _close = '</draft>';
 
@@ -472,22 +479,25 @@ const _skillClose = '</new-skill>';
     final sections = _draftSections(
       end < 0 ? _withoutPartial(inner, _close) : inner,
     );
-    if (sections.isNotEmpty || end < 0) {
+    final flags = (open[1] ?? '')
+        .replaceAll(_attr, '')
+        .trim()
+        .split(RegExp(r'\s+'));
+    final delete = flags.contains('delete');
+    if (sections.isNotEmpty || end < 0 || delete) {
       final attrs = {
         for (final a in _attr.allMatches(open[1] ?? '')) a[1]!: a[2]!.trim(),
       };
       drafts.add(
         AgentDraft(
-          sections: sections,
+          // 删页的里面写了什么都不算。
+          sections: delete ? const [] : sections,
           complete: end >= 0,
           page: attrs['page'],
           name: attrs['name'],
           series: attrs['series'],
-          replace: (open[1] ?? '')
-              .replaceAll(_attr, '')
-              .trim()
-              .split(RegExp(r'\s+'))
-              .contains('replace'),
+          replace: flags.contains('replace'),
+          delete: delete,
         ),
       );
     }

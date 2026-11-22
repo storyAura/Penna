@@ -285,7 +285,7 @@ extension ComfyQueue on ComfyRunner {
           j.toJson(),
     ].take(_maxJobs).toList();
     final text = jsonEncode(finished);
-    _saving = _saving.then((_) async {
+    _saving = (_saving ?? Future.value()).then((_) async {
       try {
         await _jobsFile.writeAsString(text);
       } on FileSystemException catch (e) {

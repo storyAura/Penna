@@ -25,7 +25,7 @@ Selected text or whole sections can be pinned. The pinned area is read-only for 
 Each page is a separate prompt, and pages can be grouped into series. There can be up to 20 series, shown five per row in up to four rows with arrows to switch rows; each series can hold any number of pages. When the series are full and the Agent needs a new one, a notice under the tabs asks you to clear some out.
 
 - Pages in the same series share one conversation, and the Agent can refer to the other pages in the series; series are independent of each other.
-- One Agent reply can write several pages at once and starts a new series automatically when the topic changes.
+- One Agent reply can write several pages at once and starts a new series automatically when the topic changes; asked to delete some pages, the Agent removes them, and the Activity log undoes it in one step.
 - Double-click a page tab or series name to rename it. Pages can be reordered or moved out of a series, and a whole series can be saved to the Archive at once.
 - Right-click a series name to **Archive** it: its pages are saved to the Archive and removed from the workspace. **Manage in bulk** selects several series to archive or delete together.
 - Shift-click page tabs to select several, then right-click to rename them, generate them in order, group them into a series or delete them; tabs can be dragged into another series.

@@ -16,7 +16,7 @@ import 'package:penna/ui/features/studio/studio_view_model.dart';
 import 'fixtures.dart';
 
 void main() {
-  testWidgets('关窗在销毁原生窗口前保存两份工作台、布局和排队的配置', (tester) async {
+  testWidgets('关窗在退出进程前保存两份工作台、布局和排队的配置,只退一次', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -37,23 +37,24 @@ void main() {
       saveFile: File('${dir.path}/layout_chat.json'),
     );
     final local = LocalModel(streamChat: (_) => const Stream.empty());
-    var destroyed = 0;
+    var quit = 0;
+    // 真的退出会把测试进程一起关掉:换成在退出那一刻核对存好了没有。
+    void fakeQuit() {
+      quit++;
+      expect(File('${dir.path}/workspace.json').existsSync(), isTrue);
+      expect(File('${dir.path}/layout_chat.json').existsSync(), isTrue);
+      expect(File('${dir.path}/layout.json').existsSync(), isTrue);
+      expect(
+        jsonDecode(config.file.readAsStringSync())['fontLatin'],
+        'close-test',
+      );
+    }
+
     const channel = MethodChannel('window_manager');
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
-      call,
-    ) async {
-      if (call.method == 'destroy') {
-        destroyed++;
-        expect(File('${dir.path}/workspace.json').existsSync(), isTrue);
-        expect(File('${dir.path}/layout_chat.json').existsSync(), isTrue);
-        expect(File('${dir.path}/layout.json').existsSync(), isTrue);
-        expect(
-          jsonDecode(config.file.readAsStringSync())['fontLatin'],
-          'close-test',
-        );
-      }
-      return false;
-    });
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      channel,
+      (call) async => false,
+    );
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox());
       await tester.runAsync(config.flushed);
@@ -76,6 +77,7 @@ void main() {
         notebooks: NotebookStore(),
         local: local,
         poses: PoseLibrary(),
+        quit: fakeQuit,
       ),
     );
     await tester.pumpAndSettle();
@@ -86,7 +88,7 @@ void main() {
       final dynamic state = tester.state(find.byType(PennaApp));
       await Future.wait<void>([state.onWindowClose(), state.onWindowClose()]);
     });
-    expect(destroyed, 1);
+    expect(quit, 1);
     expect(
       jsonDecode(
         File('${dir.path}/workspace.json').readAsStringSync(),

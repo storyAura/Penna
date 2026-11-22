@@ -333,7 +333,12 @@ class ChatMessageView extends StatelessWidget {
         for (final option in asked.options) (label: option, detail: ''),
     ];
     final split = splitDrafts(asked.prose);
-    final drafts = split.drafts;
+    // 删页的不画卡片:删了哪几页记在回复的工具记录上。
+    final drafts = [
+      for (final d in split.drafts)
+        if (!d.delete) d,
+    ];
+    final deletes = split.drafts.length > drafts.length;
     // 有成稿卡片时,正文里照成稿格式抄的那几行是重复的,只在卡片里显示(用户反馈:没在部件里)。
     final prose = drafts.isEmpty ? split.prose : dropDraftLines(split.prose);
     // 复制出去的是能直接用的:标注和中文对照不带。
@@ -393,6 +398,7 @@ class ChatMessageView extends StatelessWidget {
           laid.json == null)
         const TypingDots()
       else if (drafts.isEmpty &&
+          !deletes &&
           newSkill == null &&
           laid.json == null &&
           picks.isEmpty &&

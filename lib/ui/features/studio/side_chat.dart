@@ -293,7 +293,15 @@ class SideChat extends ChangeNotifier {
   void _deliver() {
     if (main.mangaOnly) return _deliverManga();
     if (main.layoutOnly) return _deliverLayout();
-    final drafts = splitDrafts(_messages.last.text).drafts;
+    final all = splitDrafts(_messages.last.text).drafts;
+    final drafts = [
+      for (final d in all)
+        if (!d.delete) d,
+    ];
+    final gone = [
+      for (final d in all)
+        if (d.delete && d.complete) d.page,
+    ];
     final ask = _messages.where((m) => m.fromUser && !m.tool).lastOrNull;
     final page = ask == null ? null : main.draftPageFor(drafts, ask);
     if (page != null) {
@@ -305,9 +313,15 @@ class SideChat extends ChangeNotifier {
     }
     final written = <int>{};
     // 新开页、起名、采纳在操作记录里合成一笔,和主聊天一样。
-    final problems = main.asAgentStep(
-      written,
-      () => [
+    final notes = <String>[];
+    final problems = main.asAgentStep(written, () {
+      // 删页和主聊天一样(见 deleteDraftPages)。
+      final deleted = gone.isEmpty ? null : main.deleteDraftPages(gone);
+      if (deleted?.note case final note?) notes.add(note);
+      if (deleted?.problem case final why?) {
+        notes.add(tr('页没删掉:{0}', [why]));
+      }
+      return [
         for (final d in drafts)
           if (d.complete)
             main.placeDraft(
@@ -318,16 +332,14 @@ class SideChat extends ChangeNotifier {
               seriesTitle: d.series,
               replace: d.replace,
             ),
-      ],
-    );
-    for (final problem in problems.nonNulls) {
+      ];
+    });
+    notes.addAll([
+      for (final problem in problems.nonNulls) tr('成稿没放上:{0}', [problem]),
+    ]);
+    if (notes.isNotEmpty) {
       _update(
-        (m) => m.copyWith(
-          toolSummary: [
-            ?m.toolSummary,
-            tr('成稿没放上:{0}', [problem]),
-          ].join(' · '),
-        ),
+        (m) => m.copyWith(toolSummary: [?m.toolSummary, ...notes].join(' · ')),
       );
     }
     // 写到了别的页就换过去,和主聊天一样。

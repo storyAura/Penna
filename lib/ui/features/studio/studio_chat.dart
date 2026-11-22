@@ -94,14 +94,24 @@ extension StudioChat on StudioViewModel {
       orElse: () => _messages.first,
     );
     final quote = ask.quote;
-    final drafts = splitDrafts(splitNewSkill(_messages.last.text).prose).drafts;
+    final all = splitDrafts(splitNewSkill(_messages.last.text).prose).drafts;
+    final drafts = [
+      for (final d in all)
+        if (!d.delete) d,
+    ];
+    final gone = [
+      for (final d in all)
+        if (d.delete && d.complete) d.page,
+    ];
     final page = draftPageFor(drafts, ask);
     if (page != null) _note(tr('另一张画,放到了新的一页'));
-    // 一条回复可以有好几份,各去各的页;新开页、起名、采纳在操作记录里合成一笔。
+    // 一条回复可以有好几份,各去各的页;删页、新开页、起名、采纳在操作记录里合成一笔。
     final written = <int>{};
-    final problems = asAgentStep(
-      written,
-      () => [
+    final problems = asAgentStep(written, () {
+      final deleted = gone.isEmpty ? null : deleteDraftPages(gone);
+      if (deleted?.note case final note?) _note(note);
+      if (deleted?.problem case final why?) _note(tr('页没删掉:{0}', [why]));
+      return [
         for (final draft in drafts)
           if (draft.complete)
             placeDraft(
@@ -113,8 +123,8 @@ extension StudioChat on StudioViewModel {
               seriesTitle: draft.series,
               replace: draft.replace,
             ),
-      ],
-    );
+      ];
+    });
     // 放不上要说出来(以前悄悄丢掉了);系列满了时页签下面还会亮提醒。
     for (final problem in problems.nonNulls) {
       _note(tr('成稿没放上:{0}', [problem]));

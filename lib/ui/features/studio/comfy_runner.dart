@@ -99,7 +99,12 @@ class ComfyRunner extends ChangeNotifier {
 
   /// 排着的单子出完时把结果交回去。
   final _waiters = <int, Completer<ComfyResult>>{};
-  Future<void> _saving = Future.value();
+  /// 排着写出图队列的那一串;还没写过是 null。
+  Future<void>? _saving;
+
+  /// 出图队列排着要写的都写完(关窗时等它,免得写到一半就退出)。
+  /// 没写过时当场给一个做完的:不拿建这个对象时的那个(测试的假时钟里建的,真时钟里等不来)。
+  Future<void> flushed() => _saving ?? Future.value();
 
   /// 出图队列,新的在前。
   List<ComfyJob> get jobs => _jobs;
