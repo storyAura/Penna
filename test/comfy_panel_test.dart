@@ -17,7 +17,7 @@ import 'fixtures.dart';
 // 2026-11-16:侧栏的 ComfyUI 面板:模型只看、采样默认收起、上传素材、LoRA 配置能拖。
 
 void main() {
-  testWidgets('模型只看不改;采样默认收起;有几个加载图片的节点就有几行上传;LoRA 配置的下拉能打开', (tester) async {
+  testWidgets('模型能改;采样默认收起;有几个加载图片的节点就有几行上传;LoRA 配置的下拉能打开', (tester) async {
     final wf = addLora(
       {
         ...defaultWorkflow('m.safetensors'),
@@ -43,11 +43,17 @@ void main() {
             .putFlow((id: 'f', name: 'Edit', text: jsonEncode(wf)))
             .copyWith(flowId: 'f')
             .putLoraPreset((
+              server: comfyLocalId,
               flow: 'f',
               name: '柔和',
               loras: const [(name: 'style.safetensors', strength: 1, on: true)],
             ))
-            .putLoraPreset((flow: 'f', name: '浓', loras: const [])),
+            .putLoraPreset((
+              server: comfyLocalId,
+              flow: 'f',
+              name: '浓',
+              loras: const [],
+            )),
       ),
     );
     final runner = ComfyRunner(config);
@@ -65,11 +71,18 @@ void main() {
       ),
     );
 
-    // 模型那一行没有笔:点了不弹选择框。
+    // 模型那一行能改(2026-11-23 起):行尾有笔。
     expect(find.text('m.safetensors'), findsOneWidget);
-    await tester.tap(find.text('m.safetensors'));
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(
+      find.descendant(
+        of: find.ancestor(
+          of: find.text('m.safetensors'),
+          matching: find.byType(InkWell),
+        ),
+        matching: find.byIcon(Icons.edit_outlined),
+      ),
+      findsOneWidget,
+    );
 
     // 采样默认收起,点标题展开。
     expect(find.text('步数'), findsNothing);

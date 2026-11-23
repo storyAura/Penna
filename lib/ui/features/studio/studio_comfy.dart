@@ -46,7 +46,7 @@ extension StudioComfy on StudioViewModel {
         '【出图参数】眼前的工作流:${comfy.settingsForAgent}。'
         '用户要换图像比例、尺寸、步数这些时,写 <$comfySetTag>键=值 …</$comfySetTag>,'
         '${layoutOnly ? '这里的图像大小跟着画板的画布尺寸走,不写 size;' : 'size 写宽x高(832x1216)或比例(3:4、16:9),'}'
-        '还能写 steps、cfg、sampler、scheduler、denoise;'
+        '还能写 steps、cfg、sampler、scheduler、denoise,视频工作流还能写 duration(秒数,参数里写的是 length 时是帧数);'
         '和换工作流、出图可以写在同一条回复里(先换工作流再改参数)。'
         '用户没提的参数不要改。';
   }

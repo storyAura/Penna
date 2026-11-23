@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/comfyui.dart';
@@ -16,6 +19,9 @@ import '../../core/widgets.dart';
 import '../settings/settings_sections.dart';
 import '../studio/image_viewer.dart';
 import '../studio/studio_view_model.dart';
+
+part 'comfy_gallery_save.dart';
+part 'comfy_gallery_tiles.dart';
 
 const _tileWidth = 200.0;
 const _gap = 10.0;
@@ -34,9 +40,11 @@ const _localHosts = {'127.0.0.1', 'localhost', '::1'};
 
 /// 档案库的「图片」分区:读 ComfyUI 的输出文件夹,再用出图历史(`/history`)补上提示词和时刻,
 /// 在 ComfyUI 里跑的也算。本机的 ComfyUI 直接读硬盘(连子文件夹,照启动参数找文件夹,
-/// 也能手动选;2026-11-09 用户要求),别的只能用 `/internal/files/output` 列最外层。
+/// 也能手动选;2026-11-09 用户要求);云端的带 `--enable-assets` 启动时用素材接口连子文件夹列,
+/// 没开就只能用 `/internal/files/output` 列最外层(子文件夹里的只有出图历史记着的)。
+/// 能多选,存进「下载」文件夹:一张存图,几张打成 zip(2026-11-23 用户要求)。
 /// 能按文件夹筛(output 最外层单独一项);点开看原图;右键复制图片、复制当时的提示词、放回成稿。
-// ponytail: 云端的 ComfyUI 读不到子文件夹,历史没记着的也没有时刻(归在「更早」);
+// ponytail: 云端没开素材接口时读不到子文件夹,历史没记着的也没有时刻(归在「更早」);
 // 硬盘上一次最多列 2 万张(新改的在前),界面一次显示 300 张。
 String _mimeOf(String name) =>
     imageMimes[name.substring(name.lastIndexOf('.') + 1).toLowerCase()] ??
@@ -79,6 +87,15 @@ class _ComfyGalleryState extends State<ComfyGallery> {
 
   /// 收起来的日子(`dayKey`)。
   final _collapsed = <String>{};
+
+  /// 多选时选中的(见 [_keyOf]);null 是没在多选。
+  Set<String>? _picked;
+
+  /// 正在存进「下载」文件夹:取到第几张了;没在存是 null。
+  int? _saving;
+
+  String _keyOf(ComfyShot s) =>
+      '${s.file['type']}/${shotFolder(s)}/${s.file['filename']}';
 
   ComfyRunner get runner => widget.vm.comfy;
 
@@ -134,12 +151,14 @@ class _ComfyGalleryState extends State<ComfyGallery> {
       if (dir != null) {
         files = await listOutputFolder(dir);
       } else if (error == null) {
-        // 老版本没有列文件的接口:那就只有历史里的。
-        files = shotsOfFiles(
-          await client.outputFiles().catchError(
-            (Object _) => const <Map<String, Object?>>[],
-          ),
-        );
+        // 开了素材接口的连子文件夹列;老版本没有列文件的接口:那就只有历史里的。
+        files =
+            await client.outputAssets() ??
+            shotsOfFiles(
+              await client.outputFiles().catchError(
+                (Object _) => const <Map<String, Object?>>[],
+              ),
+            );
       }
     } on FileSystemException catch (e) {
       error ??= tr('输出文件夹读不了:{0}', [e.message]);
@@ -230,13 +249,15 @@ class _ComfyGalleryState extends State<ComfyGallery> {
   }
 
   Future<void> _menu(ComfyShot shot, Offset at) async {
-    final copyPicture = tr('复制图片'),
+    final download = tr('下载'),
+        copyPicture = tr('复制图片'),
         copyPrompt = tr('复制提示词'),
         restore = tr('放回成稿'),
         reveal = tr('在文件夹中显示'),
         delete = tr('删除');
     final path = shot.path;
     final picked = await popMenu(context, at, [
+      download,
       copyPicture,
       if (shot.prompt.isNotEmpty) ...[copyPrompt, restore],
       if (path != null && Platform.isWindows) reveal,
@@ -245,6 +266,7 @@ class _ComfyGalleryState extends State<ComfyGallery> {
     ]);
     if (!mounted) return;
     if (picked == delete) return _delete(shot);
+    if (picked == download) return _save([shot]);
     if (picked == reveal) {
       await Process.run('explorer', ['/select,', path!]);
     } else if (picked == copyPicture) {
@@ -264,6 +286,90 @@ class _ComfyGalleryState extends State<ComfyGallery> {
       if (problem != null) return showToast(context, problem, warn: true);
       widget.onOpenStudio();
     }
+  }
+
+  /// 一张的原图:硬盘上的直接读,云端的下载。
+  Future<Uint8List> _read(ComfyShot shot) async {
+    final path = shot.path;
+    return path != null
+        ? await File(path).readAsBytes()
+        : await runner.client.download(shot.file);
+  }
+
+  /// 存进「下载」文件夹:一张存图,几张打成 zip;存好退出多选。
+  Future<void> _save(List<ComfyShot> shots) async {
+    if (shots.isEmpty || _saving != null) return;
+    setState(() => _saving = 0);
+    String? problem, path;
+    try {
+      path = await saveShots(
+        shots,
+        _read,
+        onStep: (n) {
+          if (mounted) setState(() => _saving = n);
+        },
+      );
+    } on ComfyException catch (e) {
+      problem = e.message;
+    } on FileSystemException catch (e) {
+      problem = tr('没存上:{0}', [e.message]);
+    } on Object catch (e) {
+      problem = tr('没存上({0})', [e.runtimeType]);
+    }
+    if (!mounted) return;
+    setState(() {
+      _saving = null;
+      if (problem == null) _picked = null;
+    });
+    if (problem != null) return showToast(context, problem, warn: true);
+    showToast(context, tr('已存到 {0}', [path]));
+    if (Platform.isWindows) {
+      unawaited(Process.run('explorer', ['/select,', path!]));
+    }
+  }
+
+  /// 多选时顶上那一排:选了几张、全选(眼前这个文件夹)、下载、退出。
+  List<Widget> _pickBar(List<ComfyShot> visible) {
+    final picked = _picked!;
+    final chosen = [
+      for (final s in visible)
+        if (picked.contains(_keyOf(s))) s,
+    ];
+    final all = chosen.length == visible.length && visible.isNotEmpty;
+    return [
+      Text(
+        _saving == null
+            ? tr('已选 {0} 张', [chosen.length])
+            : tr('正在打包 {0}/{1}', [_saving, chosen.length]),
+        style: TextStyle(fontSize: 12, color: PennaColors.slate500),
+      ),
+      const SizedBox(width: 8),
+      PennaButton(
+        label: all ? tr('全不选') : tr('全选'),
+        borderColor: PennaColors.border,
+        onPressed: () => setState(
+          () => _picked = all ? {} : {for (final s in visible) _keyOf(s)},
+        ),
+      ),
+      const SizedBox(width: 6),
+      PennaButton(
+        label: tr('下载'),
+        icon: Icons.download_outlined,
+        foreground: PennaColors.primary,
+        borderColor: PennaColors.border,
+        onPressed: chosen.isEmpty || _saving != null
+            ? null
+            : () => _save(chosen),
+      ),
+      const SizedBox(width: 6),
+      PennaButton(
+        label: tr('取消'),
+        borderColor: PennaColors.border,
+        onPressed: _saving != null
+            ? null
+            : () => setState(() => _picked = null),
+      ),
+    ];
   }
 
   /// 从 ComfyUI 的历史里去掉这一单(同一单出的几张一起去掉),再重读。
@@ -402,19 +508,32 @@ class _ComfyGalleryState extends State<ComfyGallery> {
                   style: TextStyle(fontSize: 11, color: PennaColors.slate500),
                 ),
               ),
-              _dirButton(),
-              const SizedBox(width: 4),
-              ViewSwitch(
-                grid: _grid,
-                onChanged: (g) => setState(() => _grid = g),
-              ),
-              const SizedBox(width: 6),
-              PennaButton(
-                label: tr('刷新'),
-                icon: Icons.refresh,
-                borderColor: PennaColors.border,
-                onPressed: _loading ? null : _load,
-              ),
+              if (_picked != null && visible != null)
+                ..._pickBar(visible)
+              else ...[
+                _dirButton(),
+                const SizedBox(width: 4),
+                ViewSwitch(
+                  grid: _grid,
+                  onChanged: (g) => setState(() => _grid = g),
+                ),
+                const SizedBox(width: 6),
+                PennaButton(
+                  label: tr('多选'),
+                  icon: Icons.checklist,
+                  borderColor: PennaColors.border,
+                  onPressed: visible == null || visible.isEmpty
+                      ? null
+                      : () => setState(() => _picked = {}),
+                ),
+                const SizedBox(width: 6),
+                PennaButton(
+                  label: tr('刷新'),
+                  icon: Icons.refresh,
+                  borderColor: PennaColors.border,
+                  onPressed: _loading ? null : _load,
+                ),
+              ],
             ],
           ),
         ),
@@ -506,209 +625,49 @@ class _ComfyGalleryState extends State<ComfyGallery> {
     );
   }
 
-  Widget _tile(ComfyShot s, {bool row = false}) => _Tile(
-    shot: s,
-    row: row,
-    busy: s == _opening,
-    url: runner.client.viewUrl(s.file, preview: true),
-    headers: runner.client.headers,
-    onOpen: (shown) => _open(s, shown: shown),
-    onMenu: (at) => _menu(s, at),
-  );
-}
-
-/// 一天的标题行:箭头、日子、张数,点了收起或展开。
-class _DayHeader extends StatelessWidget {
-  const _DayHeader({
-    required this.label,
-    required this.count,
-    required this.open,
-    required this.onTap,
-  });
-
-  final String label;
-  final int count;
-  final bool open;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => InkWell(
-    borderRadius: BorderRadius.circular(6),
-    onTap: onTap,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          AnimatedRotation(
-            turns: open ? 0.25 : 0,
-            duration: Motion.of(context, Motion.snap),
-            curve: Motion.swift,
-            child: Icon(
-              Icons.chevron_right,
-              size: 16,
-              color: PennaColors.slate500,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            tr('{0} 张', [count]),
-            style: TextStyle(fontSize: 11, color: PennaColors.slate400),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-/// 一张图:方形缩略图,下面是时刻和提示词开头;悬停看整条提示词。
-class _Tile extends StatelessWidget {
-  const _Tile({
-    required this.shot,
-    required this.url,
-    required this.headers,
-    required this.onOpen,
-    required this.onMenu,
-    this.row = false,
-    this.busy = false,
-  });
-
-  /// 正在读原图(点开大图之前)。
-  final bool busy;
-
-  /// 列表里的一行:左边小缩略图,右边时刻和整条提示词。
-  final bool row;
-  final ComfyShot shot;
-  final String url;
-  final Map<String, String> headers;
-
-  /// 点开看大图;参数是「从看清的缩略图点的」(点图片以外的地方是 false)。
-  final ValueChanged<bool> onOpen;
-  final ValueChanged<Offset> onMenu;
-
-  @override
-  Widget build(BuildContext context) {
-    final time = shot.time;
-    return Tooltip(
-      message: shot.prompt.isEmpty ? '${shot.file['filename']}' : shot.prompt,
-      waitDuration: const Duration(milliseconds: 600),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: () => onOpen(false),
-          onSecondaryTapUp: (d) => onMenu(d.globalPosition),
-          child: row
-              ? _row()
-              : PennaCard(
-                  padding: const EdgeInsets.all(6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      AspectRatio(aspectRatio: 1, child: _image(400)),
-                      const SizedBox(height: 6),
-                      Text(
-                        [
-                          if (time != null) shortTime(time),
-                          if (shot.prompt.isNotEmpty) shot.prompt,
-                        ].join(' · '),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: PennaColors.slate500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-        ),
-      ),
+  Widget _tile(ComfyShot s, {bool row = false}) {
+    final tile = _Tile(
+      shot: s,
+      row: row,
+      busy: s == _opening,
+      url: runner.client.viewUrl(s.file, preview: true),
+      headers: runner.client.headers,
+      onOpen: (shown) => _open(s, shown: shown),
+      onMenu: (at) => _menu(s, at),
     );
-  }
-
-  /// 缩略图:硬盘上的直接读文件(ComfyUI 没开也看得到),别的让 ComfyUI 压成 WebP 再给。
-  Widget _image(int cacheWidth) {
-    Widget broken(BuildContext _, Object _, StackTrace? _) =>
-        Icon(Icons.broken_image_outlined, color: PennaColors.slate400);
-    final path = shot.path;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          BlurVeil(
-            onOpen: () => onOpen(true),
-            child: path != null
-                ? Image.file(
-                    File(path),
-                    fit: BoxFit.cover,
-                    cacheWidth: cacheWidth,
-                    gaplessPlayback: true,
-                    errorBuilder: broken,
-                  )
-                : Image.network(
-                    url,
-                    headers: headers,
-                    fit: BoxFit.cover,
-                    cacheWidth: cacheWidth,
-                    gaplessPlayback: true,
-                    errorBuilder: broken,
-                  ),
-          ),
-          if (busy)
-            const ColoredBox(
-              color: Color(0x66000000),
-              child: Center(
-                child: SizedBox.square(
-                  dimension: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
+    final picked = _picked;
+    if (picked == null) return tile;
+    // 多选时点哪都是选中 / 取消,盖在图上面(模糊罩、点开大图都不理)。
+    final on = picked.contains(_keyOf(s));
+    return Stack(
+      children: [
+        tile,
+        Positioned.fill(
+          child: Material(
+            color: on ? PennaColors.primary.withValues(alpha: 0.12) : null,
+            type: on ? MaterialType.canvas : MaterialType.transparency,
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => setState(
+                () => on ? picked.remove(_keyOf(s)) : picked.add(_keyOf(s)),
+              ),
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Icon(
+                    on ? Icons.check_circle : Icons.radio_button_unchecked,
+                    size: 20,
+                    color: on ? PennaColors.primary : Colors.white,
+                    shadows: const [Shadow(blurRadius: 4)],
                   ),
                 ),
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _row() {
-    final time = shot.time;
-    return PennaCard(
-      padding: const EdgeInsets.all(6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox.square(dimension: 64, child: _image(160)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (time != null)
-                  Text(
-                    shortTime(time),
-                    style: TextStyle(fontSize: 11, color: PennaColors.slate400),
-                  ),
-                const SizedBox(height: 2),
-                Text(
-                  shot.prompt.isEmpty
-                      ? '${shot.file['filename']}'
-                      : shot.prompt,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: PennaColors.slate700),
-                ),
-              ],
-            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

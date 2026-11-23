@@ -9,6 +9,7 @@ import '../../core/blur_veil.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../../core/harness/comfyui.dart' show isVideoFile;
+import 'comfy_progress_view.dart' show comfyRunLabel;
 import 'comfy_runner.dart';
 import 'comfy_video_tile.dart';
 import 'image_viewer.dart';
@@ -127,15 +128,9 @@ class _JobTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = runner.progress;
     final (label, color) = switch (job.state) {
       ComfyJobState.waiting => (tr('排队中'), PennaColors.slate500),
-      ComfyJobState.running => (
-        progress == null
-            ? tr('出图中')
-            : tr('出图中 · {0}%', [(progress * 100).round()]),
-        PennaColors.primary,
-      ),
+      ComfyJobState.running => (comfyRunLabel(runner), PennaColors.primary),
       ComfyJobState.done => (tr('已完成'), PennaColors.slate500),
       ComfyJobState.failed => (tr('失败'), PennaColors.diffDelText),
       ComfyJobState.canceled => (tr('已撤掉'), PennaColors.slate400),

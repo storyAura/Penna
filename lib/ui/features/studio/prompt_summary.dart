@@ -44,14 +44,11 @@ class _SummarySectionState extends State<_SummarySection> {
             ListenableBuilder(
               listenable: runner,
               builder: (context, _) {
-                final progress = runner.progress;
                 return _Tab(
                   icon: Icons.brush_outlined,
                   label: !runner.running
                       ? tr('出图')
-                      : progress == null
-                      ? tr('出图中')
-                      : tr('出图中 · {0}%', [(progress * 100).round()]),
+                      : comfyRunLabel(runner, short: true),
                   selected: _images,
                   onTap: _showImages,
                 );

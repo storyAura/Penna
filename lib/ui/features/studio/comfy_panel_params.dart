@@ -15,28 +15,81 @@ String _paramName(String key) => switch (key) {
   _ => key,
 };
 
-/// 侧栏里工作流的几样:模型(只看,不能改:换模型就换工作流)、画面大小、
-/// 采样器参数(默认收起)。
+/// 模型文件那一行的名字。
+String _fileLabel(String key) => switch (key) {
+  'unet_name' => 'UNet',
+  'ckpt_name' => 'Checkpoint',
+  'vae_name' => 'VAE',
+  _ => tr('文本编码器'),
+};
+
+/// [name] 在 [known](这台 ComfyUI 的名单;还没读到是 null)里对不上(见 [serverName])。
+bool _missing(String name, List<String>? known) =>
+    known != null && known.isNotEmpty && serverName(name, known) == null;
+
+/// 侧栏里工作流的几样:模型文件(UNet、文本编码器、VAE,名单读眼前这台 ComfyUI 的;
+/// 2026-11-23 用户要求开放修改)、画面大小、时长、采样器参数(默认收起)。
 List<Widget> _params(
   BuildContext context,
   ComfyRunner runner,
   ComfyWorkflow wf,
   void Function(String?) report,
 ) {
-  final models = modelSlots(wf);
+  final models = fileSlots(wf);
   final size = latentSize(wf);
+  final duration = durationSlot(wf);
   final samplers = samplerSlots(wf);
   return [
     if (models.isNotEmpty) _heading(tr('模型')),
     for (final m in models)
-      _ParamRow(
-        label: m.key == 'unet_name' ? 'UNet' : 'Checkpoint',
-        value: _short(m.value),
-        tooltip: '${m.value}\n${m.type}',
-      ),
+      if (_missing(m.value, runner.knownOptions(m.type, m.key)) case final gone)
+        _ParamRow(
+          label: _fileLabel(m.key),
+          value: _short(m.value),
+          warn: gone,
+          tooltip: [
+            m.value,
+            m.type,
+            if (gone) tr('这台 ComfyUI 里没有这个文件'),
+          ].join('\n'),
+          onTap: () async {
+            final names = await runner.optionsFor(m.type, m.key);
+            if (!context.mounted) return;
+            final picked = await _pickName(context, _fileLabel(m.key), names);
+            if (picked != null) {
+              report(runner.edit((wf) => setInput(wf, m.node, m.key, picked)));
+            }
+          },
+        ),
     if (size != null) ...[
       _heading(tr('画面大小')),
       _SizeMenu(runner: runner, size: size, report: report),
+    ],
+    if (duration != null) ...[
+      _heading(tr('时长')),
+      _ParamRow(
+        label: duration.frames ? tr('帧数') : tr('秒'),
+        value: '${duration.value}',
+        onTap: () async {
+          final asked = await _askText(
+            context,
+            duration.frames ? tr('帧数') : tr('时长(秒)'),
+            initial: '${duration.value}',
+          );
+          final n = num.tryParse(asked?.trim() ?? '');
+          if (n == null || n <= 0) return;
+          report(
+            runner.edit(
+              (wf) => setInput(
+                wf,
+                duration.node,
+                duration.key,
+                duration.frames ? n.round() : n,
+              ),
+            ),
+          );
+        },
+      ),
     ],
     for (final s in samplers)
       _Fold(
@@ -188,10 +241,14 @@ class _ParamRow extends StatelessWidget {
     required this.value,
     this.onTap,
     this.tooltip,
+    this.warn = false,
   });
 
   final String label, value;
   final String? tooltip;
+
+  /// 值标成红的(这台 ComfyUI 里没有)。
+  final bool warn;
 
   /// 点了改;null 是只看(没有笔的图标)。
   final VoidCallback? onTap;
@@ -218,7 +275,10 @@ class _ParamRow extends StatelessWidget {
                 value,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.end,
-                style: monoStyle.copyWith(fontSize: 11.5),
+                style: monoStyle.copyWith(
+                  fontSize: 11.5,
+                  color: warn ? PennaColors.diffDelText : null,
+                ),
               ),
             ),
           ),

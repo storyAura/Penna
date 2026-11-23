@@ -62,9 +62,6 @@ typedef ComfyStatus = ({bool connected, int ms, String version, String? error});
 /// 内置文生图的名字(存进设置的是原文,显示时翻译)。
 const builtinWorkflowName = '内置 · 文生图';
 
-/// 可选名单在 [ComfyRunner] 里的键:LoRA、内置文生图的模型。
-const _loraOptions = 'lora', _ckptOptions = 'ckpt';
-
 /// 两次测连接至少隔多久(两个页面的侧栏都会来问)。
 const _checkGap = Duration(seconds: 5);
 
@@ -86,9 +83,15 @@ class ComfyRunner extends ChangeNotifier {
   bool _checking = false;
   DateTime? _checkedAt;
 
-  /// 能选的文件名(LoRA、模型);[_optionsOf] 是读这份名单时连的哪台。
-  Map<String, List<String>> _options = const {};
+  /// 这台 ComfyUI 的节点和下拉名单(模型、LoRA、采样器);[_optionsOf] 是读它时连的哪台。
+  ComfyNodeInfo _info = const {};
   String? _optionsOf;
+
+  /// 各工作流在这台上缺什么(工作流 id → 当时的全文、缺的),换了名单就清掉。
+  final _problems = <String, (String, List<String>)>{};
+
+  /// 正在往回传图:传到哪了;没在传是 null。
+  ComfyTransfer? _transfer;
 
   /// 每次开始、停止加一,作废之前那次的结果。
   int _run = 0;
@@ -114,6 +117,9 @@ class ComfyRunner extends ChangeNotifier {
 
   /// 正在出的这张进行到哪了(0 到 1);还在排队、或听不到进度时是 null。
   ComfyProgress? get progress => _progress;
+
+  /// 跑完之后正在往回传图(云端的可能慢);没在传是 null。
+  ComfyTransfer? get transfer => _transfer;
 
   /// 正在出的这张是谁要的(对话里那条回复的时刻;工作台的按钮是 null)。
   Object? get owner => _owner;
@@ -143,15 +149,16 @@ class ComfyRunner extends ChangeNotifier {
     );
   }
 
-  /// 测连接(侧栏定时来问);[full] 时连带重读模型、LoRA 的名单。
-  /// 换了一台也重读。刚测过不久的不再测。
+  /// 测连接(侧栏定时来问);[full] 时连带重读节点和模型、LoRA 的名单。
+  /// 换了一台也重读。刚测过不久的不再测。测的中途换了一台,测完再测新的那台。
   Future<void> check({bool full = false}) async {
     final last = _checkedAt;
+    final url = config.config.comfy.server.url;
     if (_checking ||
         !full &&
             last != null &&
             DateTime.now().difference(last) < _checkGap &&
-            _optionsOf == config.config.comfy.server.url) {
+            _optionsOf == url) {
       return;
     }
     _checking = true;
@@ -160,10 +167,14 @@ class ComfyRunner extends ChangeNotifier {
     try {
       final p = await client.ping();
       _status = (connected: true, ms: p.ms, version: p.version, error: null);
-      final url = config.config.comfy.server.url;
       if (full || _optionsOf != url) {
-        _options = await _readOptions(client);
-        _optionsOf = url;
+        final info = await client.objectInfo();
+        // 读的时候换了一台:这份名单不是眼前那台的,不要。
+        if (config.config.comfy.server.url == url) {
+          _info = info;
+          _optionsOf = url;
+          _problems.clear();
+        }
       }
     } on ComfyException catch (e) {
       _status = (connected: false, ms: 0, version: '', error: e.message);
@@ -179,6 +190,7 @@ class ComfyRunner extends ChangeNotifier {
       _checkedAt = DateTime.now();
       notifyListeners();
     }
+    if (config.config.comfy.server.url != url) unawaited(check(full: true));
   }
 
   /// 现在存图的文件夹。
@@ -210,6 +222,7 @@ class ComfyRunner extends ChangeNotifier {
     _running = true;
     _error = null;
     _progress = null;
+    _transfer = null;
     _owner = owner;
     notifyListeners();
     final client = _client;
@@ -223,7 +236,13 @@ class ComfyRunner extends ChangeNotifier {
         prompt,
         size: size,
         uploads: comfy.inputs[comfy.flow?.id ?? builtinWorkflowId] ?? const {},
+        info: _optionsOf == comfy.server.url ? _info : const {},
         canceled: () => run != _run,
+        onDownload: (t) {
+          if (run != _run) return;
+          _transfer = t;
+          notifyListeners();
+        },
         onProgress: (p) {
           if (run != _run) return;
           _progress = p;
@@ -265,6 +284,7 @@ class ComfyRunner extends ChangeNotifier {
     }
     if (run != _run) return (images: none, error: null);
     _running = false;
+    _transfer = null;
     _owner = null;
     _error = error;
     notifyListeners();
@@ -290,6 +310,7 @@ class ComfyRunner extends ChangeNotifier {
     if (!_running) return;
     _run++;
     _running = false;
+    _transfer = null;
     _owner = null;
     notifyListeners();
   }

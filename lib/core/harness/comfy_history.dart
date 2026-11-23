@@ -101,6 +101,34 @@ List<ComfyShot> mergeShots(List<ComfyShot> history, List<ComfyShot> files) {
   return [for (final (_, s) in ordered) s];
 }
 
+/// 读 `/api/assets?tags_all=output` 的一页(ComfyUI 带 `--enable-assets` 启动时才有):
+/// `display_name` 是 output 下的相对路径(连子文件夹),只留图片。
+List<ComfyShot> parseOutputAssets(Object? json) => [
+  if (json is Map && json['assets'] is List)
+    for (final a in json['assets'] as List)
+      if (a is Map)
+        if (_relPath(a) case final rel
+            when imageMimes.containsKey(
+              rel.substring(rel.lastIndexOf('.') + 1).toLowerCase(),
+            ))
+          (
+            id: '',
+            file: <String, Object?>{
+              'filename': rel.substring(rel.lastIndexOf('/') + 1),
+              'subfolder': rel.contains('/')
+                  ? rel.substring(0, rel.lastIndexOf('/'))
+                  : '',
+              'type': 'output',
+            },
+            prompt: '',
+            time: DateTime.tryParse('${a['created_at'] ?? ''}')?.toLocal(),
+            path: null,
+          ),
+];
+
+String _relPath(Map a) =>
+    '${a['display_name'] ?? a['name'] ?? ''}'.replaceAll(r'\', '/');
+
 /// `/internal/files/output` 列出的文件换成图(没有时刻和路径)。
 List<ComfyShot> shotsOfFiles(List<Map<String, Object?>> files) => [
   for (final f in files) (id: '', file: f, prompt: '', time: null, path: null),

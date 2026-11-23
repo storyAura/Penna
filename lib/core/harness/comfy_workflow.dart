@@ -80,6 +80,39 @@ List<ModelSlot> modelSlots(ComfyWorkflow wf) => [
         (node: id, type: type, key: key, value: value),
 ];
 
+final _fileKey = RegExp(r'^(ckpt_name|unet_name|clip_name\d*|vae_name)$');
+
+/// 侧栏能换的模型文件(2026-11-23 用户要求开放):大模型(ckpt / unet)、
+/// 文本编码器(clip_name、clip_name1…)、VAE,按节点编号排。
+List<ModelSlot> fileSlots(ComfyWorkflow wf) => [
+  for (final (id, type, inputs) in _nodes(wf))
+    for (final key in inputs.keys)
+      if (_fileKey.hasMatch(key) && inputs[key] is String)
+        (node: id, type: type, key: key, value: inputs[key] as String),
+];
+
+/// 时长:标了 `Penna.Duration`(或节点标题就叫「时长」/ Duration)的数值节点,单位是秒;
+/// 没有时是画面大小节点上没接线的 `length`(帧数)。都没有是 null。
+({String node, String key, num value, bool frames})? durationSlot(
+  ComfyWorkflow wf,
+) {
+  for (final (id, _, inputs) in _nodes(wf)) {
+    final title = '${((wf[id] as Map)['_meta'] as Map?)?['title'] ?? ''}';
+    final named =
+        title.startsWith('Penna.Duration') ||
+        const {'时长', 'duration'}.contains(title.trim().toLowerCase());
+    if (inputs['value'] case final num v when named) {
+      return (node: id, key: 'value', value: v, frames: false);
+    }
+  }
+  for (final id in latentNodeIds(wf)) {
+    if (_inputsOf(wf, id)['length'] case final num v) {
+      return (node: id, key: 'length', value: v, frames: true);
+    }
+  }
+  return null;
+}
+
 bool _isNested(Object? v) => v is Map && v['lora'] is String;
 
 bool _isFlatName(String key, Object? v) =>
@@ -255,6 +288,14 @@ const _setKeys = {
       out = setLatentSize(out, size);
       final now = latentSize(out)!;
       changed.add('${now.width}×${now.height}');
+      continue;
+    }
+    if (key == 'duration' || key == 'length') {
+      final slot = durationSlot(out);
+      final n = num.tryParse(value.replaceFirst(RegExp(r's$'), ''));
+      if (slot == null || n == null || n <= 0) continue;
+      out = setInput(out, slot.node, slot.key, slot.frames ? n.round() : n);
+      changed.add('$key=$value');
       continue;
     }
     final input = _setKeys[key];

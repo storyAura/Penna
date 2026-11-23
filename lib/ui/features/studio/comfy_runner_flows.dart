@@ -7,26 +7,37 @@ extension ComfyFlows on ComfyRunner {
   void _put(ComfySettings next) =>
       config.update(config.config.copyWith(comfy: next));
 
-  /// 内置文生图的模型和 LoRA 能选的(连上之后读)。
-  Future<Map<String, List<String>>> _readOptions(ComfyClient client) async => {
-    _ckptOptions: await client.checkpoints(),
-    _loraOptions: await client.options('LoraLoaderModelOnly', 'lora_name'),
-  };
+  /// 这台 ComfyUI 里的 LoRA 文件(连上之后读)。
+  List<String> get loraOptions => loraNamesOf(_info);
 
-  List<String> get loraOptions => _options[_loraOptions] ?? const [];
-
-  /// [type] 节点的 [key] 能选哪些(模型、采样器、调度器),问过一次就记着;
-  /// 换一台或刷新时清掉。连不上返回空的。
+  /// [type] 节点的 [key] 能选哪些(模型、采样器、调度器):这台 ComfyUI 的名单。
+  /// 还没读到名单时现问一次。连不上返回空的。
   Future<List<String>> optionsFor(String type, String key) async {
-    final cached = _options['$type/$key'];
-    if (cached != null) return cached;
+    final known = _info[type]?[key];
+    if (known != null) return known;
     try {
-      final got = await _client.options(type, key);
-      _options = {..._options, '$type/$key': got};
-      return got;
+      return await _client.options(type, key);
     } on ComfyException {
       return const [];
     }
+  }
+
+  /// 还没读到名单时是 null,读到了是 [type] 节点 [key] 能选的(给界面标出这台没有的文件)。
+  List<String>? knownOptions(String type, String key) =>
+      _info.isEmpty ? null : _info[type]?[key] ?? const [];
+
+  /// [id] 那个工作流在眼前这台 ComfyUI 上缺什么(没装的节点、没有的模型文件);
+  /// 还没读到名单、或什么都不缺时是空的。
+  List<String> problemsOf(String id) {
+    if (_info.isEmpty || id == builtinWorkflowId) return const [];
+    final flow = _settings.flows.where((f) => f.id == id).firstOrNull;
+    if (flow == null) return const [];
+    final cached = _problems[id];
+    if (cached != null && cached.$1 == flow.text) return cached.$2;
+    final wf = _parse(flow.text);
+    final found = wf == null ? const <String>[] : workflowProblems(wf, _info);
+    _problems[id] = (flow.text, found);
+    return found;
   }
 
   /// Agent 写的 `<comfy-set>`:改画面大小、采样器参数,存进眼前的工作流。
@@ -47,8 +58,13 @@ extension ComfyFlows on ComfyRunner {
     if (wf == null) return '';
     final size = latentSize(wf);
     final sampler = samplerSlots(wf).firstOrNull;
+    final duration = durationSlot(wf);
     return [
       if (size != null) 'size=${size.width}x${size.height}',
+      if (duration != null)
+        duration.frames
+            ? 'length=${duration.value}'
+            : 'duration=${duration.value}',
       if (sampler != null)
         for (final MapEntry(:key, :value) in sampler.values.entries)
           '$key=$value',
@@ -93,12 +109,15 @@ extension ComfyFlows on ComfyRunner {
     _changed();
   }
 
-  /// 换一台 ComfyUI,马上测连接、重读名单。
+  /// 换一台 ComfyUI,马上测连接、重读名单;那台给眼前这个工作流选过 LoRA 配置的,换上它。
   void selectServer(String id) {
     if (id == _settings.serverId) return;
     _put(_settings.copyWith(serverId: id));
     _status = null;
-    _options = const {};
+    _info = const {};
+    _optionsOf = null;
+    _problems.clear();
+    if (loraPreset case final preset?) applyLoraPreset(preset);
     _changed();
     unawaited(check(full: true));
   }
@@ -169,7 +188,7 @@ extension ComfyFlows on ComfyRunner {
   }
 
   ComfyWorkflow? get _builtin {
-    final first = (_options[_ckptOptions] ?? const <String>[]).firstOrNull;
+    final first = _info['CheckpointLoaderSimple']?['ckpt_name']?.firstOrNull;
     return first == null ? null : defaultWorkflow(first);
   }
 
@@ -180,17 +199,20 @@ extension ComfyFlows on ComfyRunner {
           '${_modelsOf(c.id).isEmpty ? '模型未知' : _modelsOf(c.id).join('、')}',
   ].join('\n');
 
-  /// 眼前这个工作流的 LoRA 配置(各工作流各是各的),按显示的先后。
-  List<LoraPreset> get loraPresets => _settings.presetsOf(flowId);
+  /// 眼前这台、这个工作流的 LoRA 配置(各台、各工作流各是各的),按显示的先后。
+  List<LoraPreset> get loraPresets =>
+      _settings.presetsOf(_settings.serverId, flowId);
+
+  String get _presetKey => loraPresetKey(_settings.serverId, flowId);
 
   /// 眼前用的那套 LoRA 配置;没用哪一套(或已删掉)是 null。
   LoraPreset? get loraPreset => loraPresets
-      .where((p) => p.name == _settings.loraPresetOf[flowId])
+      .where((p) => p.name == _settings.loraPresetOf[_presetKey])
       .firstOrNull;
 
   /// 拖动眼前这个工作流的 LoRA 配置换顺序。
   void moveLoraPreset(int from, int to) {
-    _put(_settings.moveLoraPreset(flowId, from, to));
+    _put(_settings.moveLoraPreset(_settings.serverId, flowId, from, to));
     _changed();
   }
 
@@ -275,9 +297,11 @@ extension ComfyFlows on ComfyRunner {
     _changed();
   }
 
-  /// 记下眼前这个工作流用的是哪一套。
+  /// 记下眼前这台、这个工作流用的是哪一套。
   void _useLoraPreset(String name) => _put(
-    _settings.copyWith(loraPresetOf: {..._settings.loraPresetOf, flowId: name}),
+    _settings.copyWith(
+      loraPresetOf: {..._settings.loraPresetOf, _presetKey: name},
+    ),
   );
 
   /// 眼前工作流的 LoRA 和用着的那套配置不一样了(要存才留得住)。
@@ -301,6 +325,7 @@ extension ComfyFlows on ComfyRunner {
     if (name.trim().isEmpty) return tr('名字不能为空');
     _put(
       _settings.putLoraPreset((
+        server: _settings.serverId,
         flow: flowId,
         name: name.trim(),
         loras: _lorasOf(wf),
@@ -348,7 +373,7 @@ extension ComfyFlows on ComfyRunner {
   }
 
   void removeLoraPreset(String name) {
-    _put(_settings.removeLoraPreset(flowId, name));
+    _put(_settings.removeLoraPreset(_settings.serverId, flowId, name));
     _changed();
   }
 }

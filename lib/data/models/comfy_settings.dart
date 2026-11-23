@@ -22,8 +22,17 @@ typedef ComfyFlow = ({String id, String name, String text});
 /// 一个 LoRA 在一套配置里的样子。
 typedef LoraSetting = ({String name, double strength, bool on});
 
-/// 存下来的一套 LoRA 配置;[flow] 是它属于哪个工作流(各工作流的配置互不相干)。
-typedef LoraPreset = ({String flow, String name, List<LoraSetting> loras});
+/// 存下来的一套 LoRA 配置;[server]、[flow] 是它属于哪台 ComfyUI 的哪个工作流
+/// (各台的 LoRA 文件不同,各工作流的配置也互不相干)。
+typedef LoraPreset = ({
+  String server,
+  String flow,
+  String name,
+  List<LoraSetting> loras,
+});
+
+/// [ComfySettings.loraPresetOf] 的键:哪台的哪个工作流。
+String loraPresetKey(String server, String flow) => '$server|$flow';
 
 /// 侧栏「画面大小」里存下的常用尺寸,新装时是这几个(SDXL 一类按一百万像素左右排的)。
 const comfyDefaultSizes = <({int width, int height})>[
@@ -62,7 +71,8 @@ class ComfySettings {
   });
 
   /// 读设置。旧版只有一个地址(`url`)和一个工作流(`workflow`、`workflowName`),照样读成列表;
-  /// 旧版的 LoRA 配置不分工作流,每个工作流各拿一份。
+  /// 旧版的 LoRA 配置不分工作流,每个工作流各拿一份;不分服务器的算本机那台的
+  /// (没有本机那台就算第一台)。
   factory ComfySettings.fromJson(Object? json) {
     final m = json is Map ? json : const {};
     final servers = <ComfyServer>[
@@ -98,6 +108,9 @@ class ComfySettings {
         ? const [builtinWorkflowId]
         : [for (final f in flows) f.id];
     final current = flowIds.contains(flowId) ? flowId : flowIds.first;
+    final legacy = servers.isEmpty || servers.any((s) => s.id == comfyLocalId)
+        ? comfyLocalId
+        : servers.first.id;
     return ComfySettings(
       servers: servers.isNotEmpty
           ? List.unmodifiable(servers)
@@ -119,6 +132,7 @@ class ComfySettings {
             for (final flow
                 in p['flow'] is String ? [p['flow'] as String] : flowIds)
               (
+                server: p['server'] as String? ?? legacy,
                 flow: flow,
                 name: p['name'] as String,
                 loras: List<LoraSetting>.unmodifiable([
@@ -135,12 +149,13 @@ class ComfySettings {
       loraPresetOf: Map.unmodifiable(switch (m['loraPresetOf']) {
         final Map of => {
           for (final MapEntry(:key, :value) in of.entries)
-            if (key is String && value is String) key: value,
+            if (key is String && value is String)
+              key.contains('|') ? key : loraPresetKey(legacy, key): value,
         },
         // 旧版只记一个名字:算眼前那个工作流的。
         _ => {
           if (m['loraPreset'] case final String name when name.isNotEmpty)
-            current: name,
+            loraPresetKey(legacy, current): name,
         },
       }),
       inputs: Map.unmodifiable({
@@ -180,10 +195,10 @@ class ComfySettings {
   /// 眼前用的工作流;[builtinWorkflowId] 是内置文生图。
   final String flowId;
 
-  /// 所有工作流的 LoRA 配置,同一个工作流的按显示的先后排。
+  /// 所有工作流的 LoRA 配置,同一台同一个工作流的按显示的先后排。
   final List<LoraPreset> loraPresets;
 
-  /// 各工作流眼前用的那套 LoRA 配置的名字(按工作流 id);没有是没用哪一套。
+  /// 各台各工作流眼前用的那套 LoRA 配置的名字(键见 [loraPresetKey]);没有是没用哪一套。
   final Map<String, String> loraPresetOf;
 
   /// 各工作流要上传的文件(按工作流 id):节点编号 → 本机文件路径。
@@ -214,10 +229,10 @@ class ComfySettings {
   ComfyFlow? get flow =>
       flows.where((f) => f.id == flowId).firstOrNull ?? flows.firstOrNull;
 
-  /// [flow] 那个工作流的 LoRA 配置,按显示的先后。
-  List<LoraPreset> presetsOf(String flow) => [
+  /// [server] 那台 [flow] 那个工作流的 LoRA 配置,按显示的先后。
+  List<LoraPreset> presetsOf(String server, String flow) => [
     for (final p in loraPresets)
-      if (p.flow == flow) p,
+      if (p.server == server && p.flow == flow) p,
   ];
 
   Map<String, Object?> toJson() => {
@@ -232,6 +247,7 @@ class ComfySettings {
     'loraPresets': [
       for (final p in loraPresets)
         {
+          'server': p.server,
           'flow': p.flow,
           'name': p.name,
           'loras': [
@@ -299,6 +315,14 @@ class ComfySettings {
     return copyWith(
       servers: rest,
       serverId: serverId == id ? rest.first.id : serverId,
+      loraPresets: [
+        for (final p in loraPresets)
+          if (p.server != id) p,
+      ],
+      loraPresetOf: {
+        for (final MapEntry(:key, :value) in loraPresetOf.entries)
+          if (!key.startsWith('$id|')) key: value,
+      },
     );
   }
 
@@ -323,7 +347,10 @@ class ComfySettings {
         for (final p in loraPresets)
           if (p.flow != id) p,
       ],
-      loraPresetOf: {...loraPresetOf}..remove(id),
+      loraPresetOf: {
+        for (final MapEntry(:key, :value) in loraPresetOf.entries)
+          if (!key.endsWith('|$id')) key: value,
+      },
       inputs: {...inputs}..remove(id),
     );
   }
@@ -341,10 +368,16 @@ class ComfySettings {
         ..insert(i + 1, (id: newId, name: name, text: flows[i].text)),
       loraPresets: [
         ...loraPresets,
-        for (final p in presetsOf(id))
-          (flow: newId, name: p.name, loras: p.loras),
+        for (final p in loraPresets)
+          if (p.flow == id)
+            (server: p.server, flow: newId, name: p.name, loras: p.loras),
       ],
-      loraPresetOf: {...loraPresetOf, newId: ?loraPresetOf[id]},
+      loraPresetOf: {
+        ...loraPresetOf,
+        for (final MapEntry(:key, :value) in loraPresetOf.entries)
+          if (key.endsWith('|$id'))
+            '${key.substring(0, key.length - id.length)}$newId': value,
+      },
       inputs: {...inputs, newId: ?inputs[id]},
     );
   }
@@ -353,9 +386,12 @@ class ComfySettings {
   ComfySettings moveFlow(int from, int to) =>
       copyWith(flows: moved(flows, from, to));
 
-  /// 存一套 LoRA 配置;同一个工作流里同名的换掉。
+  /// 存一套 LoRA 配置;同一台同一个工作流里同名的换掉。
   ComfySettings putLoraPreset(LoraPreset preset) {
-    bool same(LoraPreset p) => p.flow == preset.flow && p.name == preset.name;
+    bool same(LoraPreset p) =>
+        p.server == preset.server &&
+        p.flow == preset.flow &&
+        p.name == preset.name;
     return copyWith(
       loraPresets: loraPresets.any(same)
           ? [for (final p in loraPresets) same(p) ? preset : p]
@@ -363,23 +399,27 @@ class ComfySettings {
     );
   }
 
-  ComfySettings removeLoraPreset(String flow, String name) => copyWith(
-    loraPresets: [
-      for (final p in loraPresets)
-        if (p.flow != flow || p.name != name) p,
-    ],
-    loraPresetOf: loraPresetOf[flow] == name
-        ? ({...loraPresetOf}..remove(flow))
-        : null,
-  );
-
-  /// 拖动 [flow] 那个工作流的 LoRA 配置换顺序([from]、[to] 是它自己那几套里的位置)。
-  ComfySettings moveLoraPreset(String flow, int from, int to) {
-    final own = moved(presetsOf(flow), from, to);
+  ComfySettings removeLoraPreset(String server, String flow, String name) {
+    final key = loraPresetKey(server, flow);
     return copyWith(
       loraPresets: [
         for (final p in loraPresets)
-          if (p.flow != flow) p,
+          if (p.server != server || p.flow != flow || p.name != name) p,
+      ],
+      loraPresetOf: loraPresetOf[key] == name
+          ? ({...loraPresetOf}..remove(key))
+          : null,
+    );
+  }
+
+  /// 拖动 [server] 那台 [flow] 那个工作流的 LoRA 配置换顺序
+  /// ([from]、[to] 是它自己那几套里的位置)。
+  ComfySettings moveLoraPreset(String server, String flow, int from, int to) {
+    final own = moved(presetsOf(server, flow), from, to);
+    return copyWith(
+      loraPresets: [
+        for (final p in loraPresets)
+          if (p.server != server || p.flow != flow) p,
         ...own,
       ],
     );

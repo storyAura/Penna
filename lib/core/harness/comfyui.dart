@@ -15,6 +15,7 @@ import 'comfyui_progress.dart';
 export 'comfyui_progress.dart' show ComfyProgress;
 
 part 'comfy_history.dart';
+part 'comfy_node_info.dart';
 part 'comfy_upload.dart';
 
 // 把 ComfyUI 当出图的后端:直接用它自带的 HTTP 接口,不用装插件,也不走 MCP。
@@ -68,6 +69,9 @@ class ComfyException implements Exception {
   @override
   String toString() => message;
 }
+
+/// 出完往回传图:第几个文件(从 1 数)、一共几个、这个下了多少字节、一共多少(不知道是 -1)。
+typedef ComfyTransfer = ({int file, int files, int got, int total});
 
 /// 出的一张图:ComfyUI 里的文件名和内容。
 typedef ComfyImage = ({String name, Uint8List bytes});
@@ -450,11 +454,21 @@ class ComfyClient {
     }
   }
 
-  Future<Uint8List> _send(String method, String path, [Object? body]) async {
+  /// [onBytes] 报收到了多少字节、一共多少(服务器没说时是 -1)。
+  Future<Uint8List> _send(
+    String method,
+    String path, [
+    Object? body,
+    void Function(int got, int total)? onBytes,
+  ]) async {
     final http = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
       final res = await _open(http, method, path, body);
-      final bytes = await res.fold(BytesBuilder(), (b, d) => b..add(d));
+      final bytes = await res.fold(BytesBuilder(copy: false), (b, d) {
+        b.add(d);
+        onBytes?.call(b.length, res.contentLength);
+        return b;
+      });
       final data = bytes.takeBytes();
       if (res.statusCode == 401 || res.statusCode == 403) {
         throw ComfyException(
@@ -506,6 +520,27 @@ class ComfyClient {
   Future<List<Map<String, Object?>>> outputFiles() async =>
       parseOutputFiles(await _json('GET', '/internal/files/output'));
 
+  /// 输出文件夹里的全部图(连子文件夹,新的在前):要 ComfyUI 带 `--enable-assets` 启动,
+  /// 没开时是 null(只能用 [outputFiles] 列最外层)。最多 [_maxDiskShots] 张。
+  Future<List<ComfyShot>?> outputAssets() async {
+    final all = <ComfyShot>[];
+    String? after;
+    try {
+      do {
+        final page = await _json(
+          'GET',
+          '/api/assets?tags_all=output&limit=500'
+              '${after == null ? '' : '&after=${Uri.encodeQueryComponent(after)}'}',
+        );
+        all.addAll(parseOutputAssets(page));
+        after = page is Map ? page['next_cursor'] as String? : null;
+      } while (after != null && all.length < _maxDiskShots);
+    } on ComfyException {
+      return all.isEmpty ? null : all;
+    }
+    return all;
+  }
+
   /// 从 ComfyUI 的历史里去掉这几单(输出文件夹里的图片文件不删,ComfyUI 没有删文件的接口)。
   Future<void> forget(List<String> ids) =>
       _send('POST', '/history', {'delete': ids});
@@ -528,9 +563,11 @@ class ComfyClient {
     if (key.isNotEmpty) HttpHeaders.authorizationHeader: 'Bearer $key',
   };
 
-  /// 下载一张图的原图。
-  Future<Uint8List> download(Map<String, Object?> file) =>
-      _send('GET', viewUrl(file).substring(_root.length));
+  /// 下载一张图的原图;[onBytes] 报下了多少(见 [_send])。
+  Future<Uint8List> download(
+    Map<String, Object?> file, {
+    void Function(int got, int total)? onBytes,
+  }) => _send('GET', viewUrl(file).substring(_root.length), null, onBytes);
 
   /// 测连接:版本和这一问来回花了多少毫秒。
   Future<({String version, int ms})> ping() async {
@@ -549,22 +586,20 @@ class ComfyClient {
       'GET',
       '/object_info/${Uri.encodeComponent(type)}',
     );
-    final inputs = ((info as Map?)?[type] as Map?)?['input'] as Map?;
-    // 老写法 [[名字…], {…}],新写法 ["COMBO", {options: [名字…]}]。
-    final spec =
-        (inputs?['required'] as Map?)?[key] ??
-        (inputs?['optional'] as Map?)?[key];
-    final names = spec is List && spec.isNotEmpty
-        ? spec[0] is List
-              ? spec[0] as List
-              : (spec.length > 1 && spec[1] is Map
-                    ? (spec[1] as Map)['options']
-                    : null)
-        : null;
-    return [
-      if (names is List)
-        for (final n in names) '$n',
-    ];
+    return parseNodeInfo(info)[type]?[key] ?? const [];
+  }
+
+  /// 这台 ComfyUI 的全部节点和下拉名单(云端装的节点多时有十几 MB,在 isolate 里读)。
+  Future<ComfyNodeInfo> objectInfo() async {
+    final bytes = await _send('GET', '/object_info');
+    try {
+      return await Isolate.run(
+        () =>
+            parseNodeInfo(jsonDecode(utf8.decode(bytes, allowMalformed: true))),
+      );
+    } on FormatException {
+      throw ComfyException(tr('ComfyUI 返回的不是 JSON,地址可能填错了'));
+    }
   }
 
   /// 用 [workflow](导入的工作流全文;空的用内置文生图)出图,返回出的每一张。
@@ -572,6 +607,8 @@ class ComfyClient {
   /// [canceled] 返回 true 时把单子从队列里撤掉(正在跑的就打断),抛 canceled 的 [ComfyException]。
   /// [onProgress] 报整单的进度(0 到 1),听不到 WebSocket 时不报。
   /// [uploads] 是要先传上去的文件(节点编号 → 本机路径,见 [uploadSlots])。
+  /// [info] 是这台的节点名单:模型名的文件夹分隔换成它的写法(见 [adaptToServer])。
+  /// [onDownload] 报跑完之后往回传到哪了。
   /// 出的也可能是视频(见 [isVideoFile])。
   Future<List<ComfyImage>> run(
     String workflow,
@@ -580,6 +617,8 @@ class ComfyClient {
     bool Function()? canceled,
     void Function(ComfyProgress)? onProgress,
     Map<String, String> uploads = const {},
+    ComfyNodeInfo info = const {},
+    void Function(ComfyTransfer)? onDownload,
   }) async {
     Map<String, Object?> base;
     if (workflow.trim().isEmpty) {
@@ -589,7 +628,7 @@ class ComfyClient {
     } else {
       base = parseApiWorkflow(workflow);
     }
-    base = await _withUploads(base, uploads);
+    base = adaptToServer(await _withUploads(base, uploads), info);
     final prepared = prepareWorkflow(base, prompt, size: size);
     // 进度按 client_id 发到对应的 WebSocket 上:先连上再排队。
     final clientId = 'penna-${Random().nextInt(1 << 32)}';
@@ -621,13 +660,19 @@ class ComfyClient {
     if (files.isEmpty) {
       throw ComfyException(tr('工作流跑完了,但没有出图:请确认里面有保存图像的节点'));
     }
+    // 云端的传回来可能很慢:一张张报下到多少了。
     return [
-      for (final f in files)
+      for (final (i, f) in files.indexed)
         (
           name: f['filename'] as String,
-          bytes: await _send(
-            'GET',
-            '/view?${Uri(queryParameters: {'filename': f['filename'] as String, 'subfolder': '${f['subfolder'] ?? ''}', 'type': '${f['type'] ?? 'output'}'}).query}',
+          bytes: await download(
+            f,
+            onBytes: (got, total) => onDownload?.call((
+              file: i + 1,
+              files: files.length,
+              got: got,
+              total: total,
+            )),
           ),
         ),
     ];

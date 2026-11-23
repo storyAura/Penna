@@ -82,15 +82,34 @@ class ComfyPanel extends StatelessWidget {
         ),
         _heading(tr('工作流')),
         // 按住把手拖着换顺序,设置里的工作流列表跟着变。
+        // 这台 ComfyUI 跑不了的(缺节点、缺模型)标出来(2026-11-23 用户要求:切到云端后要知道)。
         _PresetMenu(
           label: runner.workflowName,
           items: [
             for (final f in runner.flowChoices) (value: f.id, label: f.name),
           ],
+          warnings: {
+            for (final f in runner.flowChoices)
+              if (runner.problemsOf(f.id) case final p when p.isNotEmpty)
+                f.id: p.join('\n'),
+          },
           selected: runner.flowId,
           onSelected: runner.selectFlow,
           onReorder: runner.moveFlow,
         ),
+        if (runner.problemsOf(runner.flowId) case final p when p.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 2),
+            child: Tooltip(
+              message: p.join('\n'),
+              child: Text(
+                tr('这台 ComfyUI 跑不了:{0}', [p.join(tr('、'))]),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11, color: PennaColors.diffDelText),
+              ),
+            ),
+          ),
         if (wf != null) ..._params(context, runner, wf, report),
         if (wf != null) ..._uploads(context, runner, wf, report),
         if (wf != null) ..._loras(context, wf, report),
@@ -181,6 +200,7 @@ class ComfyPanel extends StatelessWidget {
           key: ValueKey('${slots[i].node}/${slots[i].key}'),
           index: i,
           slot: slots[i],
+          missing: _missing(slots[i].name, runner.loraOptions),
           onOn: (on) => report(
             runner.edit(
               (wf) => setLora(wf, slots[i].node, slots[i].key, on: on),
@@ -311,7 +331,11 @@ class _LoraRow extends StatelessWidget {
     required this.onOn,
     required this.onStrength,
     required this.onRemove,
+    this.missing = false,
   });
+
+  /// 这台 ComfyUI 里没有这个 LoRA 文件(名字标红)。
+  final bool missing;
 
   /// 第几个(拖动把手要知道)。
   final int index;
@@ -358,13 +382,21 @@ class _LoraRow extends StatelessWidget {
           const SizedBox(width: 4),
           Expanded(
             child: Tooltip(
-              message: '${slot.name}\n${slot.type}',
+              message: [
+                slot.name,
+                slot.type,
+                if (missing) tr('这台 ComfyUI 里没有这个文件'),
+              ].join('\n'),
               child: Text(
                 _short(slot.name),
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12,
-                  color: muted ? PennaColors.slate400 : PennaColors.text,
+                  color: missing
+                      ? PennaColors.diffDelText
+                      : muted
+                      ? PennaColors.slate400
+                      : PennaColors.text,
                 ),
               ),
             ),

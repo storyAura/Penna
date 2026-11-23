@@ -201,10 +201,14 @@ class _PresetMenu extends StatelessWidget {
     this.onCreate,
     this.onRemove,
     this.icon,
+    this.warnings = const {},
   });
 
   final String label;
   final List<({String value, String label})> items;
+
+  /// 有问题的项(值 → 悬停时看的原因),后面画一个红色的感叹号。
+  final Map<String, String> warnings;
   final String? selected;
   final ValueChanged<String> onSelected;
   final ValueChanged<String>? onRemove;
@@ -230,6 +234,7 @@ class _PresetMenu extends StatelessWidget {
       items: [
         _ReorderEntry(
           items: items,
+          warnings: warnings,
           selected: selected,
           onRemove: onRemove,
           onReorder: onReorder,
@@ -272,9 +277,11 @@ class _ReorderEntry extends PopupMenuEntry<String> {
     required this.selected,
     required this.onRemove,
     required this.onReorder,
+    this.warnings = const {},
   });
 
   final List<({String value, String label})> items;
+  final Map<String, String> warnings;
   final String? selected;
   final ValueChanged<String>? onRemove;
   final void Function(int from, int to) onReorder;
@@ -348,6 +355,15 @@ class _ReorderEntryState extends State<_ReorderEntry> {
                             style: const TextStyle(fontSize: 12.5),
                           ),
                         ),
+                        if (widget.warnings[value] case final why?)
+                          Tooltip(
+                            message: why,
+                            child: Icon(
+                              Icons.error_outline,
+                              size: 14,
+                              color: PennaColors.diffDelText,
+                            ),
+                          ),
                       ],
                     ),
                   ),

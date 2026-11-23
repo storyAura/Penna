@@ -5,7 +5,33 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'comfy_runner.dart';
 
-/// 出图进度:一行字(排队中 / 出图中 · 40%)加一条进度条,右边可以停止。
+String _mb(int bytes) => (bytes / (1 << 20)).toStringAsFixed(1);
+
+/// 正在出的那一单写成一句:出图中 · 40%,跑完往回传图时是「传回中 · 1.2 / 5.0 MB」
+/// (云端的传回来可能慢,2026-11-23 用户要求看得到);[short] 时不写大小。
+String comfyRunLabel(ComfyRunner runner, {bool short = false}) {
+  final t = runner.transfer;
+  if (t != null) {
+    final files = t.files > 1 ? ' ${t.file}/${t.files}' : '';
+    if (short && t.total > 0) {
+      return tr('传回中 · {0}%', [(t.got * 100 / t.total).round()]);
+    }
+    if (short) return tr('传回中');
+    return t.total > 0
+        ? tr('传回中{0} · {1} / {2} MB', [files, _mb(t.got), _mb(t.total)])
+        : tr('传回中{0} · {1} MB', [files, _mb(t.got)]);
+  }
+  final p = runner.progress;
+  return p == null ? tr('出图中') : tr('出图中 · {0}%', [(p * 100).round()]);
+}
+
+/// 进度条该到哪:往回传图时按下了多少,出图时按 ComfyUI 报的;不知道是 null。
+double? comfyRunValue(ComfyRunner runner) => switch (runner.transfer) {
+  final t? => t.total > 0 ? t.got / t.total : null,
+  null => runner.progress,
+};
+
+/// 出图进度:一行字(排队中 / 出图中 · 40% / 传回中)加一条进度条,右边可以停止。
 class ComfyProgressRow extends StatelessWidget {
   const ComfyProgressRow({super.key, required this.runner});
 
@@ -13,7 +39,7 @@ class ComfyProgressRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = runner.progress;
+    final p = comfyRunValue(runner);
     final style = TextStyle(fontSize: 12, color: PennaColors.slate500);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -24,7 +50,9 @@ class ComfyProgressRow extends StatelessWidget {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                p == null ? tr('排队中') : tr('出图中 · {0}%', [(p * 100).round()]),
+                p == null && runner.transfer == null
+                    ? tr('排队中')
+                    : comfyRunLabel(runner),
                 style: style,
               ),
             ),

@@ -301,13 +301,14 @@ void main() {
       ],
       'loraPreset': '柔和',
     });
-    expect(old.presetsOf('a').single.name, '柔和');
-    expect(old.presetsOf('b').single.name, '柔和');
-    expect(old.loraPresetOf, {'b': '柔和'});
+    // 旧设置不分服务器:算本机那台的。
+    expect(old.presetsOf('local', 'a').single.name, '柔和');
+    expect(old.presetsOf('local', 'b').single.name, '柔和');
+    expect(old.loraPresetOf, {'local|b': '柔和'});
     // 删了 a 的那一套,b 的还在。
-    final cut = old.removeLoraPreset('a', '柔和');
-    expect(cut.presetsOf('a'), isEmpty);
-    expect(cut.presetsOf('b'), hasLength(1));
+    final cut = old.removeLoraPreset('local', 'a', '柔和');
+    expect(cut.presetsOf('local', 'a'), isEmpty);
+    expect(cut.presetsOf('local', 'b'), hasLength(1));
     // 存盘读回一样。
     final again = ComfySettings.fromJson(jsonDecode(jsonEncode(old.toJson())));
     expect(again.toJson(), old.toJson());
@@ -316,20 +317,44 @@ void main() {
         .putInput('b', '20', 'D:/ref.png')
         .copyFlow('b', newId: 'c', name: 'B 副本');
     expect(copied.flows.map((f) => f.id), ['a', 'b', 'c']);
-    expect(copied.presetsOf('c').single.name, '柔和');
-    expect(copied.loraPresetOf['c'], '柔和');
+    expect(copied.presetsOf('local', 'c').single.name, '柔和');
+    expect(copied.loraPresetOf['local|c'], '柔和');
     expect(copied.inputs['c'], {'20': 'D:/ref.png'});
     // 拖动换顺序;删掉工作流时它的配置一起删。
     expect(copied.moveFlow(2, 0).flows.map((f) => f.id), ['c', 'a', 'b']);
     final removed = copied.removeFlow('c');
-    expect(removed.presetsOf('c'), isEmpty);
+    expect(removed.presetsOf('local', 'c'), isEmpty);
+    expect(removed.loraPresetOf.containsKey('local|c'), isFalse);
     expect(removed.inputs.containsKey('c'), isFalse);
     // 拖动同一个工作流的配置换顺序。
-    final two = old.putLoraPreset((flow: 'b', name: '浓', loras: const []));
-    expect(two.moveLoraPreset('b', 1, 0).presetsOf('b').map((p) => p.name), [
-      '浓',
-      '柔和',
-    ]);
+    final two = old.putLoraPreset((
+      server: 'local',
+      flow: 'b',
+      name: '浓',
+      loras: const [],
+    ));
+    expect(
+      two
+          .moveLoraPreset('local', 'b', 1, 0)
+          .presetsOf('local', 'b')
+          .map((p) => p.name),
+      ['浓', '柔和'],
+    );
+    // 各台各是各的:云端那台存的,本机那台看不到;删掉那台,它的配置一起删。
+    final cloud = old
+        .putServer((id: 'cloud', name: '云', url: 'https://x'))
+        .putLoraPreset((
+          server: 'cloud',
+          flow: 'b',
+          name: '云端',
+          loras: const [],
+        ))
+        .copyWith(loraPresetOf: {...old.loraPresetOf, 'cloud|b': '云端'});
+    expect(cloud.presetsOf('cloud', 'b').map((p) => p.name), ['云端']);
+    expect(cloud.presetsOf('local', 'b').map((p) => p.name), ['柔和']);
+    final gone = cloud.removeServer('cloud');
+    expect(gone.presetsOf('cloud', 'b'), isEmpty);
+    expect(gone.loraPresetOf.keys, ['local|b']);
   });
 
   test('拖动 LoRA 换顺序:槽位不动,名字、权重、开关跟着走', () {
@@ -388,7 +413,34 @@ void main() {
           sockets.add(await WebSocketTransformer.upgrade(req));
           return;
         }
-        if (path == '/object_info/CheckpointLoaderSimple') {
+        if (path == '/object_info') {
+          res.write(
+            jsonEncode({
+              'CheckpointLoaderSimple': {
+                'input': {
+                  'required': {
+                    'ckpt_name': [
+                      'COMBO',
+                      {
+                        'options': ['m.safetensors', 'sdxl/m2.safetensors'],
+                      },
+                    ],
+                  },
+                },
+              },
+              'LoraLoaderModelOnly': {
+                'input': {
+                  'required': {
+                    'lora_name': [
+                      ['style.safetensors'],
+                      {},
+                    ],
+                  },
+                },
+              },
+            }),
+          );
+        } else if (path == '/object_info/CheckpointLoaderSimple') {
           res.write(
             jsonEncode({
               'CheckpointLoaderSimple': {
@@ -841,13 +893,20 @@ void main() {
       // 删掉正用着的那一套,就不算用着哪一套了。
       runner.removeLoraPreset('柔和');
       expect(runner.loraPreset, isNull);
-      // 设置存盘读回,用着哪一套也留着(按工作流记)。
+      // 设置存盘读回,用着哪一套也留着(按服务器和工作流记;旧设置只按工作流记的算本机的)。
+      final key = loraPresetKey(comfyLocalId, runner.flowId);
+      expect(
+        ComfySettings.fromJson(
+          service.config.comfy.copyWith(loraPresetOf: {key: '加一个'}).toJson(),
+        ).loraPresetOf[key],
+        '加一个',
+      );
       expect(
         ComfySettings.fromJson(
           service.config.comfy
               .copyWith(loraPresetOf: {runner.flowId: '加一个'})
               .toJson(),
-        ).loraPresetOf[runner.flowId],
+        ).loraPresetOf[key],
         '加一个',
       );
       // 各工作流的配置互不相干:换到另一个工作流,看不到这边的。
