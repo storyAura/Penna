@@ -36,7 +36,7 @@ const _darkSeriesTints = <_Tint>[
 
 /// 成稿正文上方的页签:每个系列一个彩色框,框里先是系列的名字,再是它的各页
 /// (页码每个系列都从 1 数)。双击改名,右键更多操作,按住页签拖着调顺序、拖到别的系列;
-/// 按住 Shift(或 Ctrl)点页签多选,右键批量改名、出图、建立系列、删除。
+/// 按住 Ctrl 点页签多选、按住 Shift 点首尾连选,右键批量改名、出图、建立系列、删除。
 class PageStrip extends StatefulWidget {
   const PageStrip({
     super.key,
@@ -75,21 +75,39 @@ class _PageStripState extends State<PageStrip> {
   // ponytail: 按下标记,选着的时候 Agent 加了页,选中的会错位;做完一件事就清掉,够用。
   Set<int> _picked = const {};
 
+  /// Shift 连选的起点:上一次 Ctrl 点的那页;没有就是眼前这页。
+  int? _anchor;
+
   void _do(BuildContext context, String? problem) {
-    if (_picked.isNotEmpty) setState(() => _picked = const {});
+    if (_picked.isNotEmpty || _anchor != null) {
+      setState(() {
+        _picked = const {};
+        _anchor = null;
+      });
+    }
     if (problem != null) showToast(context, problem, warn: true);
   }
 
   void _tap(int i) {
     final keys = HardwareKeyboard.instance;
-    if (keys.isShiftPressed || keys.isControlPressed) {
+    if (keys.isShiftPressed) {
+      // 2026-11-23 用户要求:按住 Shift 点首尾,中间的页一起选上(同资源管理器)。
+      final from = _anchor ?? vm.pageIndex;
+      final (lo, hi) = from < i ? (from, i) : (i, from);
+      setState(
+        () => _picked = Set.unmodifiable({for (var k = lo; k <= hi; k++) k}),
+      );
+      return;
+    }
+    if (keys.isControlPressed) {
       // 第一次多选时把眼前这页也算上。
       final base = _picked.isEmpty ? {vm.pageIndex} : _picked;
-      setState(
-        () => _picked = Set.unmodifiable(
+      setState(() {
+        _anchor = i;
+        _picked = Set.unmodifiable(
           base.contains(i) ? ({...base}..remove(i)) : {...base, i},
-        ),
-      );
+        );
+      });
       return;
     }
     _do(context, vm.openPage(i));
@@ -223,6 +241,7 @@ class _PageStripState extends State<PageStrip> {
   Widget build(BuildContext context) {
     final pages = vm.pages;
     if (_picked.any((i) => i >= pages.length)) _picked = const {};
+    if ((_anchor ?? 0) >= pages.length) _anchor = null;
     // 系列满了不能再另起;往已有的系列里加页不限。
     final full = vm.seriesFull;
     // 同系列的页挨在一起,所以顺着数就能分出组来。
@@ -598,39 +617,66 @@ class _PageChip extends StatelessWidget {
   final VoidCallback onRename;
   final ValueChanged<int> onDrop;
 
+  /// 胶囊页签:小一号的灰页码(01、02)+ 名字;选中的白底描边(2026-11-23 用户从三张样稿里挑的)。
   Widget _face({required bool hovered}) {
-    final label = name.isEmpty ? '$number' : '$number $name';
     return AnimatedContainer(
       duration: Motion.base,
       height: 22,
-      constraints: const BoxConstraints(minWidth: 26, maxWidth: 110),
-      padding: const EdgeInsets.symmetric(horizontal: 7),
+      constraints: const BoxConstraints(minWidth: 26, maxWidth: 130),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
-        color: selected ? tint.text : PennaColors.card,
-        borderRadius: BorderRadius.circular(5),
+        color: selected
+            ? PennaColors.card
+            : PennaColors.card.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(11),
         border: Border.all(
           color: picked
               ? PennaColors.primary
               : hovered || selected
               ? tint.text
-              : tint.border,
+              : Colors.transparent,
           width: hovered || picked ? 2 : 1,
         ),
+        boxShadow: selected
+            ? const [
+                BoxShadow(
+                  color: Color(0x1F0F172A),
+                  blurRadius: 3,
+                  offset: Offset(0, 1),
+                ),
+              ]
+            : null,
       ),
       // 宽度跟着字走(不写 widthFactor 会把页签撑到最宽)。
       child: Center(
         widthFactor: 1,
-        child: Text(
-          label,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w700,
-            // 选中的页签底色是 tint.text:浅色配色下它深,深色配色下它浅。
-            color: selected
-                ? (PennaColors.isDark ? PennaColors.bg : Colors.white)
-                : tint.text,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$number'.padLeft(2, '0'),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: selected ? tint.text : PennaColors.slate400,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            if (name.isNotEmpty) ...[
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  name,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                    color: selected ? tint.text : PennaColors.slate700,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -695,7 +741,7 @@ class _PageChip extends StatelessWidget {
 /// 「成稿正文」旁边的问号:这一块藏着的操作。
 String get _bodyTips => tr(
   '页签、系列名:双击改名 · 右键更多 · 按住拖动换顺序、拖到别的系列\n'
-  '页签:按住 Shift 点几个多选,右键批量操作\n'
+  '页签:按住 Ctrl 点几个多选、按住 Shift 点首尾连选,右键批量操作\n'
   '分段:右键标注改名 · 拖左上角把手换位置\n'
   '选中文字后右键:固定、润色、翻译、建立分段',
 );

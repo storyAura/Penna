@@ -747,6 +747,26 @@ void main() {
       expect(again.images.map((i) => i.path), [...dog.images, ...cat.images]);
     });
 
+    test('全部取消:排着的撤掉,正在出的停下,一张都不出', () async {
+      final service = tempConfig();
+      service.update(service.config.copyWith(comfy: _at(server.port)));
+      final runner = ComfyRunner(service);
+      final jobs = [
+        for (final p in ['a cat', 'a dog', 'a fox']) runner.generate(p),
+      ];
+      expect(runner.running, isTrue);
+      runner.cancelAll();
+      expect(runner.running, isFalse);
+      expect(runner.waiting, 0);
+      for (final j in jobs) {
+        expect((await j).images, isEmpty);
+      }
+      expect(
+        runner.jobs.map((j) => j.state),
+        everyElement(ComfyJobState.canceled),
+      );
+    });
+
     test('测连接、读名单;内置的改过后另存一份;按名字或模型换工作流;LoRA 配置', () async {
       final service = tempConfig();
       service.update(service.config.copyWith(comfy: _at(server.port)));

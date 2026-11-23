@@ -161,6 +161,24 @@ extension ComfyQueue on ComfyRunner {
     _saveJobs();
   }
 
+  /// 一键全部取消:排着的都撤掉,正在出的停下(2026-11-23 用户要求)。
+  void cancelAll() {
+    final waiting = [
+      for (final j in _jobs)
+        if (j.state == ComfyJobState.waiting) j.id,
+    ];
+    for (final id in waiting) {
+      _setJob(id, (j) => j.copyWith(state: ComfyJobState.canceled));
+      _waiters.remove(id)?.complete((
+        images: const <GeneratedImage>[],
+        error: null,
+      ));
+    }
+    stop();
+    _changed();
+    if (waiting.isNotEmpty) _saveJobs();
+  }
+
   /// 从记录里去掉出完的(排队的、正在出的留着)。
   void clearFinished() {
     _jobs = List.unmodifiable(

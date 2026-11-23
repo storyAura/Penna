@@ -551,7 +551,7 @@ void main() {
     expect(archive.entries.map((e) => e.text), ['an owl', 'a fox', 'a crow']);
   });
 
-  testWidgets('页签:按住 Shift 多选,右键批量改名', (tester) async {
+  testWidgets('页签:按住 Ctrl 多选,右键批量改名', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -565,9 +565,9 @@ void main() {
       ),
     );
 
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.tap(_tab(3));
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pumpAndSettle();
     // 多选不换页。
     expect(vm.pageIndex, 0);
@@ -581,6 +581,53 @@ void main() {
     await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
     expect([for (final p in vm.pages) p.name], ['女仆 1', '', '女仆 2']);
+  });
+
+  testWidgets('页签:按住 Shift 点首尾,中间的页一起选上', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final vm = _studio(blocks: const [(text: 'a fox', pinned: false)]);
+    for (var k = 0; k < 4; k++) {
+      vm.addPage();
+    }
+    vm.openPage(1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AppShell(vm: vm, config: vm.config, skills: tempSkills()),
+      ),
+    );
+
+    // 眼前是第 2 页,Shift 点第 4 页:2、3、4 都选上;再 Shift 点第 1 页,换成 1、2。
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(_tab(4));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+    expect(vm.pageIndex, 1);
+    await tester.tap(_tab(4), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('批量改名'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '女仆');
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(
+      [for (final p in vm.pages) p.name],
+      ['', '女仆 1', '女仆 2', '女仆 3', ''],
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(_tab(1));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+    await tester.tap(_tab(1), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(find.text('删除选中的页'), findsOneWidget);
+    await tester.tap(find.text('删除选中的页'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除').last);
+    await tester.pumpAndSettle();
+    expect([for (final p in vm.pages) p.name], ['女仆 2', '女仆 3', '']);
   });
 
   testWidgets('页签:加一页、另起系列、点页码换页', (tester) async {

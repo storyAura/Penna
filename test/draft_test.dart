@@ -775,13 +775,13 @@ void main() {
       vm.send('画一只狐狸');
       await pumpEventQueue();
       expect(seen.last, contains('【还没起名】这一页和这个系列还没有名字'));
-      expect(seen.last, contains('name="两到六个字的页名" series="两到六个字的系列名"'));
+      expect(seen.last, contains('带上 name="页名" series="系列名"'));
 
       vm.renamePage(vm.pageIndex, '狐狸');
       vm.send('再来');
       await pumpEventQueue();
       expect(seen.last, contains('【还没起名】这个系列还没有名字'));
-      expect(seen.last, isNot(contains('name="两到六个字的页名"')));
+      expect(seen.last, isNot(contains('带上 name="页名"')));
 
       vm.renameSeries(vm.series, '森林');
       vm.send('再来');

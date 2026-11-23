@@ -569,11 +569,11 @@ extension StudioPages on StudioViewModel {
     if (!noPage && !noSeries) return '';
     final what = [if (noPage) '这一页', if (noSeries) '这个系列'].join('和');
     final attrs = [
-      if (noPage) 'name="两到六个字的页名"',
-      if (noSeries) 'series="两到六个字的系列名"',
+      if (noPage) 'name="页名"',
+      if (noSeries) 'series="系列名"',
     ].join(' ');
-    return '【还没起名】$what还没有名字:这次写 <$tag> 时一定带上 $attrs,'
-        '概括画的是什么(用户存进档案库时当名称)。';
+    return '【还没起名】$what还没有名字:这次写 <$tag> 时一定带上 $attrs'
+        '(用户存进档案库时当名称)。$_namingRule';
   }
 
   /// 发给 Agent 看的同系列其他页;只有一页时是空串。

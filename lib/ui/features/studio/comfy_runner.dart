@@ -99,6 +99,7 @@ class ComfyRunner extends ChangeNotifier {
 
   /// 排着的单子出完时把结果交回去。
   final _waiters = <int, Completer<ComfyResult>>{};
+
   /// 排着写出图队列的那一串;还没写过是 null。
   Future<void>? _saving;
 

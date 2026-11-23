@@ -69,6 +69,11 @@ class ComfyQueuePanel extends StatelessWidget {
             j.state != ComfyJobState.waiting &&
             j.state != ComfyJobState.running,
       );
+      final active = jobs.any(
+        (j) =>
+            j.state == ComfyJobState.waiting ||
+            j.state == ComfyJobState.running,
+      );
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -81,14 +86,31 @@ class ComfyQueuePanel extends StatelessWidget {
                   _JobTile(job: jobs[i], runner: runner),
             ),
           ),
-          if (finished)
+          if (finished || active)
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-              child: PennaButton(
-                label: tr('清空记录'),
-                icon: Icons.delete_sweep_outlined,
-                borderColor: PennaColors.border,
-                onPressed: runner.clearFinished,
+              child: Row(
+                children: [
+                  if (active)
+                    Expanded(
+                      child: PennaButton(
+                        label: tr('全部取消'),
+                        icon: Icons.cancel_outlined,
+                        borderColor: PennaColors.border,
+                        onPressed: runner.cancelAll,
+                      ),
+                    ),
+                  if (active && finished) const SizedBox(width: 6),
+                  if (finished)
+                    Expanded(
+                      child: PennaButton(
+                        label: tr('清空记录'),
+                        icon: Icons.delete_sweep_outlined,
+                        borderColor: PennaColors.border,
+                        onPressed: runner.clearFinished,
+                      ),
+                    ),
+                ],
               ),
             ),
         ],
