@@ -98,7 +98,10 @@ Map<String, Object?> parseApiWorkflow(String text) {
   return connectedToOutputs(json);
 }
 
-final _outputType = RegExp('SaveImage|PreviewImage');
+/// 输出节点:存图、预览图,也有存视频、存音频、动图的(SaveVideo、SaveWEBM、SaveAudio、
+/// SaveAnimatedPNG、VHS 的 Video Combine)。2026-11-23 用户反馈:改过的 H3 工作流把存视频
+/// 节点挪出了 `Penna.Output` 组,导入时报「没有保存图像的节点」。
+final comfyOutputType = RegExp(r'^(Save|Preview)|VideoCombine');
 
 /// 只留从输出(存图、预览图、`Penna.Output` 组)往回接得上的节点,同画布格式的转法
 /// (2026-11-16 用户反馈:「导出 (API)」里放在工作区没接线的节点也列进侧栏能改,
@@ -107,7 +110,7 @@ Map<String, Object?> connectedToOutputs(Map<String, Object?> wf) {
   final todo = [
     for (final MapEntry(:key, :value) in wf.entries)
       if (value is Map &&
-          (_outputType.hasMatch('${value['class_type']}') ||
+          (comfyOutputType.hasMatch('${value['class_type']}') ||
               '${(value['_meta'] as Map?)?['title'] ?? ''}'.startsWith(
                 'Penna.Output',
               )))

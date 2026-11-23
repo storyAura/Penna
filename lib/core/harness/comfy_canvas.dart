@@ -87,7 +87,7 @@ Map<String, Object?> canvasToApi(Map<String, Object?> json) {
   final outputs = [
     for (final MapEntry(key: id, value: n) in nodes.entries)
       if (_runs(n) &&
-          (RegExp('SaveImage|PreviewImage').hasMatch('${n['type']}') ||
+          (comfyOutputType.hasMatch('${n['type']}') ||
               (groups[id]?.startsWith('Penna.Output') ?? false)))
         id,
   ];

@@ -151,6 +151,18 @@ void main() {
     );
   });
 
+  test('存视频的节点不在 Penna.Output 组里也认得是输出', () {
+    final text = File(
+      'assets/comfy/minimax-h3-video.json',
+    ).readAsStringSync().replaceAll('Penna.Output.save 保存视频', '保存视频');
+    final wf = parseApiWorkflow(text);
+    expect(
+      wf.values.map((n) => (n as Map)['class_type']),
+      contains('SaveVideo'),
+    );
+    expect(fileSlots(wf), isNotEmpty);
+  });
+
   test('素材接口列的图:相对路径拆成子文件夹和文件名,只留图片', () {
     final shots = parseOutputAssets({
       'assets': [
