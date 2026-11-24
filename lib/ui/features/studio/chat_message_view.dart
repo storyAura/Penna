@@ -316,9 +316,13 @@ class ChatMessageView extends StatelessWidget {
       if (!laid.complete && laid.json != null) laid.json!,
     ];
     // 透视、灯光标签由程序放到画板上,聊天里只留回复上那一笔记录。
-    final asked = splitOptions(
-      splitLighting(splitPerspective(splitLayers(laid.prose).prose).prose)
-          .prose,
+    // 每道题都多一个「让 AI 自己决定」:不想挑的时候一点就过。
+    final asked = withAiChoice(
+      splitOptions(
+        splitLighting(splitPerspective(splitLayers(laid.prose).prose).prose)
+            .prose,
+      ),
+      tr('让 AI 自己决定'),
     );
     // 挑成稿里的段:直接列当前页的各段。模型自己列出的多选项正好全是段名时也照此显示。
     final labels = {for (final s in draftSections) s.label};

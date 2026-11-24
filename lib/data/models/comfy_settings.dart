@@ -44,6 +44,33 @@ List<T> moved<T>(List<T> list, int from, int to) {
   return out;
 }
 
+/// Agent 出图的画面方向:[orientationKeep] 照工作流里写的大小(一直以来的做法);
+/// [orientationAuto] 让 Agent 按每张图的内容定横、竖或方;
+/// [orientationLandscape]、[orientationPortrait] 只出横图、只出竖图。
+const orientationKeep = 'keep';
+const orientationAuto = 'auto';
+const orientationLandscape = 'landscape';
+const orientationPortrait = 'portrait';
+const orientations = [
+  orientationKeep,
+  orientationAuto,
+  orientationLandscape,
+  orientationPortrait,
+];
+
+/// 把 [width]×[height] 摆成 [orientation] 要的方向(只出横图、只出竖图时对调宽高);
+/// 方向已经对、或没限定方向时返回 null(不用动)。
+({int width, int height})? orientedSize(
+  String orientation,
+  int width,
+  int height,
+) {
+  final swap =
+      orientation == orientationLandscape && height > width ||
+      orientation == orientationPortrait && width > height;
+  return swap ? (width: height, height: width) : null;
+}
+
 /// 「设置 → ComfyUI」:有哪几台 ComfyUI、哪几个工作流、存好的 LoRA 配置,出的图放哪。
 @immutable
 class ComfySettings {
@@ -57,6 +84,7 @@ class ComfySettings {
     this.inputs = const {},
     this.imageDir = '',
     this.autoGenerate = true,
+    this.orientation = orientationKeep,
     this.outputDirs = const {},
     this.sizes = comfyDefaultSizes,
   });
@@ -154,6 +182,9 @@ class ComfySettings {
       }),
       imageDir: m['imageDir'] as String? ?? '',
       autoGenerate: m['autoGenerate'] as bool? ?? true,
+      orientation: orientations.contains(m['orientation'])
+          ? m['orientation'] as String
+          : orientationKeep,
       outputDirs: Map.unmodifiable({
         if (m['outputDirs'] case final Map dirs)
           for (final MapEntry(:key, :value) in dirs.entries)
@@ -195,6 +226,9 @@ class ComfySettings {
 
   /// Agent 写了出图标签就直接出;关掉时回复下面出一个「出图」按钮,用户点了才出。
   final bool autoGenerate;
+
+  /// Agent 出图时画面是横是竖,见 [orientations]。
+  final String orientation;
 
   /// 各台 ComfyUI 的输出文件夹(按服务器 id;档案库「图片」分区读它)。
   /// 没填的本机 ComfyUI 照它的启动参数自己找。
@@ -244,6 +278,7 @@ class ComfySettings {
     if (inputs.isNotEmpty) 'inputs': inputs,
     'imageDir': imageDir,
     'autoGenerate': autoGenerate,
+    'orientation': orientation,
     if (outputDirs.isNotEmpty) 'outputDirs': outputDirs,
     'sizes': [
       for (final s in sizes) [s.width, s.height],
@@ -260,6 +295,7 @@ class ComfySettings {
     Map<String, Map<String, String>>? inputs,
     String? imageDir,
     bool? autoGenerate,
+    String? orientation,
     Map<String, String>? outputDirs,
     List<({int width, int height})>? sizes,
   }) => ComfySettings(
@@ -276,6 +312,7 @@ class ComfySettings {
     inputs: inputs == null ? this.inputs : Map.unmodifiable(inputs),
     imageDir: imageDir ?? this.imageDir,
     autoGenerate: autoGenerate ?? this.autoGenerate,
+    orientation: orientation ?? this.orientation,
     outputDirs: outputDirs == null
         ? this.outputDirs
         : Map.unmodifiable(outputDirs),
