@@ -301,6 +301,9 @@ void main() {
     await tester.tap(find.text('添加接口'));
     await tester.pump();
     expect(config.config.agentChain.firstOrNull?.name, '新模型');
+    // 接口卡片摊开后这颗按钮在一屏之外,先滚到它。
+    await tester.ensureVisible(find.text('常用服务'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('常用服务'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('DeepSeek').last);

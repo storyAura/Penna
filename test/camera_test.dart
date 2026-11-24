@@ -384,13 +384,14 @@ void main() {
     expect(b.saveSize(), isFalse);
   });
 
-  testWidgets('系列多了分层:一层 5 个,左右翻;换了系列跟回眼前那一层', (tester) async {
+  testWidgets('系列再多也只画眼前这个:箭头一个一个换,新建的系列跟着成为眼前这个', (tester) async {
     final vm = StudioViewModel(
       config: tempConfig(),
       streamChat: (_) => const Stream.empty(),
     );
-    for (var i = 0; i < 6; i++) {
-      vm.addPage(newSeries: true);
+    // 系列没有个数上限。
+    for (var i = 0; i < 24; i++) {
+      expect(vm.addPage(newSeries: true), isNull);
     }
     expect(vm.series, isNot(vm.pages.first.series));
     await tester.pumpWidget(
@@ -406,20 +407,20 @@ void main() {
         ),
       ),
     );
-    // 眼前是第 7 个系列,停在第二层。
-    expect(find.text('系列 7'), findsOneWidget);
+    // 眼前是第 25 个系列,别的不画。
+    expect(find.text('系列 25'), findsOneWidget);
     expect(find.text('系列 1'), findsNothing);
-    expect(find.text('2/2'), findsOneWidget);
-    await tester.tap(find.byTooltip('上一层'));
+    expect(find.text('25/25'), findsOneWidget);
+    await tester.tap(find.byTooltip('上一个系列'));
     await tester.pump();
-    expect(find.text('系列 1'), findsOneWidget);
-    expect(find.text('系列 5'), findsOneWidget);
-    expect(find.text('系列 6'), findsNothing);
-    // 换了系列(这里是新建一个),又跟着眼前这个系列那一层走。
+    expect(find.text('系列 24'), findsOneWidget);
+    expect(find.text('系列 25'), findsNothing);
+    expect(find.text('24/25'), findsOneWidget);
+    // 新建一个:它成为眼前这个。
     expect(vm.addPage(newSeries: true), isNull);
     await tester.pump();
-    expect(find.text('系列 8'), findsOneWidget);
-    expect(find.text('系列 1'), findsNothing);
+    expect(find.text('系列 26'), findsOneWidget);
+    expect(find.text('26/26'), findsOneWidget);
   });
 
   testWidgets('一个系列页多、页签条窄时,系列框里的页签折行,不溢出', (tester) async {
