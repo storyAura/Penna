@@ -107,6 +107,51 @@ void main() {
       expect(seen.messages.last, {'role': 'user', 'content': '你好'});
     });
 
+    test('Preset 里写了对话标记:拆成几轮发出去,Penna 的规则放进最后一条;关掉就照旧整段发', () async {
+      final config = tempConfig();
+      final base = const AppConfig()
+          .putLlm(_llm)
+          .setSecret(llmSecretKey('a'), 'sk-x');
+      config.update(
+        base.addPreset(
+          base.activePreset.copyWith(
+            id: 'custom-dialogue',
+            systemPrompt: '你是主持人\n<<assistant>>\n要我主持吗\n<<user>>\n要',
+          ),
+        ),
+      );
+      late LlmRequest seen;
+      final vm = sampleStudio(
+        config: config,
+        streamChat: (req) {
+          seen = req;
+          return const Stream.empty();
+        },
+      );
+
+      expect(vm.send('你好'), isNull);
+      await pumpEventQueue();
+
+      expect(seen.messages[0]['role'], 'system');
+      expect(seen.messages[0]['content'], startsWith('你是主持人\n\n【回复语言】'));
+      expect(seen.messages[1], {'role': 'assistant', 'content': '要我主持吗'});
+      // 示例对话里原有的几句排在说好的对话后面。
+      expect(seen.messages[2]['role'], 'user');
+      expect(seen.messages[2]['content'], startsWith('要\n\n'));
+      expect(seen.messages.last['role'], 'user');
+      expect(seen.messages.last['content'], startsWith('【这次的工作】'));
+      expect(seen.messages.last['content'], contains('【固定区】'));
+      expect(seen.messages.last['content'], endsWith('【用户这次的话】\n你好'));
+
+      config.update(config.config.copyWith(presetDialogue: false));
+      expect(vm.send('再来'), isNull);
+      await pumpEventQueue();
+
+      expect(seen.messages.first['role'], 'system');
+      expect(seen.messages.first['content'], contains('<<assistant>>'));
+      expect(seen.messages.last, {'role': 'user', 'content': '再来'});
+    });
+
     test('每段的对照译文跟着界面语言:日文界面要日文,英文界面不要〔译〕', () async {
       expect(const AppConfig().glossLanguage, 'zh');
       expect(const AppConfig(language: 'zh-Hant').glossLanguage, 'zh-Hant');

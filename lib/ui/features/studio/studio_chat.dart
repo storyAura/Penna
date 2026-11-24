@@ -223,6 +223,11 @@ extension StudioChat on StudioViewModel {
     return problem;
   }
 
+  /// Preset 里写了对话时放在最后的话:对话只管口吻,该做的事和回复格式照 Penna 的规则。
+  static const _dialogueWork =
+      '【这次的工作】前面对话里说好的人设、语气和文风只管你说话的口吻和措辞;'
+      '这次要做的事、回复的格式和标签,一律照下面的规则。';
+
   /// 以 [history](最后一条是用户消息)为上文开始一条新的流式回复。
   /// [resume] 时 [history] 最后一条是写了半截的回复:请模型接着写,写的接在它后面。
   String? _startReply(
@@ -252,47 +257,74 @@ extension StudioChat on StudioViewModel {
     ]);
     final preset = cfg.activePreset;
     final enabled = _sentSkills(cfg);
+    // Preset 里写的对话拆成真正的几轮消息,聊天记录放回它们中间(设置里可以关)。
+    final dialogue = cfg.presetDialogue
+        ? presetDialogue(preset.systemPrompt)
+        : null;
+    final system = _systemFor(
+      cfg,
+      // 有对话时,Preset 的话都在那几轮里;Penna 自己的规则挪到最后一条消息里。
+      dialogue == null ? preset : preset.copyWith(systemPrompt: ''),
+    );
+    final convo = <Map<String, String>>[
+      for (final (i, m) in sent.indexed)
+        {
+          'role': m.fromUser ? 'user' : 'assistant',
+          'content': switch (identical(m, ask) && auto.isNotEmpty
+              ? '${_withReferences(m, enabled)}\n\n$auto'
+              : _withReferences(m, enabled)) {
+            // 自己以前写的布局、透视、灯光不重发:画板可能已被用户改过。
+            // 后面紧跟着工具结果的是查资料的那条,里面的布局没放上画板。
+            final text when !m.fromUser => forgetLighting(
+              forgetPerspectives(
+                forgetLayers(
+                  forgetLayouts(
+                    // 旧存档里的回复还夹着思考,发回去前拆掉。
+                    splitThinking(text).rest,
+                    placed: i + 1 >= sent.length || !sent[i + 1].tool,
+                  ),
+                ),
+              ),
+            ),
+            // 布局页里刚发的这条带着参考图:就在这里提醒画布多大,
+            // 模型看了图常照图的比例写宽高(系统提示里说了也会忘)。
+            final text
+                when layoutOnly &&
+                    i == sent.length - 1 &&
+                    m.attachments.any((a) => a.isImage) =>
+              '$text${_canvasReminder()}',
+            final text => text,
+          },
+        },
+      if (resume) {'role': 'user', 'content': _continuePrompt},
+    ];
+    final placed = dialogue == null
+        ? null
+        : withPresetDialogue(
+            dialogue,
+            convo,
+            closing: '$_dialogueWork\n\n$system\n\n$thinkRule',
+          );
+    final images = _imagesOf(sent);
     final requests = _requests(
       cfg,
       chain,
       preset,
       [
+        // 有对话时也留着系统提示这一条:穿甲弹和回复语言接在它上面。
         {
           'role': 'system',
-          'content': '${_systemFor(cfg, preset)}\n\n$thinkRule',
+          'content': dialogue?.lead ?? '$system\n\n$thinkRule',
         },
-        for (final (i, m) in sent.indexed)
-          {
-            'role': m.fromUser ? 'user' : 'assistant',
-            'content': switch (identical(m, ask) && auto.isNotEmpty
-                ? '${_withReferences(m, enabled)}\n\n$auto'
-                : _withReferences(m, enabled)) {
-              // 自己以前写的布局、透视、灯光不重发:画板可能已被用户改过。
-              // 后面紧跟着工具结果的是查资料的那条,里面的布局没放上画板。
-              final text when !m.fromUser => forgetLighting(
-                forgetPerspectives(
-                  forgetLayers(
-                    forgetLayouts(
-                      // 旧存档里的回复还夹着思考,发回去前拆掉。
-                      splitThinking(text).rest,
-                      placed: i + 1 >= sent.length || !sent[i + 1].tool,
-                    ),
-                  ),
-                ),
-              ),
-              // 布局页里刚发的这条带着参考图:就在这里提醒画布多大,
-              // 模型看了图常照图的比例写宽高(系统提示里说了也会忘)。
-              final text
-                  when layoutOnly &&
-                      i == sent.length - 1 &&
-                      m.attachments.any((a) => a.isImage) =>
-                '$text${_canvasReminder()}',
-              final text => text,
-            },
-          },
-        if (resume) {'role': 'user', 'content': _continuePrompt},
+        ...placed?.messages ?? convo,
       ],
-      images: _imagesOf(sent),
+      // 图是按第几条消息挂的(系统提示算第 0 条),消息挪了位置图跟着挪。
+      images: placed == null
+          ? images
+          : {
+              for (final MapEntry(:key, :value) in images.entries)
+                placed.at[key - 1] + 1: value,
+            },
       document: cfg.piercing,
       tools: true,
       onUsage: (u) {

@@ -22,6 +22,7 @@ import '../../../core/harness/mcp/mcp_tools.dart';
 import '../../../core/harness/notebook_tags.dart';
 import '../../../core/harness/llm_log.dart';
 import '../../../core/harness/piercing_document.dart';
+import '../../../core/harness/preset_dialogue.dart';
 import '../../../core/harness/soul_tags.dart';
 import '../../../core/harness/providers/grok_auth.dart';
 import '../../../core/harness/providers/llm_router.dart';
