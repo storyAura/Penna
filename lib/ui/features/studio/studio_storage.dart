@@ -256,4 +256,27 @@ extension StudioStorage on StudioViewModel {
     if (problem == null && wasEmpty) acceptDiff();
     return problem;
   }
+
+  /// 把档案库里的一整个系列放回工作台:另起一个叫 [name] 的系列,[pages] 里一条一页,
+  /// 照给的先后排。每页的名字取存档标题里「 · 」后面那一截。放不了返回原因。
+  String? restoreSeries(
+    String name,
+    List<({String title, String text, DateTime time})> pages,
+  ) {
+    if (pages.isEmpty) return tr('这个系列是空的');
+    if (isStreaming) return tr('正在生成,稍后再试');
+    for (final (i, p) in pages.indexed) {
+      final problem = addPage(newSeries: i == 0);
+      if (problem != null) return problem;
+      if (i == 0) renameSeries(series, name);
+      final placed = restorePrompt((time: p.time, text: p.text), title: name);
+      if (placed != null) return placed;
+      final cut = p.title.indexOf(' · ');
+      if (cut >= 0) renamePage(pageIndex, p.title.substring(cut + 3).trim());
+    }
+    // 回到这个系列的第一页。
+    final first = this.pages.indexWhere((p) => p.series == series);
+    if (first >= 0) openPage(first);
+    return null;
+  }
 }

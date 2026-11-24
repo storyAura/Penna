@@ -55,4 +55,34 @@ void main() {
     final saved = const AppConfig().copyWith(autoArchiveDays: 0).toJson();
     expect(AppConfig.fromJson(saved).autoArchiveDays, 0);
   });
+
+  test('整个系列从档案库放回工作台:另起一个同名的系列,一条一页,页名跟着', () {
+    final vm = sampleStudio(config: tempConfig());
+    final before = vm.seriesCount;
+    final time = DateTime(2026, 11, 8);
+
+    final problem = vm.restoreSeries('旅馆', [
+      (title: '第 1 页 · 床边', text: '【主体】a fox by the bed', time: time),
+      (title: '第 2 页 · 解扣', text: '【主体】a fox by the door', time: time),
+      (title: '', text: 'plain text', time: time),
+    ]);
+
+    expect(problem, isNull);
+    expect(vm.seriesCount, before + 1);
+    expect(vm.seriesName(vm.series), '旅馆');
+    final pages = [
+      for (final p in vm.pages)
+        if (p.series == vm.series) p,
+    ];
+    expect(pages.map((p) => p.name), ['床边', '解扣', '']);
+    expect(
+      pages.first.blocks.map((b) => b.text).join(),
+      contains('a fox by the bed'),
+    );
+    expect(pages.last.blocks.map((b) => b.text).join(), contains('plain text'));
+    // 停在这个系列的第一页。
+    expect(vm.pageNumber(vm.pageIndex), 1);
+
+    expect(vm.restoreSeries('空', const []), isNotNull);
+  });
 }

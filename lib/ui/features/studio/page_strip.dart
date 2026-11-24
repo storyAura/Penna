@@ -540,11 +540,16 @@ class _SeriesFinderState extends State<_SeriesFinder> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TextField(
+                style: const TextStyle(fontSize: 13),
                 autofocus: true,
                 decoration: InputDecoration(
                   isDense: true,
                   prefixIcon: const Icon(Icons.search, size: 18),
                   hintText: tr('找系列的名字'),
+                  hintStyle: TextStyle(
+                    fontSize: 13,
+                    color: PennaColors.slate400,
+                  ),
                 ),
                 onChanged: (v) => setState(() => _query = v),
                 onSubmitted: (_) {

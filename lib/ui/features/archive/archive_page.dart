@@ -9,6 +9,7 @@ import '../../../core/harness/manga/manga.dart';
 import '../../../core/harness/manga/manga_script.dart';
 import '../../../data/services/archive_store.dart';
 import '../../core/gallery.dart';
+import '../../core/series_tint.dart';
 import '../../core/smooth_scroll.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
@@ -132,87 +133,14 @@ class _ArchivePageState extends State<ArchivePage> {
   /// 看的是哪个分区。
   String _kind = archivePrompt;
 
-  /// 只看这个分类;null 是全部。
+  /// 左边选中的系列(存档的分类);null 是还没挑,看最近存过东西的那个。
   String? _category;
 
   /// 大缩略图(看预览图)还是列表。
   var _grid = false;
 
-  /// 列表里是不是每条都带着预览图和正文;关着时一条只占一行,点一下那一行才展开。
-  var _detail = false;
-
-  /// 精简列表里点开了的那几条。
-  Set<String> _opened = const {};
-
-  void _toggle(String id) => setState(
-    () => _opened = Set.unmodifiable(
-      _opened.contains(id) ? ({..._opened}..remove(id)) : {..._opened, id},
-    ),
-  );
-
-  /// 精简列表里收起来的分类(只剩标题那一行)。
-  Set<String> _folded = const {};
-
-  void _fold(String category) => setState(
-    () => _folded = Set.unmodifiable(
-      _folded.contains(category)
-          ? ({..._folded}..remove(category))
-          : {..._folded, category},
-    ),
-  );
-
-  /// 精简列表:同一个分类的收在一张卡里,标题写分类名和条数,下面一条一行。
-  /// 同一组的提示词常常开头一样,每行只写它和别的不一样的那一截。
-  List<Widget> _groups(List<ArchiveEntry> shown) {
-    final byCategory = <String, List<ArchiveEntry>>{};
-    for (final e in shown) {
-      byCategory.putIfAbsent(e.category, () => []).add(e);
-    }
-    return [
-      for (final MapEntry(key: category, value: entries)
-          in byCategory.entries) ...[
-        PennaCard(
-          padding: EdgeInsets.zero,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _GroupHeader(
-                category: category,
-                count: entries.length,
-                latest: entries
-                    .map((e) => e.time)
-                    .reduce((a, b) => a.isAfter(b) ? a : b),
-                folded: _folded.contains(category),
-                onTap: () => _fold(category),
-              ),
-              if (!_folded.contains(category)) ..._rows(entries),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-      ],
-    ];
-  }
-
-  List<Widget> _rows(List<ArchiveEntry> entries) {
-    String previewOf(ArchiveEntry e) => _texts(e, (
-      export: widget.board.exportJson,
-      onRestore: () {},
-      onDelete: () {},
-      onUpload: () {},
-    )).preview.replaceAll(RegExp(r'\s+'), ' ');
-    final previews = [for (final e in entries) previewOf(e)];
-    final skip = commonLead(previews);
-    return [
-      for (final (i, entry) in entries.indexed) ...[
-        Divider(height: 1, color: PennaColors.border),
-        _item(
-          entry,
-          row: skip == 0 ? previews[i] : '…${previews[i].substring(skip)}',
-        ),
-      ],
-    ];
-  }
+  /// 看的是「全部」(点了左边最上面那一行),不是某一个系列。
+  var _all = false;
 
   void _restore(ArchiveEntry entry) {
     if (entry.kind == archiveManga) {
@@ -252,7 +180,213 @@ class _ArchivePageState extends State<ArchivePage> {
     }
   }
 
-  Widget _item(ArchiveEntry entry, {String? row}) {
+  /// 左边找系列时打的字。
+  var _query = '';
+
+  /// 整个系列放回工作台:另起一个同名的系列,一条存档一页。存档留在档案库里不动。
+  void _restoreSeries(String category, List<ArchiveEntry> entries) {
+    final problem = widget.vm.restoreSeries(tr(category), [
+      for (final e in entries) (title: e.title, text: e.text, time: e.time),
+    ]);
+    if (problem != null) return showToast(context, problem, warn: true);
+    showToast(
+      context,
+      tr('「{0}」的 {1} 页已放回工作台', [tr(category), entries.length]),
+    );
+    widget.onOpenStudio();
+  }
+
+  /// 把一个系列的存档全删掉,先问一句。
+  Future<void> _deleteSeries(
+    String category,
+    List<ArchiveEntry> entries,
+  ) async {
+    if (!await confirmDelete(
+      context,
+      tr('删除「{0}」的 {1} 条存档?', [tr(category), entries.length]),
+      tr('删掉后找不回来。'),
+    )) {
+      return;
+    }
+    for (final e in entries) {
+      widget.archive.remove(e.id);
+    }
+  }
+
+  SeriesTint _tintOf(String category) =>
+      seriesTintOf(tr(category), widget.vm.config.config.seriesColors);
+
+  /// 左边:这个分区里的各个系列,一行一个(颜色、名字、条数、最近存的时间),能打字找。
+  Widget _seriesList(
+    List<ArchiveEntry> all,
+    List<String> categories,
+    Map<String, int> counts,
+    String? selected,
+  ) {
+    final q = _query.trim().toLowerCase();
+    final shown = [
+      for (final c in categories)
+        if (q.isEmpty || tr(c).toLowerCase().contains(q)) c,
+    ];
+    DateTime latest(String c) => all
+        .where((e) => e.category == c)
+        .map((e) => e.time)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          child: TextField(
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              isDense: true,
+              prefixIcon: const Icon(Icons.search, size: 18),
+              hintText: tr('找系列的名字'),
+              hintStyle: TextStyle(fontSize: 13, color: PennaColors.slate400),
+            ),
+            onChanged: (v) => setState(() => _query = v),
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+            children: [
+              _SeriesRow(
+                name: tr('全部'),
+                count: all.length,
+                selected: selected == null,
+                onTap: () => setState(() {
+                  _category = null;
+                  _all = true;
+                }),
+              ),
+              for (final c in shown)
+                _SeriesRow(
+                  name: tr(c),
+                  count: counts[c] ?? 0,
+                  time: latest(c),
+                  tint: _tintOf(c),
+                  selected: c == selected,
+                  onTap: () => setState(() {
+                    _category = c;
+                    _all = false;
+                  }),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 右边:选中的那个系列(或全部)。上面是名字和对整个系列的操作,下面是它的各条。
+  Widget _detailPane(List<ArchiveEntry> shown, String? selected) {
+    final tint = selected == null ? null : _tintOf(selected);
+    final previews = [
+      for (final e in shown)
+        _texts(e, (
+          export: widget.board.exportJson,
+          onRestore: () {},
+          onDelete: () {},
+          onUpload: () {},
+        )).preview.replaceAll(RegExp(r'\s+'), ' '),
+    ];
+    // 同一个系列的提示词常常开头一样:每条从不一样的地方写起。
+    final skip = selected == null ? 0 : commonLead(previews);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+          child: Row(
+            children: [
+              if (tint != null) ...[
+                Container(
+                  width: 6,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: tint.text,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Flexible(
+                child: Text(
+                  selected == null ? tr('全部') : tr(selected),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: tint?.text,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                tr('{0} 条', [shown.length]),
+                style: TextStyle(fontSize: 12, color: PennaColors.slate500),
+              ),
+              const Spacer(),
+              if (selected != null && _kind == archivePrompt) ...[
+                PennaButton(
+                  label: tr('整个系列放回工作台'),
+                  icon: Icons.keyboard_double_arrow_up,
+                  background: PennaColors.primary,
+                  foreground: Colors.white,
+                  onPressed: () => _restoreSeries(selected, shown),
+                ),
+                const SizedBox(width: 6),
+              ],
+              if (selected != null) ...[
+                IconButton(
+                  tooltip: tr('删除这个系列的存档'),
+                  iconSize: 17,
+                  visualDensity: VisualDensity.compact,
+                  color: PennaColors.slate400,
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _deleteSeries(selected, shown),
+                ),
+                const SizedBox(width: 6),
+              ],
+              ViewSwitch(
+                grid: _grid,
+                onChanged: (g) => setState(() => _grid = g),
+              ),
+            ],
+          ),
+        ),
+        Divider(height: 1, color: PennaColors.border),
+        Expanded(
+          child: SmoothScroller(
+            builder: (controller) => ListView(
+              controller: controller,
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (_grid)
+                  _gridOf(shown)
+                else
+                  for (final (i, entry) in shown.indexed) ...[
+                    _item(
+                      entry,
+                      text: skip == 0
+                          ? previews[i]
+                          : '…${previews[i].substring(skip)}',
+                      showCategory: selected == null,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _item(ArchiveEntry entry, {String? text, bool showCategory = false}) {
     final actions = (
       export: widget.board.exportJson,
       onRestore: () => _restore(entry),
@@ -266,19 +400,11 @@ class _ArchivePageState extends State<ArchivePage> {
       onImage: (path) => _setImage(entry, readPreview(context, path)),
       child: _grid
           ? _EntryTile(entry: entry, actions: actions)
-          // 精简列表里的一行;点开了就换成带预览图和正文的那一张。
-          : row != null && !_opened.contains(entry.id)
-          ? _EntryRow(
+          : _PageCard(
               entry: entry,
               actions: actions,
-              text: row,
-              onToggle: () => _toggle(entry.id),
-            )
-          : _EntryCard(
-              entry: entry,
-              actions: actions,
-              onToggle: row == null ? null : () => _toggle(entry.id),
-              flat: row != null,
+              text: text ?? '',
+              tint: showCategory ? _tintOf(entry.category) : null,
             ),
     );
   }
@@ -302,7 +428,8 @@ class _ArchivePageState extends State<ArchivePage> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: widget.archive,
+      // 系列的颜色记在设置里:那边改了这边跟着变。
+      listenable: Listenable.merge([widget.archive, widget.vm.config]),
       builder: (context, _) {
         final all = [
           for (final e in widget.archive.entries)
@@ -310,11 +437,15 @@ class _ArchivePageState extends State<ArchivePage> {
         ];
         final categories = widget.archive.categoriesOf(_kind);
         final counts = widget.archive.countsOf(_kind);
-        // 筛着的分类被删空了就回到全部。
-        final category = categories.contains(_category) ? _category : null;
+        // 没挑过(或挑的那个被删空了)就看最近存过东西的那个系列;点了「全部」才看全部。
+        final selected = _all
+            ? null
+            : categories.contains(_category)
+            ? _category
+            : categories.firstOrNull;
         final shown = [
           for (final e in all)
-            if (category == null || e.category == category) e,
+            if (selected == null || e.category == selected) e,
         ];
         return ColoredBox(
           color: PennaColors.editorBg,
@@ -346,6 +477,8 @@ class _ArchivePageState extends State<ArchivePage> {
                       onTap: () => setState(() {
                         _kind = kind;
                         _category = null;
+                        _all = false;
+                        _query = '';
                       }),
                     ),
                     const SizedBox(width: 6),
@@ -353,24 +486,11 @@ class _ArchivePageState extends State<ArchivePage> {
                   if (_kind != _imagesKind) ...[
                     const SizedBox(width: 4),
                     Text(
-                      tr('{0} 条', [all.length]),
+                      tr('{0} 个系列 · {1} 条', [categories.length, all.length]),
                       style: TextStyle(
                         fontSize: 11,
                         color: PennaColors.slate500,
                       ),
-                    ),
-                    const Spacer(),
-                    if (!_grid) ...[
-                      PennaChip(
-                        label: tr('显示细节'),
-                        selected: _detail,
-                        onTap: () => setState(() => _detail = !_detail),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    ViewSwitch(
-                      grid: _grid,
-                      onChanged: (g) => setState(() => _grid = g),
                     ),
                   ],
                 ],
@@ -399,41 +519,21 @@ class _ArchivePageState extends State<ArchivePage> {
                   ),
                 )
               else
+                // 左边挑系列,右边看它的各条:来档案库多半是找某个系列,不是一条条翻。
                 Expanded(
-                  child: SmoothScroller(
-                    builder: (controller) => ListView(
-                      controller: controller,
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            PennaChip(
-                              label: tr('全部'),
-                              selected: category == null,
-                              onTap: () => setState(() => _category = null),
-                            ),
-                            for (final c in categories)
-                              PennaChip(
-                                label: '${tr(c)} ${counts[c]}',
-                                selected: c == category,
-                                onTap: () => setState(() => _category = c),
-                              ),
-                          ],
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        width: 270,
+                        child: ColoredBox(
+                          color: PennaColors.card,
+                          child: _seriesList(all, categories, counts, selected),
                         ),
-                        const SizedBox(height: 10),
-                        if (_grid)
-                          _gridOf(shown)
-                        else if (_detail)
-                          for (final entry in shown) ...[
-                            _item(entry),
-                            const SizedBox(height: 10),
-                          ]
-                        else
-                          ..._groups(shown),
-                      ],
-                    ),
+                      ),
+                      VerticalDivider(width: 1, color: PennaColors.border),
+                      Expanded(child: _detailPane(shown, selected)),
+                    ],
                   ),
                 ),
             ],
@@ -539,25 +639,105 @@ Widget _iconButton(IconData icon, String tip, VoidCallback onPressed) =>
       onPressed: onPressed,
     );
 
-/// 列表里的一条:有预览图时图在左边,没有就不占地方。
-/// [onToggle] 给了就能点名字收回成一行;[flat] 是嵌在分组卡里,不画自己的边框。
-class _EntryCard extends StatelessWidget {
-  const _EntryCard({
+/// 左边清单里的一个系列:颜色、名字、条数、最近存的时间。选中的那个底色深一点。
+class _SeriesRow extends StatelessWidget {
+  const _SeriesRow({
+    required this.name,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+    this.time,
+    this.tint,
+  });
+
+  final String name;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+  final DateTime? time;
+
+  /// 系列的颜色;「全部」那一行没有。
+  final SeriesTint? tint;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 2),
+    child: Material(
+      color: selected
+          ? (tint?.bg ?? PennaColors.primaryBg)
+          : Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 5,
+                backgroundColor: tint?.text ?? PennaColors.slate400,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: selected ? tint?.text : null,
+                      ),
+                    ),
+                    if (time case final t?)
+                      Text(
+                        shortTime(t),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: PennaColors.slate400,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Text(
+                '$count',
+                style: TextStyle(fontSize: 12, color: PennaColors.slate500),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// 右边列表里的一条:有预览图时图在左边;名字一行,正文三行,右上角是几个操作。
+/// [text] 是要显示的正文(同系列里一样的开头已经省掉);[tint] 给了就在名字前面
+/// 标出它属于哪个系列(看「全部」时)。
+class _PageCard extends StatelessWidget {
+  const _PageCard({
     required this.entry,
     required this.actions,
-    this.onToggle,
-    this.flat = false,
+    required this.text,
+    this.tint,
   });
 
   final ArchiveEntry entry;
   final _Actions actions;
-  final VoidCallback? onToggle;
-  final bool flat;
+  final String text;
+  final SeriesTint? tint;
 
   @override
-  Widget build(BuildContext context) {
-    final (:clean, :preview) = _texts(entry, actions);
-    final body = Row(
+  Widget build(BuildContext context) => PennaCard(
+    padding: const EdgeInsets.fromLTRB(12, 6, 6, 10),
+    child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (entry.image.isNotEmpty) ...[
@@ -565,8 +745,8 @@ class _EntryCard extends StatelessWidget {
             padding: const EdgeInsets.only(top: 4),
             child: PreviewImage(
               path: entry.image,
-              width: 96,
-              height: 128,
+              width: 60,
+              height: 80,
               veil: true,
             ),
           ),
@@ -578,75 +758,78 @@ class _EntryCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  if (!flat) ...[
-                    Flexible(flex: 0, child: _CategoryPill(entry.category)),
-                    const SizedBox(width: 8),
-                  ],
-                  Expanded(
-                    child: InkWell(
-                      onTap: onToggle,
-                      child: Row(
-                        children: [
-                          if (onToggle != null)
-                            Icon(
-                              Icons.expand_more,
-                              size: 16,
-                              color: PennaColors.slate400,
-                            ),
-                          Flexible(child: _EntryTitle(entry)),
-                        ],
+                  if (tint case final t?) ...[
+                    Flexible(
+                      flex: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: t.bg,
+                          borderRadius: BorderRadius.circular(99),
+                          border: Border.all(color: t.border),
+                        ),
+                        child: Text(
+                          tr(entry.category),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: t.text,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(child: _EntryTitle(entry)),
                   Text(
                     shortTime(entry.time),
                     style: TextStyle(fontSize: 11, color: PennaColors.slate400),
                   ),
-                  const SizedBox(width: 4),
-                  _iconButton(
-                    Icons.add_photo_alternate_outlined,
-                    tr('上传预览图'),
-                    actions.onUpload,
-                  ),
+                  const SizedBox(width: 6),
+                  // 最常用的一个留着字,别的几个只画图标(悬停看名字)。
                   PennaButton(
                     label: _restoreLabel(entry),
                     icon: Icons.keyboard_double_arrow_up,
                     onPressed: actions.onRestore,
                   ),
-                  PennaButton(
-                    label: entry.kind == archiveLayout
-                        ? tr('复制 JSON')
-                        : tr('复制'),
-                    icon: Icons.content_copy,
-                    onPressed: () => copyWithToast(context, clean, tr('已复制')),
+                  _iconButton(
+                    Icons.content_copy,
+                    entry.kind == archiveLayout ? tr('复制 JSON') : tr('复制'),
+                    () => copyWithToast(
+                      context,
+                      _texts(entry, actions).clean,
+                      tr('已复制'),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: tr('删除'),
-                    iconSize: 15,
-                    visualDensity: VisualDensity.compact,
-                    color: PennaColors.slate400,
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: actions.onDelete,
+                  _iconButton(
+                    Icons.add_photo_alternate_outlined,
+                    tr('上传预览图'),
+                    actions.onUpload,
                   ),
+                  _iconButton(Icons.delete_outline, tr('删除'), actions.onDelete),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 2),
               Text(
-                preview,
-                maxLines: 5,
+                text,
+                maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: monoStyle.copyWith(fontSize: 11.5),
+                style: monoStyle.copyWith(
+                  fontSize: 11.5,
+                  color: PennaColors.slate500,
+                ),
               ),
             ],
           ),
         ),
       ],
-    );
-    const padding = EdgeInsets.fromLTRB(12, 8, 8, 12);
-    return flat
-        ? Padding(padding: padding, child: body)
-        : PennaCard(padding: padding, child: body);
-  }
+    ),
+  );
 }
 
 /// 一条存档的名字;没起名的写「未命名」。
@@ -664,143 +847,6 @@ class _EntryTitle extends StatelessWidget {
       fontSize: 13,
       fontWeight: FontWeight.w600,
       color: entry.title.isEmpty ? PennaColors.slate400 : PennaColors.text,
-    ),
-  );
-}
-
-/// 精简列表里一个分类的标题:点一下收起、展开这一组。
-class _GroupHeader extends StatelessWidget {
-  const _GroupHeader({
-    required this.category,
-    required this.count,
-    required this.latest,
-    required this.folded,
-    required this.onTap,
-  });
-
-  final String category;
-  final int count;
-  final DateTime latest;
-  final bool folded;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
-      child: Row(
-        children: [
-          Tooltip(
-            message: folded ? tr('展开') : tr('收起'),
-            child: Icon(
-              folded ? Icons.chevron_right : Icons.expand_more,
-              size: 18,
-              color: PennaColors.slate500,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              tr(category),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            tr('{0} 条', [count]),
-            style: TextStyle(fontSize: 11.5, color: PennaColors.slate500),
-          ),
-          const Spacer(),
-          Text(
-            shortTime(latest),
-            style: TextStyle(fontSize: 11, color: PennaColors.slate400),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-/// 精简列表里的一条:一行。名字、它和同组别的条目不一样的那截正文、几个小按钮。
-/// 点名字那一截展开成带预览图和全文的样子。
-class _EntryRow extends StatelessWidget {
-  const _EntryRow({
-    required this.entry,
-    required this.actions,
-    required this.text,
-    required this.onToggle,
-  });
-
-  final ArchiveEntry entry;
-  final _Actions actions;
-  final String text;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(left: 30, right: 6),
-    child: Row(
-      children: [
-        Expanded(
-          child: InkWell(
-            onTap: onToggle,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: Row(
-                children: [
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 260),
-                    child: _EntryTitle(entry),
-                  ),
-                  if (entry.image.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.image_outlined,
-                      size: 13,
-                      color: PennaColors.slate400,
-                    ),
-                  ],
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      text,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: PennaColors.slate500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        // 最常用的一个留着字,别的几个只画图标(悬停看名字)。
-        PennaButton(
-          label: _restoreLabel(entry),
-          icon: Icons.keyboard_double_arrow_up,
-          onPressed: actions.onRestore,
-        ),
-        _iconButton(
-          Icons.content_copy,
-          entry.kind == archiveLayout ? tr('复制 JSON') : tr('复制'),
-          () => copyWithToast(context, _texts(entry, actions).clean, tr('已复制')),
-        ),
-        _iconButton(
-          Icons.add_photo_alternate_outlined,
-          tr('上传预览图'),
-          actions.onUpload,
-        ),
-        _iconButton(Icons.delete_outline, tr('删除'), actions.onDelete),
-      ],
     ),
   );
 }
