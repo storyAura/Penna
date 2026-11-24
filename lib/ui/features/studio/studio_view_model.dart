@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/chat_peek.dart';
+import '../../../core/harness/comfy_workflow.dart' show latentSize;
 import '../../../core/harness/comfyui.dart';
 import '../../../core/harness/context_meter.dart';
 import '../../../core/harness/characters/character_dict.dart';
@@ -22,6 +23,7 @@ import '../../../core/harness/mcp/mcp_tools.dart';
 import '../../../core/harness/notebook_tags.dart';
 import '../../../core/harness/llm_log.dart';
 import '../../../core/harness/piercing_document.dart';
+import '../../../core/harness/preset_dialogue.dart';
 import '../../../core/harness/soul_tags.dart';
 import '../../../core/harness/providers/grok_auth.dart';
 import '../../../core/harness/providers/llm_router.dart';
@@ -355,8 +357,12 @@ class StudioViewModel extends ChangeNotifier {
   /// 起过名字的系列;没起的显示成「系列 N」。
   Map<int, String> _seriesNames = const {};
 
-  /// Agent 要另起系列却满了时的提醒(见 [StudioPages.seriesAlert])。
-  String? _seriesAlert;
+  /// 各系列最后一次用到是什么时候(毫秒时间戳);没记过的在读档时按当时算。
+  /// 自动归档看它:一段时间没用的系列收进档案库(见 [StudioPages.staleSeries])。
+  Map<int, int> _seriesUsed = {};
+
+  /// 用户固定的系列:不自动归档。
+  Set<int> _seriesPinned = const {};
 
   /// 上一次因为「这是另一张画」新开了一页,是在回答哪条消息(见 `draftPageFor`)。
   ChatMessage? _newPageFor;

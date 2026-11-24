@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/harness/preset_import/sillytavern_preset.dart';
 import '../../../data/models/app_config.dart';
 import '../../../data/services/config_service.dart';
 import '../../core/theme.dart';
@@ -123,6 +125,33 @@ class _PresetSectionState extends State<PresetSection> {
                 onChanged: (v) => _put(preset.copyWith(systemPrompt: v)),
               ),
               gap,
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(tr('回复写在工具调用里'), style: titleStyle),
+                        Text(
+                          tr(
+                            '模型把这一轮要说的话写在 reply 工具的 text 参数里,正文留空 · '
+                            'OpenAI 相容与 Google 接口都有效,Google 上同时放宽安全筛选',
+                          ),
+                          style: hintStyle,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Transform.scale(
+                    scale: 0.8,
+                    child: Switch(
+                      value: preset.replyTool,
+                      onChanged: (on) => _put(preset.copyWith(replyTool: on)),
+                    ),
+                  ),
+                ],
+              ),
+              gap,
               Align(
                 alignment: Alignment.centerLeft,
                 child: builtin
@@ -195,17 +224,26 @@ class _PiercingCardState extends State<_PiercingCard> {
   Future<void> _import() async {
     final picked = await openFile(
       acceptedTypeGroups: [
-        XTypeGroup(label: tr('文本'), extensions: ['txt', 'md']),
+        XTypeGroup(
+          label: tr('文本或 SillyTavern 预设'),
+          extensions: ['txt', 'md', 'json'],
+        ),
       ],
     );
     if (picked == null) return;
     try {
-      final text = await File(picked.path).readAsString();
+      final raw = await File(picked.path).readAsString();
+      // JSON 当成 SillyTavern 预设:条目拼成一段话,谁说的、聊天记录在哪写成对话标记。
+      final text = picked.path.toLowerCase().endsWith('.json')
+          ? sillyTavernToPrompt(jsonDecode(raw))
+          : raw;
       if (!mounted) return;
       setState(() {
         _draft = text;
         _imports++;
       });
+    } on FormatException {
+      if (mounted) showToast(context, tr('这不是 SillyTavern 预设'), warn: true);
     } on Exception {
       if (mounted) showToast(context, tr('读不了这个文件'), warn: true);
     }
@@ -286,6 +324,14 @@ class _PiercingCardState extends State<_PiercingCard> {
             ],
           ),
           if (!cfg.piercingDocument) ...[
+            gap,
+            Text(
+              tr(
+                '各占一行的 <<user>>、<<assistant>> 把后面的话当成事先说好的一轮对话,'
+                '<<history>> 是聊天记录的位置',
+              ),
+              style: hintStyle,
+            ),
             gap,
             PennaField(
               key: ValueKey('piercing-$_imports'),

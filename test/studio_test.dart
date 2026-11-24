@@ -107,6 +107,84 @@ void main() {
       expect(seen.messages.last, {'role': 'user', 'content': '你好'});
     });
 
+    test('穿甲弹里写了对话标记:拆成几轮发出去,Preset 的系统提示原样留着;关掉穿甲弹就不带', () async {
+      final config = tempConfig();
+      config.update(
+        const AppConfig()
+            .putLlm(_llm)
+            .setSecret(llmSecretKey('a'), 'sk-x')
+            .copyWith(
+              piercing: true,
+              piercingPrompt: '你是主持人\n<<assistant>>\n要我主持吗\n<<user>>\n要',
+            ),
+      );
+      late LlmRequest seen;
+      final vm = sampleStudio(
+        config: config,
+        streamChat: (req) {
+          seen = req;
+          return const Stream.empty();
+        },
+      );
+      final preset = config.config.activePreset.systemPrompt;
+
+      expect(vm.send('你好'), isNull);
+      await pumpEventQueue();
+
+      expect(seen.messages[0]['role'], 'system');
+      expect(seen.messages[0]['content'], startsWith('你是主持人\n\n$preset'));
+      expect(seen.messages[0]['content'], isNot(contains('<<assistant>>')));
+      expect(seen.messages[1], {'role': 'assistant', 'content': '要我主持吗'});
+      // 示例对话里原有的几句排在说好的对话后面。
+      expect(seen.messages[2]['role'], 'user');
+      expect(seen.messages[2]['content'], startsWith('要\n\n'));
+      expect(seen.messages.last['role'], 'user');
+      expect(seen.messages.last['content'], startsWith('【提醒】'));
+      expect(seen.messages.last['content'], endsWith('【用户这次的话】\n你好'));
+
+      config.update(config.config.copyWith(piercing: false));
+      expect(vm.send('再来'), isNull);
+      await pumpEventQueue();
+
+      expect(seen.messages.first['content'], startsWith(preset));
+      expect(
+        seen.messages.any((m) => m['content']!.contains('要我主持吗')),
+        isFalse,
+      );
+      expect(seen.messages.last, {'role': 'user', 'content': '再来'});
+    });
+
+    test('Preset 打开「回复写在工具调用里」时请求带上它,关着时不带', () async {
+      final config = tempConfig();
+      final base = const AppConfig()
+          .putLlm(_llm)
+          .setSecret(llmSecretKey('a'), 'sk-x');
+      config.update(
+        base.addPreset(
+          base.activePreset.copyWith(id: 'custom-reply-tool', replyTool: true),
+        ),
+      );
+      late LlmRequest seen;
+      final vm = sampleStudio(
+        config: config,
+        streamChat: (req) {
+          seen = req;
+          return const Stream.empty();
+        },
+      );
+
+      expect(vm.send('你好'), isNull);
+      await pumpEventQueue();
+      expect(seen.replyTool, isTrue);
+
+      config.update(
+        config.config.copyWith(activePresetId: base.activePreset.id),
+      );
+      expect(vm.send('再来'), isNull);
+      await pumpEventQueue();
+      expect(seen.replyTool, isFalse);
+    });
+
     test('每段的对照译文跟着界面语言:日文界面要日文,英文界面不要〔译〕', () async {
       expect(const AppConfig().glossLanguage, 'zh');
       expect(const AppConfig(language: 'zh-Hant').glossLanguage, 'zh-Hant');
@@ -223,6 +301,9 @@ void main() {
     await tester.tap(find.text('添加接口'));
     await tester.pump();
     expect(config.config.agentChain.firstOrNull?.name, '新模型');
+    // 接口卡片摊开后这颗按钮在一屏之外,先滚到它。
+    await tester.ensureVisible(find.text('常用服务'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('常用服务'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('DeepSeek').last);

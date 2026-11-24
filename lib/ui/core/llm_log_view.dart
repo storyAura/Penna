@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/harness/llm_log.dart';
+import '../../core/harness/thinking.dart';
 import '../../l10n/l10n.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -16,6 +17,7 @@ import 'widgets.dart';
   LlmEventKind.search => (tr('联网搜索'), PennaColors.primary),
   LlmEventKind.retry => (tr('重试'), PennaColors.slate500),
   LlmEventKind.tier => (tr('档位'), PennaColors.primary),
+  LlmEventKind.replyTool => (tr('工具回覆'), PennaColors.primary),
 };
 
 String _clock(DateTime t) =>
@@ -42,14 +44,56 @@ Future<void> showLlmLog(BuildContext context) {
           ),
         ],
       ),
-      content: SizedBox(
-        width: 640,
-        height: 480,
+      content: SizedBox(width: 720, height: 520, child: const _LogBody()),
+    ),
+  );
+}
+
+/// 日志窗口的正文:上面两个标签,「事件」是出了什么问题,「请求」是每次发了什么、回了什么。
+class _LogBody extends StatefulWidget {
+  const _LogBody();
+
+  @override
+  State<_LogBody> createState() => _LogBodyState();
+}
+
+class _LogBodyState extends State<_LogBody> {
+  var _calls = false;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        children: [
+          PennaChip(
+            label: tr('事件'),
+            selected: !_calls,
+            onTap: () => setState(() => _calls = false),
+          ),
+          const SizedBox(width: 6),
+          PennaChip(
+            label: tr('请求'),
+            selected: _calls,
+            onTap: () => setState(() => _calls = true),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _calls ? tr('最近 40 次,只留在内存里,关掉软件就没了') : '',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: PennaColors.slate500),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Expanded(
         child: ListenableBuilder(
           listenable: llmLog,
           builder: (context, _) {
-            final events = llmLog.events;
-            if (events.isEmpty) {
+            final count = _calls ? llmLog.calls.length : llmLog.events.length;
+            if (count == 0) {
               return Center(
                 child: Text(
                   tr('暂无记录'),
@@ -58,13 +102,213 @@ Future<void> showLlmLog(BuildContext context) {
               );
             }
             return ListView.separated(
-              itemCount: events.length,
+              itemCount: count,
               separatorBuilder: (_, _) =>
                   Divider(height: 1, color: PennaColors.border),
-              itemBuilder: (_, i) => _EventRow(events[i]),
+              itemBuilder: (_, i) => _calls
+                  ? _CallRow(llmLog.calls[i])
+                  : _EventRow(llmLog.events[i]),
             );
           },
         ),
+      ),
+    ],
+  );
+}
+
+/// 一次请求的状态:还在等、出错、说完了。
+(String, Color) _callLook(LlmCall call) => call.took == null
+    ? (tr('进行中'), PennaColors.primary)
+    : call.error != null
+    ? (tr('出错'), PennaColors.diffDelText)
+    : (tr('完成'), PennaColors.slate500);
+
+class _CallRow extends StatelessWidget {
+  const _CallRow(this.call);
+
+  final LlmCall call;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = _callLook(call);
+    final took = call.took;
+    return InkWell(
+      onTap: () => showLlmCall(context, call),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 64,
+              child: Text(
+                _clock(call.time),
+                style: TextStyle(fontSize: 12, color: PennaColors.slate500),
+              ),
+            ),
+            Container(
+              width: 64,
+              padding: const EdgeInsets.symmetric(vertical: 1),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                call.name,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12.5),
+              ),
+            ),
+            Text(
+              [
+                tr('发 {0} 条', [call.messages.length]),
+                tr('回 {0} 字', [call.output.length]),
+                if (took != null) tr('{0} 秒', [took.inSeconds]),
+              ].join(' · '),
+              style: TextStyle(fontSize: 12, color: PennaColors.slate500),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right, size: 16, color: PennaColors.slate400),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 一次请求的细节:发出去的每条消息、模型的思考、回的正文、出错的原因。
+Future<void> showLlmCall(BuildContext context, LlmCall call) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      titlePadding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${_clock(call.time)} · ${call.name}',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 16),
+            ),
+          ),
+          IconButton(
+            tooltip: tr('关闭'),
+            iconSize: 18,
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 820,
+        height: 600,
+        child: ListenableBuilder(
+          listenable: llmLog,
+          builder: (context, _) {
+            final said = splitThinking(
+              '${call.output}',
+              done: call.took != null,
+            );
+            return ListView(
+              children: [
+                _CallPart(
+                  tr('发给模型的'),
+                  call.images == 0
+                      ? tr('{0} 条消息', [call.messages.length])
+                      : tr('{0} 条消息 · {1} 张图', [
+                          call.messages.length,
+                          call.images,
+                        ]),
+                ),
+                for (final m in call.messages)
+                  _CallText(m['role'] ?? '', m['content'] ?? ''),
+                if (said.thinking.isNotEmpty) ...[
+                  _CallPart(tr('模型的思考'), ''),
+                  _CallText('', said.thinking),
+                ],
+                _CallPart(tr('模型回的'), call.took == null ? tr('还在写') : ''),
+                _CallText('', said.rest.isEmpty ? tr('(没有内容)') : said.rest),
+                if (call.error case final error?) ...[
+                  _CallPart(tr('出错'), ''),
+                  _CallText('', error),
+                ],
+              ],
+            );
+          },
+        ),
+      ),
+    ),
+  );
+}
+
+/// 细节里的小标题。
+class _CallPart extends StatelessWidget {
+  const _CallPart(this.title, this.note);
+
+  final String title;
+  final String note;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 14, bottom: 6),
+    child: Row(
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(width: 8),
+        Text(note, style: TextStyle(fontSize: 12, color: PennaColors.slate500)),
+      ],
+    ),
+  );
+}
+
+/// 细节里的一段原文:谁说的([role],可以没有)和能选能复制的文字。
+class _CallText extends StatelessWidget {
+  const _CallText(this.role, this.text);
+
+  final String role;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: PennaCard(
+      color: PennaColors.slate50,
+      radius: 8,
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (role.isNotEmpty) ...[
+            Text(
+              role,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: PennaColors.primary,
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+          SelectableText(
+            text,
+            contextMenuBuilder: pennaTextMenu,
+            style: const TextStyle(fontSize: 12.5, height: 1.5),
+          ),
+        ],
       ),
     ),
   );

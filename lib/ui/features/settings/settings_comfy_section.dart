@@ -208,6 +208,34 @@ class _ComfySectionState extends State<ComfySection> {
         ),
         gap,
         PennaCard(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(tr('Agent 出图的画面方向'), style: titleStyle),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final (mode, label) in [
+                    (orientationKeep, tr('照工作流的大小')),
+                    (orientationAuto, tr('让 Agent 决定')),
+                    (orientationLandscape, tr('只出横图')),
+                    (orientationPortrait, tr('只出竖图')),
+                  ])
+                    PennaChip(
+                      label: label,
+                      selected: _comfy.orientation == mode,
+                      onTap: () => _put(_comfy.copyWith(orientation: mode)),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        gap,
+        PennaCard(
           padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
           child: Row(
             children: [

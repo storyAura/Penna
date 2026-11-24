@@ -110,7 +110,7 @@ void main() {
         ],
       });
     }
-    final s = splitMcpCalls(calls.text);
+    final s = splitMcpCalls(calls.text());
     expect(s.calls.single.tool, 'mcp_wx_weather');
     expect(s.calls.single.args, {'city': '上海'});
     expect(openAiTools(const [_weather]).single['type'], 'function');

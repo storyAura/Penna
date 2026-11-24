@@ -131,12 +131,15 @@ void main() {
 
     await tester.tap(find.byTooltip('档案库'));
     await tester.pumpAndSettle();
+    // 左边一行一个系列,先看最近存过东西的那个(刚存的「写实」)。
     expect(find.text('狐狸'), findsOneWidget);
-    expect(find.text('old cat'), findsOneWidget);
+    expect(find.text('old cat'), findsNothing);
 
-    await tester.tap(find.widgetWithText(GestureDetector, '动物 1').first);
+    // 点左边的「动物」:右边换成它的各条。
+    await tester.tap(find.text('动物').first);
     await tester.pumpAndSettle();
     expect(find.text('狐狸'), findsNothing);
+    expect(find.text('old cat'), findsOneWidget);
 
     await tester.tap(find.text('放回成稿'));
     await tester.pumpAndSettle();

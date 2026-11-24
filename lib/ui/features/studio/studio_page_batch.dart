@@ -58,7 +58,6 @@ extension StudioPageBatch on StudioViewModel {
     };
     if (picked.isEmpty) return null;
     if (isStreaming) return tr('正在生成,稍后再试');
-    if (seriesFull) return StudioPages.fullMessage;
     final stay = [
       for (var i = 0; i < _pages.length; i++)
         if (!picked.contains(i)) i,

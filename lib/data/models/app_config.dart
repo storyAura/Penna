@@ -257,6 +257,25 @@ class LlmProfile {
 /// Google 接口能选的用量档位(2026-11-13 用户给的《Gemini 用量方案与 Penna 适配》)。
 const geminiTiers = ['standard', 'flex', 'priority'];
 
+/// 全部系列的清单按什么排:最近用过的在前、按名字、页多的在前、建立的先后。
+const seriesSortRecent = 'recent';
+const seriesSortName = 'name';
+const seriesSortPages = 'pages';
+const seriesSortCreated = 'created';
+const seriesSorts = [
+  seriesSortRecent,
+  seriesSortName,
+  seriesSortPages,
+  seriesSortCreated,
+];
+
+/// 失败后怎么换模型:[failoverAll] 依次换到其他启用的接口(一直以来的做法);
+/// [failoverProvider] 只在选中的接口里换它填的其他模型;[failoverOff] 不换,失败就停。
+const failoverAll = 'all';
+const failoverProvider = 'provider';
+const failoverOff = 'off';
+const failoverModes = [failoverAll, failoverProvider, failoverOff];
+
 /// Preset = 系统提示 + 工具白名单。Skills 对所有 Preset 生效,见 [AppConfig.disabledSkills]。
 @immutable
 class AgentPreset {
@@ -267,6 +286,7 @@ class AgentPreset {
     required this.tools,
     this.temperature = 0.7,
     this.topP = 1,
+    this.replyTool = false,
   });
 
   factory AgentPreset.fromJson(Map<String, dynamic> j) => AgentPreset(
@@ -276,6 +296,7 @@ class AgentPreset {
     tools: {...(j['tools'] as List).cast<String>()},
     temperature: ((j['temperature'] as num?) ?? 0.7).clamp(0, 2).toDouble(),
     topP: ((j['topP'] as num?) ?? 1).clamp(0.1, 1).toDouble(),
+    replyTool: j['replyTool'] as bool? ?? false,
   );
 
   final String id;
@@ -286,6 +307,10 @@ class AgentPreset {
 
   /// 只在累计概率排在前这么多的词里选;1 是不限制(不发给模型)。
   final double topP;
+
+  /// 回复写在工具调用里(OpenAI 兼容接口):模型把这一轮要说的话写在 reply 工具的
+  /// text 参数里,正文留空。有的接口只审查正文;也让模型先把话想完整再交出来。
+  final bool replyTool;
 
   /// 界面上显示的名字;名字被清空时给个占位,免得出现点不到的空白项。
   /// 界面上显示的名字:内置 Preset 的名字按界面语言翻译,自己起的原样。
@@ -298,6 +323,7 @@ class AgentPreset {
     'tools': tools.toList(),
     'temperature': temperature,
     'topP': topP,
+    if (replyTool) 'replyTool': true,
   };
 
   AgentPreset copyWith({
@@ -307,6 +333,7 @@ class AgentPreset {
     Set<String>? tools,
     double? temperature,
     double? topP,
+    bool? replyTool,
   }) => AgentPreset(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -314,6 +341,7 @@ class AgentPreset {
     tools: tools ?? this.tools,
     temperature: temperature ?? this.temperature,
     topP: topP ?? this.topP,
+    replyTool: replyTool ?? this.replyTool,
   );
 }
 
@@ -446,6 +474,10 @@ class AppConfig {
     this.compressImages = true,
     this.chatIdeas = true,
     this.soulOn = false,
+    this.failover = failoverAll,
+    this.autoArchiveDays = 14,
+    this.seriesColors = const {},
+    this.seriesSort = seriesSortRecent,
     this.blurImages = false,
     this.tutorialSeen = false,
     this.mascot = false,
@@ -539,6 +571,18 @@ class AppConfig {
       compressImages: m['compressImages'] as bool? ?? true,
       chatIdeas: m['chatIdeas'] as bool? ?? true,
       soulOn: m['soulOn'] as bool? ?? false,
+      failover: failoverModes.contains(m['failover'])
+          ? m['failover'] as String
+          : failoverAll,
+      autoArchiveDays: ((m['autoArchiveDays'] as int?) ?? 14).clamp(0, 365),
+      seriesColors: Map.unmodifiable({
+        if (m['seriesColors'] case final Map colors)
+          for (final MapEntry(:key, :value) in colors.entries)
+            if (key is String && value is int) key: value,
+      }),
+      seriesSort: seriesSorts.contains(m['seriesSort'])
+          ? m['seriesSort'] as String
+          : seriesSortRecent,
       blurImages: m['blurImages'] as bool? ?? false,
       // 旧设置里没有这一项:用过的人不再自动弹教程。
       tutorialSeen: m['tutorialSeen'] as bool? ?? true,
@@ -725,6 +769,19 @@ class AppConfig {
   /// 关着时系统提示不带它、不数角色、不收记忆标签,记着的数据留着。
   final bool soulOn;
 
+  /// 选中的模型没出字就失败时换不换别的模型,见 [failoverModes]。
+  final String failover;
+
+  /// 系列这么多天没用就自动归档进档案库(固定的不归档);0 是不自动归档。
+  final int autoArchiveDays;
+
+  /// 用户给系列挑的颜色:系列的名字 → 第几种(见 `series_tint.dart`)。按名字记,
+  /// 所以归档进档案库、再放回工作台颜色都跟着。没挑过的按名字算一个固定的。
+  final Map<String, int> seriesColors;
+
+  /// 全部系列的清单按什么排,见 [seriesSorts]。
+  final String seriesSort;
+
   /// 出的图、档案库的图先糊着,点一下才看清(只是显示上的处理;2026-11-17 用户要求,默认关)。
   final bool blurImages;
 
@@ -801,6 +858,10 @@ class AppConfig {
     'compressImages': compressImages,
     'chatIdeas': chatIdeas,
     'soulOn': soulOn,
+    'failover': failover,
+    'autoArchiveDays': autoArchiveDays,
+    'seriesColors': seriesColors,
+    'seriesSort': seriesSort,
     'blurImages': blurImages,
     'tutorialSeen': tutorialSeen,
     'mascot': mascot,
@@ -897,6 +958,10 @@ class AppConfig {
     bool? compressImages,
     bool? chatIdeas,
     bool? soulOn,
+    String? failover,
+    int? autoArchiveDays,
+    Map<String, int>? seriesColors,
+    String? seriesSort,
     bool? blurImages,
     bool? tutorialSeen,
     bool? mascot,
@@ -950,6 +1015,10 @@ class AppConfig {
     compressImages: compressImages ?? this.compressImages,
     chatIdeas: chatIdeas ?? this.chatIdeas,
     soulOn: soulOn ?? this.soulOn,
+    failover: failover ?? this.failover,
+    autoArchiveDays: autoArchiveDays ?? this.autoArchiveDays,
+    seriesColors: seriesColors ?? this.seriesColors,
+    seriesSort: seriesSort ?? this.seriesSort,
     blurImages: blurImages ?? this.blurImages,
     tutorialSeen: tutorialSeen ?? this.tutorialSeen,
     mascot: mascot ?? this.mascot,

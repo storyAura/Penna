@@ -2,12 +2,27 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../llm_log.dart';
+import '../thinking.dart';
 import '../mcp/mcp_tools.dart';
 import 'llm_http.dart';
+import 'reply_tool.dart';
 import 'responses_provider.dart' show sourcesText;
 import '../../../l10n/l10n.dart';
 
 const _normalFinish = {'STOP', 'MAX_TOKENS', 'FINISH_REASON_UNSPECIFIED'};
+
+/// 放宽安全筛选时关掉的五类。
+///
+/// 阈值要用 `OFF`,不是 `BLOCK_NONE`:后者只是不按阈值拦,Google 仍会用
+/// `PROHIBITED_CONTENT` 把整段请求打回来(用户 2026-11-24 实测);`OFF` 才是整类关掉,
+/// 和 SillyTavern 送出去的一样。
+const _harmCategories = [
+  'HARM_CATEGORY_HARASSMENT',
+  'HARM_CATEGORY_HATE_SPEECH',
+  'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+  'HARM_CATEGORY_DANGEROUS_CONTENT',
+  'HARM_CATEGORY_CIVIC_INTEGRITY',
+];
 const _defaultBase = 'https://generativelanguage.googleapis.com/v1beta';
 
 /// 把 OpenAI 格式的消息转成 Google 的请求体:system 单独放,
@@ -33,6 +48,29 @@ Map<String, Object?> geminiBody(LlmRequest req) {
     if (!blank) contents.last.texts.add(text);
     contents.last.images.addAll(images);
   }
+  // 回复写在工具调用里:多给一个 reply 工具,只准它被调用。
+  final reply = req.replyTool;
+  final functions = [
+    for (final t in req.tools)
+      {
+        'name': t.name,
+        'description': t.description,
+        'parametersJsonSchema': t.schema,
+      },
+    if (reply)
+      {
+        'name': replyToolName,
+        'description': tr('把这一轮回复的全部内容写在 text 里,正文留空。'),
+        'parametersJsonSchema': const {
+          'type': 'object',
+          'properties': {
+            'text': {'type': 'string', 'description': '回复的全部内容,格式照要求'},
+          },
+          'required': ['text'],
+          'additionalProperties': false,
+        },
+      },
+  ];
   return {
     if (system.isNotEmpty)
       'systemInstruction': {
@@ -61,23 +99,25 @@ Map<String, Object?> geminiBody(LlmRequest req) {
       if (req.topP < 1) 'topP': req.topP,
       'thinkingConfig': ?_thinkingConfig(req),
     },
-    if (req.webSearch)
+    if (req.webSearch || functions.isNotEmpty)
       'tools': [
-        {'google_search': <String, Object>{}},
-      ]
-    // 外接工具(MCP):参数表原样给(`parametersJsonSchema` 收完整的 JSON Schema)。
-    else if (req.tools.isNotEmpty)
-      'tools': [
-        {
-          'functionDeclarations': [
-            for (final t in req.tools)
-              {
-                'name': t.name,
-                'description': t.description,
-                'parametersJsonSchema': t.schema,
-              },
-          ],
+        if (req.webSearch) {'google_search': <String, Object>{}},
+        // 外接工具(MCP):参数表原样给(`parametersJsonSchema` 收完整的 JSON Schema)。
+        if (functions.isNotEmpty) {'functionDeclarations': functions},
+      ],
+    // 钉死在 reply 上:模型只能用这个工具回话。
+    if (reply)
+      'toolConfig': {
+        'functionCallingConfig': {
+          'mode': 'ANY',
+          'allowedFunctionNames': [replyToolName],
         },
+      },
+    // Google 自己的安全筛选会把整段回复掐掉(报 PROHIBITED_CONTENT / SAFETY)。
+    // 这个开关打开时一起放宽:内容要不要写由用户和模型决定,不是接口替用户决定。
+    if (reply)
+      'safetySettings': [
+        for (final c in _harmCategories) {'category': c, 'threshold': 'OFF'},
       ],
     // 用量档位:Developer API 放在请求体最外层;Vertex 走请求头(见 [geminiHeaders])。
     if (req.serviceTier.isNotEmpty &&
@@ -163,10 +203,20 @@ const _flexBackoff = Duration(seconds: 5);
 ///
 /// 带上 `includeThoughts`:不带时模型默默想完才回第一个字,想得久(看图、长文)时
 /// 一个字节都没有,用户的代理约 47 秒就把连接掐了(2026-11-07 实测);带上后
-/// 边想边发思考摘要,连接一直有数据。摘要由 [parseGeminiLine] 去掉,不进回复。
+/// 边想边发思考摘要,连接一直有数据。摘要不算回复正文([parseGeminiLine] 不带它),
+/// 由 [parseGeminiThought] 取出来折进「思考过程」。
+///
+/// 没调思考强度时也要带:2.5 起的模型默认就会思考,不带的话照样一声不吭地想,
+/// 超过 [llmStallTimeout] 就被当成卡住(2026-11-24 用户反馈「模型接口超时」)。
+/// 更早的模型(1.x、2.0)不会思考,带了接口会报错,所以不带。
 Map<String, Object>? _thinkingConfig(LlmRequest req) {
   final effort = req.effort;
-  if (effort == null) return null;
+  if (effort == null) {
+    final old = RegExp(r'^gemini-(1|2\.0)').hasMatch(req.model);
+    return old || !req.model.startsWith('gemini-')
+        ? null
+        : const {'includeThoughts': true};
+  }
   return {
     if (req.model.startsWith('gemini-2'))
       'thinkingBudget': switch (effort) {
@@ -228,6 +278,23 @@ String? parseGeminiLine(String line) {
     throw LlmException(tr('Google 中止了回复:{0}', [reason]));
   }
   return text;
+}
+
+/// 一行 SSE 里的思考摘要(`thought: true` 的那几段);没有是空的。
+String parseGeminiThought(String line) {
+  final json = sseJson(line);
+  final candidates = json is Map ? json['candidates'] : null;
+  final first = candidates is List && candidates.isNotEmpty
+      ? candidates.first
+      : null;
+  final content = first is Map ? first['content'] : null;
+  final parts = content is Map ? content['parts'] : null;
+  return [
+    if (parts is List)
+      for (final p in parts)
+        if (p is Map && p['text'] is String && p['thought'] == true)
+          p['text'] as String,
+  ].join();
 }
 
 /// 一行 SSE 里的结束原因;这一行没写是 null。
@@ -297,7 +364,8 @@ Future<List<String>> listGeminiModels(String baseUrl, String apiKey) async {
 }
 
 /// 一行里的函数调用(`functionCall` 分段),写成 `<mcp-call>` 标签;没有是空串。
-String parseGeminiCalls(String line) {
+/// [skip] 是不写进标签的调用名(回复写在工具调用里时,reply 不是外接工具)。
+String parseGeminiCalls(String line, {String? skip}) {
   final json = sseJson(line);
   final candidates = json is Map ? json['candidates'] : null;
   final first = candidates is List && candidates.isNotEmpty
@@ -310,8 +378,29 @@ String parseGeminiCalls(String line) {
       for (final p in parts)
         if (p is Map)
           if (p['functionCall'] case {'name': final String name} && final call)
-            mcpCallText(name, jsonEncode(call['args'] ?? const {})),
+            if (name != skip)
+              mcpCallText(name, jsonEncode(call['args'] ?? const {})),
   ].join();
+}
+
+/// 一行里 reply 工具的参数(`{"text": "..."}` 里的 text);这一行没有是 null。
+String? geminiReplyText(String line) {
+  final json = sseJson(line);
+  final candidates = json is Map ? json['candidates'] : null;
+  final first = candidates is List && candidates.isNotEmpty
+      ? candidates.first
+      : null;
+  final content = first is Map ? first['content'] : null;
+  final parts = content is Map ? content['parts'] : null;
+  if (parts is! List) return null;
+  for (final p in parts) {
+    if (p is! Map) continue;
+    final call = p['functionCall'];
+    if (call is! Map || call['name'] != replyToolName) continue;
+    final args = call['args'];
+    if (args is Map && args['text'] is String) return args['text'] as String;
+  }
+  return null;
 }
 
 /// 调用 Google Gemini 原生接口 `models/{model}:streamGenerateContent`。
@@ -325,9 +414,11 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     '/models/$model:streamGenerateContent',
   ).replace(queryParameters: {'alt': 'sse'});
   var yielded = false;
+  var replyUsed = false;
   String? finish;
   String? served;
   final sources = <String, String>{};
+  final thoughts = ThoughtStream();
   for (var attempt = 0; ; attempt++) {
     // Key 放请求头而不是网址里,免得出现在任何报错或日志中。
     final lines = postForLines(
@@ -339,22 +430,37 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     );
     try {
       await for (final line in lines) {
+        // 回复写在工具调用里:参数就是这一轮要说的话,当普通回复吐出去。
+        final replyText = req.replyTool ? geminiReplyText(line) : null;
+        if (replyText != null && replyText.isNotEmpty) replyUsed = true;
         // 模型发的函数调用:换成 <mcp-call> 标签接在回复里。
-        final calls = req.tools.isEmpty ? '' : parseGeminiCalls(line);
-        final delta = calls.isEmpty
-            ? parseGeminiLine(line)
-            : '${parseGeminiLine(line) ?? ''}$calls';
+        final calls = req.tools.isEmpty && !req.replyTool
+            ? ''
+            : parseGeminiCalls(
+                line,
+                skip: req.replyTool ? replyToolName : null,
+              );
+        final said = '${parseGeminiLine(line) ?? ''}$calls${replyText ?? ''}';
+        // 思考摘要也给用户看(折在「思考过程」里),但不算出了字:只有思考就失败照样换模型。
+        final delta = thoughts.add(
+          thought: req.thoughts ? parseGeminiThought(line) : '',
+          text: said,
+        );
         reportUsage(req, sseJson(line));
         finish = parseGeminiFinish(line) ?? finish;
         served = parseGeminiTier(line) ?? served;
         if (req.webSearch) sources.addAll(parseGeminiSources(line));
-        if (delta != null && delta.isNotEmpty) {
-          yielded = true;
-          yield delta;
-        }
+        if (said.isNotEmpty) yielded = true;
+        if (delta.isNotEmpty) yield delta;
       }
       break;
     } on LlmException catch (e) {
+      // 接口不收 toolConfig、或者不认放宽的安全设定:退回普通请求,别让整条回复失败。
+      if (!yielded && (e.status == 400 || e.status == 422) && req.replyTool) {
+        llmLog.add(LlmEventKind.retry, req.model, tr('接口不支持把回复写在工具调用里,改用普通回复'));
+        yield* _chat(client, req.withReplyTool(false));
+        return;
+      }
       // Flex 容量不够(503)、限速(429):还是用 Flex 退避重试,不换成 Standard(会涨价)。
       final busy = e.status == 429 || e.status == 503;
       if (yielded ||
@@ -373,6 +479,14 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     }
   }
   if (!yielded) throw LlmException(tr('模型没有返回内容'));
+  // 让用户看得见这次到底有没有走工具:模型日志里一条,左侧栏不亮提醒。
+  if (req.replyTool) {
+    llmLog.add(
+      LlmEventKind.replyTool,
+      req.model,
+      replyUsed ? tr('回覆走工具呼叫') : tr('模型没照工具呼叫,回覆在正文'),
+    );
+  }
   // 实际档位和选的不一样(比如 Priority 被降成 Standard,按 Standard 计费):记一笔。
   if (req.serviceTier.isNotEmpty &&
       served != null &&

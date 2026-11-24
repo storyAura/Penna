@@ -26,7 +26,11 @@ class ChatMessage {
     this.cut,
     this.images = const [],
     this.thinking = '',
+    this.took,
   });
+
+  /// 这条回复从发出请求到说完用了多久;还在写、旧存档里没记的是 null。
+  final Duration? took;
 
   /// 模型的思考(`<think>` 或开头的「思考过程:」,见 `splitThinking`):回复说完时从
   /// [text] 里拆出来,界面上折起来;不发给模型,拆标签也看不到它。
@@ -88,6 +92,7 @@ class ChatMessage {
     LlmCut? cut,
     List<String>? images,
     String? thinking,
+    Duration? took,
 
     /// 为真时去掉 [cut](接着写的时候:这条又在写了)。
     bool uncut = false,
@@ -110,6 +115,7 @@ class ChatMessage {
     cut: uncut ? null : cut ?? this.cut,
     images: images ?? this.images,
     thinking: thinking ?? this.thinking,
+    took: took ?? this.took,
   );
 
   /// 存盘用。给了 [files] 才存附件(另存成文件,这里只记文件名)。
@@ -131,6 +137,7 @@ class ChatMessage {
     'cut': ?cut?.name,
     if (images.isNotEmpty) 'images': images,
     if (thinking.isNotEmpty) 'thinking': thinking,
+    if (took case final t?) 'tookMs': t.inMilliseconds,
     if (otherReplies.isNotEmpty) ...{
       'otherReplies': [
         for (final reply in otherReplies)
@@ -180,6 +187,10 @@ class ChatMessage {
     cut: LlmCut.values.asNameMap()[j['cut']],
     images: List.unmodifiable(((j['images'] as List?) ?? const []).cast()),
     thinking: j['thinking'] as String? ?? '',
+    took: switch (j['tookMs']) {
+      final int ms => Duration(milliseconds: ms),
+      _ => null,
+    },
   );
 }
 
@@ -344,9 +355,13 @@ typedef PromptRecord = ({DateTime time, String text});
 /// 回复说完(或出错停下):把模型的思考从正文里拆到 [ChatMessage.thinking],
 /// 之后拆标签、交成稿、发回给模型的都只是正文。
 ChatMessage settleThinking(ChatMessage m) {
-  final s = splitThinking(m.text);
-  if (s.thinking.isEmpty) return m;
-  return m.copyWith(
+  // 回复到这里就说完了(或停了、出错了):顺手记下用了多久。
+  final timed = m.took == null
+      ? m.copyWith(took: DateTime.now().difference(m.time))
+      : m;
+  final s = splitThinking(timed.text);
+  if (s.thinking.isEmpty) return timed;
+  return timed.copyWith(
     text: s.rest,
     thinking: [m.thinking, s.thinking].where((t) => t.isNotEmpty).join('\n\n'),
   );

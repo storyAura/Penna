@@ -26,10 +26,36 @@ extension StudioComfy on StudioViewModel {
   String get comfyPrompt => layoutOnly ? (layout?.json ?? '') : finalPrompt;
 
   /// 出图的宽高:区域控制那边是画板尺寸,工作台照工作流里写的(null)。
+  /// 设置里定了只出横图或只出竖图时,工作流里的大小方向不对就对调宽高。
   ComfySize? get comfySize => switch (layoutOnly ? layout?.layout : null) {
     final l? => (width: l.width, height: l.height),
-    null => null,
+    null => switch (comfy.workflow) {
+      final wf? => switch (latentSize(wf)) {
+        final size? => orientedSize(
+          config.config.comfy.orientation,
+          size.width,
+          size.height,
+        ),
+        null => null,
+      },
+      null => null,
+    },
   };
+
+  /// 画面方向归谁定,写给 Agent 看;照工作流的大小时不用说。
+  String get _orientationNote => layoutOnly
+      ? ''
+      : switch (config.config.comfy.orientation) {
+          orientationAuto =>
+            '【画面方向】由你定,不用问用户:每张图按内容选横、竖或方'
+                '(单人全身、站姿、高的东西用竖图;风景、多人并排、宽的场面用横图),'
+                '和眼前的 size 方向不合时,在出图的同一条回复里用 '
+                '<$comfySetTag>size=宽x高</$comfySetTag> 换成像素量差不多的另一个方向。'
+                '用户自己说了要横图或竖图就照他说的。',
+          orientationLandscape => '【画面方向】用户定了只出横图:不要把 size 改成竖的或方的。',
+          orientationPortrait => '【画面方向】用户定了只出竖图:不要把 size 改成横的或方的。',
+          _ => '',
+        };
 
   /// 有哪些工作流、各用什么模型;没连上就只说一句。
   String get _comfyFlowNote {
@@ -48,7 +74,8 @@ extension StudioComfy on StudioViewModel {
         '${layoutOnly ? '这里的图像大小跟着画板的画布尺寸走,不写 size;' : 'size 写宽x高(832x1216)或比例(3:4、16:9),'}'
         '还能写 steps、cfg、sampler、scheduler、denoise,视频工作流还能写 duration(秒数,参数里写的是 length 时是帧数);'
         '和换工作流、出图可以写在同一条回复里(先换工作流再改参数)。'
-        '用户没提的参数不要改。';
+        '用户没提的参数不要改。'
+        '${_orientationNote.isEmpty ? '' : '\n$_orientationNote'}';
   }
 
   /// 写给副聊天的系统提示也带上(副聊天同样能出图、换工作流)。

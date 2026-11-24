@@ -94,6 +94,7 @@ extension StudioIdeas on StudioViewModel {
     var found = const <String>[];
     try {
       final reply = await streamWithFailover(
+        sameVendor: cfg.failover == failoverProvider,
         _requests(cfg, _usable(cfg.agentChain), preset, [
           {
             'role': 'system',

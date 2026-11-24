@@ -1,11 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 
 import '../../../data/models/app_config.dart';
+import '../../../data/services/app_paths.dart';
 import 'cli_provider.dart';
 import 'gemini_provider.dart';
 import 'openai_provider.dart';
 import 'responses_provider.dart';
 import '../llm_log.dart';
+import '../thinking.dart';
 import '../web_search.dart';
 import '../../../l10n/l10n.dart';
 
@@ -74,6 +80,44 @@ Future<List<String>> listModels({
   return models.toSet().toList()..sort();
 }
 
+/// 已经存了几份被拦的请求。
+var _dumps = 0;
+const _maxDumps = 5;
+
+/// 请求还没出字就失败时,把发出去的请求原样存一份到「文档\Penna\blocked-*.json」,
+/// 好弄清接口到底拦了什么。最多存 [_maxDumps] 份;里面没有 Key(请求体本来就没有)。
+void _dumpBlocked(String name, LlmRequest request, Object error) {
+  final home = pennaHome;
+  if (home == null || _dumps >= _maxDumps) return;
+  _dumps++;
+  try {
+    final t = DateTime.now();
+    String two(int n) => '$n'.padLeft(2, '0');
+    final stamp =
+        '${t.year}${two(t.month)}${two(t.day)}-'
+        '${two(t.hour)}${two(t.minute)}${two(t.second)}';
+    final file = File(
+      '${home.path}${Platform.pathSeparator}blocked-$stamp.json',
+    );
+    file.writeAsStringSync(
+      const JsonEncoder.withIndent('  ').convert({
+        'time': t.toIso8601String(),
+        'name': name,
+        'protocol': request.protocol,
+        'baseUrl': request.baseUrl,
+        'model': request.model,
+        'replyTool': request.replyTool,
+        'tools': [for (final tool in request.tools) tool.name],
+        'error': _brief(error),
+        'messages': request.messages,
+      }),
+    );
+    debugPrint('被拦的请求存到了 ${file.path}');
+  } on Object {
+    // 存不了就算了,别耽误换下一个模型。
+  }
+}
+
 /// 给人看的错误:认得的说原因,认不出的只报类型(原文可能带着 Key)。
 String _brief(Object error) =>
     error is LlmException ? error.message : '${error.runtimeType}';
@@ -82,12 +126,15 @@ String _brief(Object error) =>
 /// 已经开始回复后再出错,就把错误原样抛出(不能接着另一个模型的话往下说)。
 /// [onTrying] 在开始问某个模型时调用,[onAnswering] 在它开始回复时调用,都告知名字。
 ///
+/// [sameVendor] 为真时同一家剩下的模型也挨个试(用户选了只在这个接口里换模型)。
+///
 /// 取消订阅会立刻停掉正在请求的模型,也不会再去问后面的模型。
 Stream<String> streamWithFailover(
   List<(String name, LlmRequest request)> chain,
   ChatStreamer stream, {
   void Function(String name)? onTrying,
   void Function(String name)? onAnswering,
+  bool sameVendor = false,
 }) {
   StreamSubscription<String>? inner;
   Completer<Object?>? waiting;
@@ -100,12 +147,19 @@ Stream<String> streamWithFailover(
     LlmRequest request,
   ) async {
     var started = false;
+    // 只有思考还不算开始回复:想到一半失败了照样换下一个模型。
+    final seen = StringBuffer();
     final done = waiting = Completer<Object?>();
+    final call = llmLog.startCall(name, request);
     inner = stream(request).listen(
       (delta) {
+        call.output.write(delta);
         if (!started) {
-          started = true;
-          onAnswering?.call(name);
+          seen.write(delta);
+          if (splitThinking('$seen', done: false).rest.trim().isNotEmpty) {
+            started = true;
+            onAnswering?.call(name);
+          }
         }
         out.add(delta);
       },
@@ -119,6 +173,9 @@ Stream<String> streamWithFailover(
     );
     // 先等它跑完再读 started;写成一行会在等待之前就把 started 读走。
     final error = await done.future;
+    llmLog.finishCall(call, error: error == null ? null : _brief(error));
+    // 思考写到一半就断了:替它把标签关上,后面模型的话才不会被算进思考里。
+    if (!started && hasOpenThink('$seen')) out.add('</think>\n\n');
     return (started, error);
   }
 
@@ -131,7 +188,7 @@ Stream<String> streamWithFailover(
     final failed = <String>{};
     for (final (name, request) in chain) {
       if (cancelled) return;
-      if (failed.contains(vendor(request))) continue;
+      if (!sameVendor && failed.contains(vendor(request))) continue;
       onTrying?.call(name);
       final (started, error) = await runOne(name, request);
       if (cancelled) return;
@@ -144,6 +201,8 @@ Stream<String> streamWithFailover(
       }
       failed.add(vendor(request));
       failures.add('$name:${error ?? '没有返回内容'}');
+      // 还没出字就被打回来:留一份请求,好查是哪里被拦的。
+      if (error != null) _dumpBlocked(name, request, error);
       // 后面的模型接上了,这条原因就不会显示在回复上:记进模型日志(左侧栏能看)。
       llmLog.add(
         LlmEventKind.failover,

@@ -603,6 +603,47 @@ AskedOptions splitOptions(String reply) {
   );
 }
 
+/// 给每道题多加一个「让 AI 自己决定」([label] 是这句话):单选加在最后,
+/// 表单里每道题各加一个;多选、挑成稿的段不加;模型自己已经给了这种选项的也不加。
+AskedOptions withAiChoice(AskedOptions asked, String label) {
+  if (asked.options.isEmpty || asked.sections || asked.multi) return asked;
+  bool has(Iterable<String> options) => options.any(
+    (o) => o == label || RegExp('自己决定|自己決定|你决定|你決定|AI 决定|AI 決定').hasMatch(o),
+  );
+  if (!asked.form) {
+    return has(asked.options)
+        ? asked
+        : (
+            prose: asked.prose,
+            options: List.unmodifiable([...asked.options, label]),
+            headings: asked.headings,
+            multi: asked.multi,
+            sections: asked.sections,
+            form: asked.form,
+          );
+  }
+  // 表单:headings 的键是这道题第一个选项的下标,一题一题重排。
+  final starts = asked.headings.keys.toList()..sort();
+  if (starts.isEmpty || starts.first != 0) starts.insert(0, 0);
+  final options = <String>[];
+  final headings = <int, String>{};
+  for (final (i, start) in starts.indexed) {
+    final end = i + 1 < starts.length ? starts[i + 1] : asked.options.length;
+    final group = asked.options.sublist(start, end);
+    if (asked.headings[start] case final h?) headings[options.length] = h;
+    options.addAll(group);
+    if (group.isNotEmpty && !has(group)) options.add(label);
+  }
+  return (
+    prose: asked.prose,
+    options: List.unmodifiable(options),
+    headings: Map.unmodifiable(headings),
+    multi: asked.multi,
+    sections: asked.sections,
+    form: asked.form,
+  );
+}
+
 /// 成稿标签里的文字按行拆成几段。
 List<DraftSection> _draftSections(String inner) {
   final sections = <DraftSection>[];

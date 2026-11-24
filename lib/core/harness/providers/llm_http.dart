@@ -43,7 +43,17 @@ class LlmRequest {
     this.tools = const [],
     this.toolsPrompt = '',
     this.toolsNote = '',
+    this.replyTool = false,
+    this.thoughts = false,
   });
+
+  /// 回复写在工具调用里(Preset 的开关,见 `reply_tool.dart`):请求多带一个 reply 工具,
+  /// `tool_choice` 钉在它上面,模型把要说的话写在参数里。只对 OpenAI 兼容接口有效。
+  final bool replyTool;
+
+  /// 接口单独给的思考(思考摘要、reasoning_content)要不要包成 `<think>` 接进回复里。
+  /// 只有对话要(界面会折起来);润色、反推这类直接拿结果用的不要。
+  final bool thoughts;
 
   /// 外接工具(MCP)。两种给法,见 `llm_router.dart` 的 `streamChat`:
   /// 接口支持原生函数调用时随请求发 [tools]([asNativeTools]),模型发回的函数调用由各接口
@@ -100,6 +110,8 @@ class LlmRequest {
       onCut: onCut,
       serviceTier: serviceTier,
       tools: tools,
+      replyTool: replyTool,
+      thoughts: thoughts,
     );
   }
 
@@ -131,6 +143,31 @@ class LlmRequest {
     tools: tools,
     toolsPrompt: toolsPrompt,
     toolsNote: toolsNote,
+    replyTool: replyTool,
+    thoughts: thoughts,
+  );
+
+  /// 开/关「回复写在工具调用里」的一份(接口不收 tool_choice 时退回普通请求用)。
+  LlmRequest withReplyTool(bool on) => LlmRequest(
+    baseUrl: baseUrl,
+    model: model,
+    apiKey: apiKey,
+    messages: messages,
+    images: images,
+    temperature: temperature,
+    topP: topP,
+    protocol: protocol,
+    token: token,
+    webSearch: webSearch,
+    onUsage: onUsage,
+    effort: effort,
+    onCut: onCut,
+    serviceTier: serviceTier,
+    tools: tools,
+    toolsPrompt: toolsPrompt,
+    toolsNote: toolsNote,
+    replyTool: on,
+    thoughts: thoughts,
   );
 
   /// 只换图片的一份。
@@ -152,6 +189,8 @@ class LlmRequest {
     tools: tools,
     toolsPrompt: toolsPrompt,
     toolsNote: toolsNote,
+    replyTool: replyTool,
+    thoughts: thoughts,
   );
 
   /// 换掉消息(测试连接用);[webSearch] 不给就照旧。
@@ -172,6 +211,8 @@ class LlmRequest {
     effort: effort,
     onCut: onCut,
     serviceTier: serviceTier,
+    replyTool: replyTool,
+    thoughts: thoughts,
   );
 
   /// 接口报了用量时调用;一条回复里可能报好几次,最后一次为准。
@@ -330,6 +371,9 @@ Duration llmStallFor(LlmRequest req) => req.serviceTier == 'flex'
     ? const Duration(minutes: 15)
     : req.effort == 'high' || req.effort == 'xhigh'
     ? const Duration(minutes: 5)
+    // 回复写在工具调用里时,有的接口(Google)写完才一次交出来,中间一个字都没有。
+    : req.replyTool
+    ? const Duration(minutes: 3)
     : llmStallTimeout;
 
 LlmException _statusError(int status, String body) {

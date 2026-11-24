@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -314,9 +316,13 @@ class ChatMessageView extends StatelessWidget {
       if (!laid.complete && laid.json != null) laid.json!,
     ];
     // 透视、灯光标签由程序放到画板上,聊天里只留回复上那一笔记录。
-    final asked = splitOptions(
-      splitLighting(splitPerspective(splitLayers(laid.prose).prose).prose)
-          .prose,
+    // 每道题都多一个「让 AI 自己决定」:不想挑的时候一点就过。
+    final asked = withAiChoice(
+      splitOptions(
+        splitLighting(splitPerspective(splitLayers(laid.prose).prose).prose)
+            .prose,
+      ),
+      tr('让 AI 自己决定'),
     );
     // 挑成稿里的段:直接列当前页的各段。模型自己列出的多选项正好全是段名时也照此显示。
     final labels = {for (final s in draftSections) s.label};
@@ -356,11 +362,16 @@ class ChatMessageView extends StatelessWidget {
         : const <String>[];
     return [
       if (thinking.isNotEmpty) ...[
-        _ToolBlock(
-          icon: Icons.psychology_outlined,
-          summary: streaming && think.rest.isEmpty ? tr('思考中…') : tr('思考过程'),
-          details: [thinking],
-          open: false,
+        // 正在想的时候展开着看它写;想完(开始出正文、或回复结束)收成一行,点开还能看。
+        // 换个 key 让折叠块按新的状态重建。
+        KeyedSubtree(
+          key: ValueKey(streaming && think.rest.isEmpty),
+          child: _ToolBlock(
+            icon: Icons.psychology_outlined,
+            summary: streaming && think.rest.isEmpty ? tr('思考中…') : tr('思考过程'),
+            details: [thinking],
+            open: streaming && think.rest.isEmpty,
+          ),
         ),
         const SizedBox(height: 10),
       ],
@@ -396,7 +407,7 @@ class ChatMessageView extends StatelessWidget {
           drafts.isEmpty &&
           newSkill == null &&
           laid.json == null)
-        const TypingDots()
+        TypingDots(since: m.time)
       else if (drafts.isEmpty &&
           !deletes &&
           newSkill == null &&
@@ -586,6 +597,21 @@ class ChatMessageView extends StatelessWidget {
                     _clock(m.time),
                     style: TextStyle(fontSize: 11, color: PennaColors.slate400),
                   ),
+                  // 这条回复花了多久:正在写时一秒一跳,写完后是记下的总数。
+                  if (!m.fromUser &&
+                      !m.tool &&
+                      (streaming || m.took != null)) ...[
+                    const SizedBox(width: 8),
+                    streaming
+                        ? Elapsed(since: m.time)
+                        : Text(
+                            elapsedLabel(m.took!),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: PennaColors.slate400,
+                            ),
+                          ),
+                  ],
                 ],
               ),
               const SizedBox(height: 6),
@@ -659,7 +685,10 @@ const _bodyStyle = TextStyle(fontSize: 14, height: 1.6);
 
 /// 等第一个字出来时的三个小点:慢慢地依次亮起、浮起再暗下去,安静不抢眼。
 class TypingDots extends StatefulWidget {
-  const TypingDots({super.key});
+  const TypingDots({super.key, this.since});
+
+  /// 从什么时候开始等的;给了就在小点后面写「已等 n 秒」。
+  final DateTime? since;
 
   @override
   State<TypingDots> createState() => _TypingDotsState();
@@ -711,9 +740,61 @@ class _TypingDotsState extends State<TypingDots>
                   );
                 },
               ),
+            if (widget.since case final since?) ...[
+              const SizedBox(width: 6),
+              Elapsed(since: since, waiting: true),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 用了多久的写法:不到一分钟写秒,往上写「1 分 05 秒」。
+String elapsedLabel(Duration d) {
+  final s = d.inSeconds;
+  return s < 60
+      ? tr('{0} 秒', [s])
+      : tr('{0} 分 {1} 秒', [s ~/ 60, '${s % 60}'.padLeft(2, '0')]);
+}
+
+/// 从 [since] 到现在过了多久,一秒一跳。[waiting] 时写成「已等 n 秒」。
+class Elapsed extends StatefulWidget {
+  const Elapsed({super.key, required this.since, this.waiting = false});
+
+  final DateTime since;
+  final bool waiting;
+
+  @override
+  State<Elapsed> createState() => _ElapsedState();
+}
+
+class _ElapsedState extends State<Elapsed> {
+  late final Timer _tick = Timer.periodic(
+    const Duration(seconds: 1),
+    (_) => setState(() {}),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _tick;
+  }
+
+  @override
+  void dispose() {
+    _tick.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = DateTime.now().difference(widget.since);
+    final label = elapsedLabel(d.isNegative ? Duration.zero : d);
+    return Text(
+      widget.waiting ? tr('已等 {0}', [label]) : label,
+      style: TextStyle(fontSize: 11, color: PennaColors.slate400),
     );
   }
 }

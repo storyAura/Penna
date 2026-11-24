@@ -817,7 +817,15 @@ void main() {
           geminiBody(r)['generationConfig'] as Map<String, Object?>;
 
       expect(responsesBody(ask('m', null)), isNot(contains('reasoning')));
-      expect(google(ask('gemini-3', null)), isNot(contains('thinkingConfig')));
+      // 会思考的 Gemini 不指定强度也要它边想边发,不然想得久了一个字节都没有,被当成超时。
+      expect(google(ask('gemini-3', null))['thinkingConfig'], {
+        'includeThoughts': true,
+      });
+      expect(
+        google(ask('gemini-2.0-flash', null)),
+        isNot(contains('thinkingConfig')),
+      );
+      expect(google(ask('gemma-3', null)), isNot(contains('thinkingConfig')));
       expect(openAiEffort(ask('m', null)), isNull);
 
       expect(responsesBody(ask('m', 'high'))['reasoning'], {'effort': 'high'});

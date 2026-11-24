@@ -231,18 +231,17 @@ void main() {
       expect(vm.pages.map((p) => p.series), [0, 0]);
     });
 
-    test('每个系列的页数不限,系列最多 20 个;只剩一页时不能删', () {
+    test('系列和每个系列的页数都不限', () {
       final vm = _studio();
       for (var i = 0; i < 24; i++) {
         expect(vm.addPage(), isNull);
       }
       expect(vm.pages, hasLength(25));
-      for (var i = 1; i < StudioPages.maxSeries; i++) {
+      // 以前系列最多 20 个;现在多少个都行。
+      for (var i = 1; i < 45; i++) {
         expect(vm.addPage(newSeries: true), isNull);
       }
-      expect(vm.seriesCount, StudioPages.maxSeries);
-      expect(vm.addPage(newSeries: true), StudioPages.fullMessage);
-      // 满了也还能往已有的系列里加页。
+      expect(vm.seriesCount, 45);
       expect(vm.addPage(), isNull);
 
       final one = _studio();
@@ -465,19 +464,6 @@ void main() {
       expect(vm.seriesName(vm.series), '我的系列');
       expect(vm.pages.first.name, '玩耍');
     });
-
-    test('系列满了时 Agent 要另起系列:放不上、亮出提醒,删掉一个系列提醒就消失', () {
-      final vm = _studio();
-      for (var i = 1; i < StudioPages.maxSeries; i++) {
-        vm.addPage(newSeries: true);
-      }
-      vm.setText(0, 'a fox');
-      expect(vm.seriesAlert, isNull);
-      expect(vm.placeDraft('x', page: '新系列'), StudioPages.fullMessage);
-      expect(vm.seriesAlert, StudioPages.fullMessage);
-      expect(vm.removeSeries(vm.pages.first.series), isNull);
-      expect(vm.seriesAlert, isNull);
-    });
   });
 
   group('存盘', () {
@@ -657,16 +643,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(vm.pages.map((p) => p.series), [0, 0, 1]);
     expect(_inStudio(find.text('系列 2')), findsOneWidget);
-    // 每个系列的页码都从 1 数。
-    expect(_tab(1), findsNWidgets(2));
+    // 只画眼前这个系列的各页(页码从 1 数),前面写着它是第几个。
+    expect(_tab(1), findsOneWidget);
+    expect(_inStudio(find.text('系列 1')), findsNothing);
+    expect(_inStudio(find.text('2/2')), findsOneWidget);
 
-    await tester.tap(_tab(1).first);
+    // 点箭头翻到上一个系列,停在它的第一页。
+    await tester.tap(_inStudio(find.byTooltip('上一个系列')));
     await tester.pumpAndSettle();
     expect(vm.pageIndex, 0);
     expect(find.text('a fox'), findsWidgets);
+    expect(_tab(2), findsOneWidget);
+    expect(_inStudio(find.text('1/2')), findsOneWidget);
 
-    // 右键页签:空白页直接删,不用确认。
-    await tester.tap(_tab(1).last, buttons: kSecondaryButton);
+    // 点系列的名字:打开全部系列的清单,打字找到再点,换过去。
+    await tester.tap(_inStudio(find.text('系列 1')));
+    // 名字上还认双击(改名),单击要等一小会儿确认不是双击。
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(find.text('全部系列 2'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, '2');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('系列 2'));
+    await tester.pumpAndSettle();
+    expect(vm.pageIndex, 2);
+
+    // 右键页签:把这一页移到别的系列,再移回来单独成页不在这测;这里删掉空白页,不用确认。
+    await tester.tap(_tab(1), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(find.text('移到别的系列…'), findsOneWidget);
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除这一页'));
     await tester.pumpAndSettle();
