@@ -37,27 +37,11 @@ const DraftPage _blankPage = (
 // ponytail: 生成回复期间不能换页、加页、删页、挪页(回复结束时成稿要送到"当前页");
 // 要放开的话得在发消息时记下目标页,而不是到时候再看当前页。
 extension StudioPages on StudioViewModel {
-  /// 页签上一层放几个系列、最多几层;系列最多就是这么多个。每个系列的页数不限。
-  static const perLayer = 5, maxLayers = 4, maxSeries = perLayer * maxLayers;
+  // 系列和每个系列的页数都不限。以前系列最多 20 个,是页签条一层放 5 个、最多 4 层
+  // 这个排法带来的;页签条改成只画眼前的系列以后,这个上限就没有理由了。
 
   /// 现在有几个系列。
   int get seriesCount => {for (final p in _pages) p.series}.length;
-
-  /// 系列满了:不能再另起系列(往已有的系列里加页不受影响)。
-  bool get seriesFull => seriesCount >= maxSeries;
-
-  /// Agent 要另起系列却满了时亮出来的提醒,叫用户清理;不满了就不显示。
-  String? get seriesAlert => seriesFull ? _seriesAlert : null;
-
-  void dismissSeriesAlert() {
-    if (_seriesAlert == null) return;
-    _seriesAlert = null;
-    _changed();
-  }
-
-  /// 系列满了时给用户看的话。
-  static String get fullMessage =>
-      tr('系列满了(最多 {0} 个),删掉一些不用的系列再放', [maxSeries]);
 
   /// 全部的页,按显示顺序;同系列的挨在一起。
   List<DraftPage> get pages => [
@@ -151,7 +135,6 @@ extension StudioPages on StudioViewModel {
           ? _pages.map((p) => p.series).reduce((a, b) => a > b ? a : b) + 1
           : toSeries ?? series,
     );
-    if (at == null) return StudioPages.fullMessage;
     _show(at);
     _log(
       newSeries ? tr('新建「{0}」', [seriesName(series)]) : tr('新增 {0}', [_here]),
@@ -161,10 +144,8 @@ extension StudioPages on StudioViewModel {
     return null;
   }
 
-  /// 在 [inSeries] 这个系列的最后插一张空白页,返回它的下标;它是个新系列而系列满了
-  /// 时返回 null。眼前这一页不变。
-  int? _insertPage(int inSeries) {
-    if (seriesFull && !_pages.any((p) => p.series == inSeries)) return null;
+  /// 在 [inSeries] 这个系列的最后插一张空白页,返回它的下标。眼前这一页不变。
+  int _insertPage(int inSeries) {
     final last = _pages.lastIndexWhere((p) => p.series == inSeries);
     final at = last < 0 ? _pages.length : last + 1;
     final current = pages;
@@ -239,7 +220,6 @@ extension StudioPages on StudioViewModel {
         if (p.series == from && k != i) k,
     ];
     if (mates.isEmpty) return tr('这一页已经自成一个系列了');
-    if (seriesFull) return StudioPages.fullMessage;
     _log(tr('{0} · 第 {1} 页脱离系列', [seriesName(from), pageNumber(i)]));
     final follow = i == _page;
     // 先站到同系列的邻居上,这一页才好拿走。
@@ -351,11 +331,25 @@ extension StudioPages on StudioViewModel {
     _log(
       tr('系列改名:{0} → {1}', [seriesName(s), clean.isEmpty ? tr('默认') : clean]),
     );
+    final old = seriesName(s);
     _seriesNames = Map.unmodifiable({
       for (final e in _seriesNames.entries)
         if (e.key != s) e.key: e.value,
       if (clean.isNotEmpty) s: clean,
     });
+    // 颜色是按名字记的:改了名,挑过的颜色跟着新名字走。
+    final colors = config.config.seriesColors;
+    if (colors[old] case final picked?) {
+      config.update(
+        config.config.copyWith(
+          seriesColors: {
+            for (final e in colors.entries)
+              if (e.key != old) e.key: e.value,
+            seriesName(s): picked,
+          },
+        ),
+      );
+    }
     _changed();
   }
 
@@ -464,7 +458,6 @@ extension StudioPages on StudioViewModel {
     }
     final before = _snapshot();
     final at = _insertPage(series);
-    if (at == null) return (null, StudioPages.fullMessage);
     // 以前没记这一笔:撤掉后面的改名、采纳,新开的空白页还留着。
     _log(tr('新增 {0}', [_pageTitle(at)]), before: before);
     return (at, null);
@@ -490,12 +483,6 @@ extension StudioPages on StudioViewModel {
     final fresh =
         _pages.map((p) => p.series).reduce((a, b) => a > b ? a : b) + 1;
     final at = _insertPage(fresh);
-    if (at == null) {
-      // Agent 要换主题却放不下:亮出提醒,叫用户清理(见 seriesAlert)。
-      _seriesAlert = StudioPages.fullMessage;
-      _changed();
-      return StudioPages.fullMessage;
-    }
     // 不走 _show:它会把对话换成新系列的(空的),这里要的是带着走。
     _pages = List.unmodifiable(pages);
     _page = at;

@@ -356,7 +356,7 @@ extension StudioLayoutPages on StudioViewModel {
           '第 ${pageNumber(i)} 页${p.name.isEmpty ? '' : '「${p.name}」'}:'
               '${_layoutOf(p.blocks.map((b) => b.text).join(), const Layout()).boxes.map((b) => b.name.isEmpty ? b.label : b.name).join('、')}',
     ];
-    return '【分页】区域控制工作台分系列、分页(最多 ${StudioPages.maxSeries} 个系列,每个系列的页数不限),'
+    return '【分页】区域控制工作台分系列、分页(系列和每个系列的页数都不限),'
         '每页是一张独立的布局,【布局画板】摆的是眼前这一页。'
         '【当前系列】「${seriesName(series)}」,共 $seriesLength 页,眼前是第 ${pageNumber(_page)} 页'
         '${_pages[_page].name.isEmpty ? '' : '「${_pages[_page].name}」'}。'

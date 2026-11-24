@@ -257,6 +257,18 @@ class LlmProfile {
 /// Google 接口能选的用量档位(2026-11-13 用户给的《Gemini 用量方案与 Penna 适配》)。
 const geminiTiers = ['standard', 'flex', 'priority'];
 
+/// 全部系列的清单按什么排:最近用过的在前、按名字、页多的在前、建立的先后。
+const seriesSortRecent = 'recent';
+const seriesSortName = 'name';
+const seriesSortPages = 'pages';
+const seriesSortCreated = 'created';
+const seriesSorts = [
+  seriesSortRecent,
+  seriesSortName,
+  seriesSortPages,
+  seriesSortCreated,
+];
+
 /// 失败后怎么换模型:[failoverAll] 依次换到其他启用的接口(一直以来的做法);
 /// [failoverProvider] 只在选中的接口里换它填的其他模型;[failoverOff] 不换,失败就停。
 const failoverAll = 'all';
@@ -463,6 +475,8 @@ class AppConfig {
     this.chatIdeas = true,
     this.failover = failoverAll,
     this.autoArchiveDays = 14,
+    this.seriesColors = const {},
+    this.seriesSort = seriesSortRecent,
     this.blurImages = false,
     this.tutorialSeen = false,
     this.mascot = false,
@@ -559,6 +573,14 @@ class AppConfig {
           ? m['failover'] as String
           : failoverAll,
       autoArchiveDays: ((m['autoArchiveDays'] as int?) ?? 14).clamp(0, 365),
+      seriesColors: Map.unmodifiable({
+        if (m['seriesColors'] case final Map colors)
+          for (final MapEntry(:key, :value) in colors.entries)
+            if (key is String && value is int) key: value,
+      }),
+      seriesSort: seriesSorts.contains(m['seriesSort'])
+          ? m['seriesSort'] as String
+          : seriesSortRecent,
       blurImages: m['blurImages'] as bool? ?? false,
       // 旧设置里没有这一项:用过的人不再自动弹教程。
       tutorialSeen: m['tutorialSeen'] as bool? ?? true,
@@ -747,6 +769,13 @@ class AppConfig {
   /// 系列这么多天没用就自动归档进档案库(固定的不归档);0 是不自动归档。
   final int autoArchiveDays;
 
+  /// 用户给系列挑的颜色:系列的名字 → 第几种(见 `series_tint.dart`)。按名字记,
+  /// 所以归档进档案库、再放回工作台颜色都跟着。没挑过的按名字算一个固定的。
+  final Map<String, int> seriesColors;
+
+  /// 全部系列的清单按什么排,见 [seriesSorts]。
+  final String seriesSort;
+
   /// 出的图、档案库的图先糊着,点一下才看清(只是显示上的处理;2026-11-17 用户要求,默认关)。
   final bool blurImages;
 
@@ -824,6 +853,8 @@ class AppConfig {
     'chatIdeas': chatIdeas,
     'failover': failover,
     'autoArchiveDays': autoArchiveDays,
+    'seriesColors': seriesColors,
+    'seriesSort': seriesSort,
     'blurImages': blurImages,
     'tutorialSeen': tutorialSeen,
     'mascot': mascot,
@@ -921,6 +952,8 @@ class AppConfig {
     bool? chatIdeas,
     String? failover,
     int? autoArchiveDays,
+    Map<String, int>? seriesColors,
+    String? seriesSort,
     bool? blurImages,
     bool? tutorialSeen,
     bool? mascot,
@@ -975,6 +1008,8 @@ class AppConfig {
     chatIdeas: chatIdeas ?? this.chatIdeas,
     failover: failover ?? this.failover,
     autoArchiveDays: autoArchiveDays ?? this.autoArchiveDays,
+    seriesColors: seriesColors ?? this.seriesColors,
+    seriesSort: seriesSort ?? this.seriesSort,
     blurImages: blurImages ?? this.blurImages,
     tutorialSeen: tutorialSeen ?? this.tutorialSeen,
     mascot: mascot ?? this.mascot,

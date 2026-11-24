@@ -364,9 +364,6 @@ class StudioViewModel extends ChangeNotifier {
   /// 用户固定的系列:不自动归档。
   Set<int> _seriesPinned = const {};
 
-  /// Agent 要另起系列却满了时的提醒(见 [StudioPages.seriesAlert])。
-  String? _seriesAlert;
-
   /// 上一次因为「这是另一张画」新开了一页,是在回答哪条消息(见 `draftPageFor`)。
   ChatMessage? _newPageFor;
 

@@ -5,6 +5,8 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard;
 
+import '../../../data/models/app_config.dart';
+import '../../core/series_tint.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../settings/settings_sections.dart';
@@ -13,27 +15,7 @@ import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
 import 'series_manager.dart';
 
-typedef _Tint = ({Color bg, Color border, Color text});
-
-/// 系列外框的配色,按系列出现的先后轮着用。
-List<_Tint> get _seriesTints =>
-    PennaColors.isDark ? _darkSeriesTints : _lightSeriesTints;
-
-const _lightSeriesTints = <_Tint>[
-  (bg: Color(0xFFEEF2FF), border: Color(0xFFC7D2FE), text: Color(0xFF4338CA)),
-  (bg: Color(0xFFF0FDFA), border: Color(0xFF99F6E4), text: Color(0xFF0F766E)),
-  (bg: Color(0xFFFFF1F2), border: Color(0xFFFECDD3), text: Color(0xFFBE123C)),
-  (bg: Color(0xFFF0F9FF), border: Color(0xFFBAE6FD), text: Color(0xFF0369A1)),
-  (bg: Color(0xFFFAF5FF), border: Color(0xFFE9D5FF), text: Color(0xFF7E22CE)),
-];
-
-const _darkSeriesTints = <_Tint>[
-  (bg: Color(0xFF1B1D3A), border: Color(0xFF363A78), text: Color(0xFFA5B4FC)),
-  (bg: Color(0xFF0F2826), border: Color(0xFF1F5A54), text: Color(0xFF5EEAD4)),
-  (bg: Color(0xFF2C171C), border: Color(0xFF64303A), text: Color(0xFFFDA4AF)),
-  (bg: Color(0xFF10233A), border: Color(0xFF1F4A70), text: Color(0xFF7DD3FC)),
-  (bg: Color(0xFF261835), border: Color(0xFF4F3370), text: Color(0xFFD8B4FE)),
-];
+typedef _Tint = SeriesTint;
 
 /// 成稿正文上方的页签:每个系列一个彩色框,框里先是系列的名字,再是它的各页
 /// (页码每个系列都从 1 数)。双击改名,右键更多操作,按住页签拖着调顺序、拖到别的系列;
@@ -229,6 +211,10 @@ class _PageStripState extends State<PageStrip> {
     if (context.mounted) _do(context, vm.removeSeries(series));
   }
 
+  /// 这个系列的颜色:用户挑过就用挑的,没挑过按名字算一个固定的。
+  _Tint _tintOf(int series) =>
+      seriesTintOf(vm.seriesName(series), vm.config.config.seriesColors);
+
   /// 同系列的页挨在一起,顺着数就能分出组来。
   List<List<int>> get _groups {
     final pages = vm.pages;
@@ -251,24 +237,13 @@ class _PageStripState extends State<PageStrip> {
     required String title,
     bool others = false,
   }) async {
-    final pages = vm.pages;
     final picked = await showDialog<int>(
       context: context,
       builder: (_) => _SeriesFinder(
+        vm: vm,
         title: title,
-        items: [
-          for (final (g, group) in groups.indexed)
-            if (!others || pages[group.first].series != vm.series)
-              (
-                first: group.first,
-                name: vm.seriesName(pages[group.first].series),
-                count: group.length,
-                pinned: vm.seriesPinned(pages[group.first].series),
-                current: pages[group.first].series == vm.series,
-                used: vm.seriesUsedAt(pages[group.first].series),
-                tint: _seriesTints[g % _seriesTints.length],
-              ),
-        ],
+        others: others,
+        groups: () => _groups,
       ),
     );
     return picked == null
@@ -322,17 +297,15 @@ class _PageStripState extends State<PageStrip> {
     _autoArchive();
     final pages = vm.pages;
     if (_picked.any((i) => i >= pages.length)) _picked = const {};
-    // 系列满了不能再另起;往已有的系列里加页不限。
-    final full = vm.seriesFull;
     final groups = _groups;
     Widget frameOf(int g, List<int> group) => _SeriesFrame(
-      tint: _seriesTints[g % _seriesTints.length],
+      tint: _tintOf(pages[group.first].series),
       current: true,
       children: [
         _SeriesSwitch(
           name: vm.seriesName(pages[group.first].series),
           pinned: vm.seriesPinned(pages[group.first].series),
-          tint: _seriesTints[g % _seriesTints.length],
+          tint: _tintOf(pages[group.first].series),
           index: g,
           total: groups.length,
           onStep: (by) =>
@@ -346,7 +319,7 @@ class _PageStripState extends State<PageStrip> {
             index: i,
             number: vm.pageNumber(i),
             name: pages[i].name,
-            tint: _seriesTints[g % _seriesTints.length],
+            tint: _tintOf(pages[group.first].series),
             selected: i == vm.pageIndex,
             picked: _picked.contains(i),
             // 拖着的是选中的一页时,选中的几页一起走。
@@ -365,7 +338,7 @@ class _PageStripState extends State<PageStrip> {
         _IconChip(
           icon: Icons.add,
           tip: tr('在这个系列里加一页'),
-          color: _seriesTints[g % _seriesTints.length].text,
+          color: _tintOf(pages[group.first].series).text,
           onTap: () =>
               _do(context, vm.addPage(toSeries: pages[group.first].series)),
         ),
@@ -377,9 +350,7 @@ class _PageStripState extends State<PageStrip> {
         label: tr('新系列'),
         icon: Icons.add,
         borderColor: PennaColors.border,
-        onPressed: full
-            ? null
-            : () => _do(context, vm.addPage(newSeries: true)),
+        onPressed: () => _do(context, vm.addPage(newSeries: true)),
       ),
     );
     return Row(
@@ -416,7 +387,6 @@ class _PageStripState extends State<PageStrip> {
         Expanded(
           // 眼前这个系列展开成一个框(各页都在里面);别的系列收成小标签(名字和页数),
           // 点一下换过去,页也能拖到标签上归进那个系列。系列再多也只是多几个标签。
-          // 系列满了而 Agent 还要另起时,下面亮出提醒叫用户清理。
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -433,8 +403,6 @@ class _PageStripState extends State<PageStrip> {
                   newSeries,
                 ],
               ),
-              if (vm.seriesAlert case final alert?)
-                _SeriesAlert(text: alert, onClose: vm.dismissSeriesAlert),
             ],
           ),
         ),
@@ -443,66 +411,23 @@ class _PageStripState extends State<PageStrip> {
   }
 }
 
-/// 系列满了、Agent 放不下时的提醒:叫用户删掉一些系列。删到不满就自己消失。
-class _SeriesAlert extends StatelessWidget {
-  const _SeriesAlert({required this.text, required this.onClose});
-
-  final String text;
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 6),
-    child: Container(
-      padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
-      decoration: BoxDecoration(
-        color: PennaColors.diffDel,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.warning_amber_rounded,
-            size: 16,
-            color: PennaColors.diffDelText,
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(fontSize: 12, color: PennaColors.diffDelText),
-            ),
-          ),
-          IconButton(
-            tooltip: tr('关闭'),
-            iconSize: 14,
-            visualDensity: VisualDensity.compact,
-            icon: Icon(Icons.close, color: PennaColors.diffDelText),
-            onPressed: onClose,
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-typedef _SeriesItem = ({
-  int first,
-  String name,
-  int count,
-  bool pinned,
-  bool current,
-  int used,
-  _Tint tint,
-});
-
-/// 全部系列的清单:上面一个搜索框,下面一行一个系列(名字、页数、上次用的时间),
-/// 最近用过的排前面。点一行(或搜到只剩一个时按回车)就换过去,返回那个系列第一页的下标。
+/// 全部系列的清单:上面搜索框和排序,下面一行一个系列(颜色、名字、页数、上次用的时间)。
+/// 点一行(或搜到只剩一个时按回车)返回那个系列第一页的下标。每行能换颜色、固定
+/// (固定的不自动归档);改了马上看得到。[others] 为真时不列眼前这个系列(给页挑个去处)。
 class _SeriesFinder extends StatefulWidget {
-  const _SeriesFinder({required this.title, required this.items});
+  const _SeriesFinder({
+    required this.vm,
+    required this.title,
+    required this.groups,
+    this.others = false,
+  });
 
+  final StudioViewModel vm;
   final String title;
-  final List<_SeriesItem> items;
+  final bool others;
+
+  /// 眼下的分组(每组是一个系列的各页下标);每次重画都重新要一遍。
+  final List<List<int>> Function() groups;
 
   @override
   State<_SeriesFinder> createState() => _SeriesFinderState();
@@ -511,122 +436,245 @@ class _SeriesFinder extends StatefulWidget {
 class _SeriesFinderState extends State<_SeriesFinder> {
   var _query = '';
 
-  @override
-  Widget build(BuildContext context) {
-    final q = _query.trim().toLowerCase();
-    final shown = [
-      for (final item in widget.items)
-        if (q.isEmpty || item.name.toLowerCase().contains(q)) item,
-    ]..sort((a, b) => b.used.compareTo(a.used));
-    return AlertDialog(
-      titlePadding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(widget.title, style: const TextStyle(fontSize: 16)),
-          ),
-          IconButton(
-            tooltip: tr('关闭'),
-            iconSize: 18,
-            icon: const Icon(Icons.close),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ],
+  StudioViewModel get vm => widget.vm;
+
+  void _sortBy(String sort) =>
+      vm.config.update(vm.config.config.copyWith(seriesSort: sort));
+
+  void _setColor(String name, int index) => vm.config.update(
+    vm.config.config.copyWith(
+      seriesColors: {...vm.config.config.seriesColors, name: index},
+    ),
+  );
+
+  /// 点颜色圆点:弹出几种颜色挑一个。
+  Future<void> _pickColor(BuildContext context, Offset at, String name) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final picked = await showMenu<int>(
+      context: context,
+      position: RelativeRect.fromRect(
+        at & const Size(1, 1),
+        Offset.zero & overlay.size,
       ),
-      content: SizedBox(
-        width: 460,
-        height: 480,
-        child: Column(
-          children: [
-            TextField(
-              autofocus: true,
-              decoration: InputDecoration(
-                isDense: true,
-                prefixIcon: const Icon(Icons.search, size: 18),
-                hintText: tr('找系列的名字'),
+      items: [
+        PopupMenuItem<int>(
+          enabled: false,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final (i, tint) in seriesTints.indexed)
+                InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => Navigator.pop(context, i),
+                  child: Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: CircleAvatar(radius: 9, backgroundColor: tint.text),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+    if (picked != null) _setColor(name, picked);
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([vm, vm.config]),
+    builder: (context, _) {
+      final cfg = vm.config.config;
+      final pages = vm.pages;
+      final q = _query.trim().toLowerCase();
+      final shown = [
+        for (final (g, group) in widget.groups().indexed)
+          if (!widget.others || pages[group.first].series != vm.series)
+            if (q.isEmpty ||
+                vm
+                    .seriesName(pages[group.first].series)
+                    .toLowerCase()
+                    .contains(q))
+              (
+                order: g,
+                first: group.first,
+                series: pages[group.first].series,
+                name: vm.seriesName(pages[group.first].series),
+                count: group.length,
               ),
-              onChanged: (v) => setState(() => _query = v),
-              onSubmitted: (_) {
-                if (shown.length == 1) {
-                  Navigator.pop(context, shown.single.first);
-                }
-              },
-            ),
-            const SizedBox(height: 8),
+      ];
+      // 固定的排最前,剩下的照选的排法。
+      int rank(
+        ({int count, int first, String name, int order, int series}) a,
+      ) => vm.seriesPinned(a.series) ? 0 : 1;
+      shown.sort((a, b) {
+        final pinned = rank(a).compareTo(rank(b));
+        if (pinned != 0) return pinned;
+        return switch (cfg.seriesSort) {
+          seriesSortName => a.name.compareTo(b.name),
+          seriesSortPages => b.count.compareTo(a.count),
+          seriesSortCreated => a.order.compareTo(b.order),
+          _ => vm.seriesUsedAt(b.series).compareTo(vm.seriesUsedAt(a.series)),
+        };
+      });
+      return AlertDialog(
+        titlePadding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
+        title: Row(
+          children: [
             Expanded(
-              child: shown.isEmpty
-                  ? Center(
-                      child: Text(
-                        tr('没有这个名字的系列'),
-                        style: TextStyle(color: PennaColors.slate500),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: shown.length,
-                      itemBuilder: (context, i) {
-                        final item = shown[i];
-                        return InkWell(
-                          onTap: () => Navigator.pop(context, item.first),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 7,
-                            ),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 5,
-                                  backgroundColor: item.tint.text,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    item.name,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: item.current
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                                if (item.pinned) ...[
-                                  Icon(
-                                    Icons.push_pin,
-                                    size: 12,
-                                    color: PennaColors.slate400,
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                                Text(
-                                  [
-                                    tr('{0} 页', [item.count]),
-                                    item.current
-                                        ? tr('眼前这个')
-                                        : shortTime(
-                                            DateTime.fromMillisecondsSinceEpoch(
-                                              item.used,
-                                            ),
-                                          ),
-                                  ].join(' · '),
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    color: PennaColors.slate500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+              child: Text(widget.title, style: const TextStyle(fontSize: 16)),
+            ),
+            IconButton(
+              tooltip: tr('关闭'),
+              iconSize: 18,
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(context),
             ),
           ],
         ),
-      ),
-    );
-  }
+        content: SizedBox(
+          width: 520,
+          height: 520,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                autofocus: true,
+                decoration: InputDecoration(
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  hintText: tr('找系列的名字'),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+                onSubmitted: (_) {
+                  if (shown.length == 1) {
+                    Navigator.pop(context, shown.single.first);
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final (sort, label) in [
+                    (seriesSortRecent, tr('最近用过')),
+                    (seriesSortName, tr('按名字')),
+                    (seriesSortPages, tr('页数多的')),
+                    (seriesSortCreated, tr('建立先后')),
+                  ])
+                    PennaChip(
+                      label: label,
+                      selected: cfg.seriesSort == sort,
+                      onTap: () => _sortBy(sort),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Expanded(
+                child: shown.isEmpty
+                    ? Center(
+                        child: Text(
+                          tr('没有这个名字的系列'),
+                          style: TextStyle(color: PennaColors.slate500),
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: shown.length,
+                        itemBuilder: (context, i) {
+                          final item = shown[i];
+                          final current = item.series == vm.series;
+                          final pinned = vm.seriesPinned(item.series);
+                          final tint = seriesTintOf(
+                            item.name,
+                            cfg.seriesColors,
+                          );
+                          return InkWell(
+                            onTap: () => Navigator.pop(context, item.first),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                              child: Row(
+                                children: [
+                                  Tooltip(
+                                    message: tr('换颜色'),
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTapDown: (d) => _pickColor(
+                                        context,
+                                        d.globalPosition,
+                                        item.name,
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(8),
+                                        child: CircleAvatar(
+                                          radius: 6,
+                                          backgroundColor: tint.text,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      item.name,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: current
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        color: current ? tint.text : null,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    [
+                                      tr('{0} 页', [item.count]),
+                                      current
+                                          ? tr('眼前这个')
+                                          : shortTime(
+                                              DateTime.fromMillisecondsSinceEpoch(
+                                                vm.seriesUsedAt(item.series),
+                                              ),
+                                            ),
+                                    ].join(' · '),
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      color: PennaColors.slate500,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: pinned
+                                        ? tr('取消固定')
+                                        : tr('固定(不自动归档)'),
+                                    iconSize: 15,
+                                    visualDensity: VisualDensity.compact,
+                                    color: pinned
+                                        ? tint.text
+                                        : PennaColors.slate400,
+                                    icon: Icon(
+                                      pinned
+                                          ? Icons.push_pin
+                                          : Icons.push_pin_outlined,
+                                    ),
+                                    onPressed: () =>
+                                        vm.pinSeries(item.series, on: !pinned),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
 
 /// 把同一个系列的页框在一起的彩色框。
@@ -720,7 +768,9 @@ class _SeriesSwitch extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // 两个箭头都放在最前面:位置固定,名字长短不同也不会把它们挤来挤去。
           if (many) _arrow(Icons.chevron_left, tr('上一个系列'), total - 1),
+          if (many) _arrow(Icons.chevron_right, tr('下一个系列'), 1),
           Tooltip(
             message: many ? '${tr('点一下看全部系列')} · $_gestureTip' : _gestureTip,
             waitDuration: _tipWait,
@@ -770,7 +820,6 @@ class _SeriesSwitch extends StatelessWidget {
               ),
             ),
           ),
-          if (many) _arrow(Icons.chevron_right, tr('下一个系列'), 1),
           const SizedBox(width: 2),
         ],
       ),
