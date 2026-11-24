@@ -282,6 +282,9 @@ extension StudioPages on StudioViewModel {
     _seriesPinned = Set.unmodifiable({..._seriesPinned}..remove(s));
   }
 
+  /// 这个系列最后一次用到的时刻(毫秒时间戳);没记过算 0。
+  int seriesUsedAt(int s) => _seriesUsed[s] ?? 0;
+
   /// 这个系列是不是固定的(固定的不自动归档)。
   bool seriesPinned(int s) => _seriesPinned.contains(s);
 

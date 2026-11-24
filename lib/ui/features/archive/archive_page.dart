@@ -150,6 +150,70 @@ class _ArchivePageState extends State<ArchivePage> {
     ),
   );
 
+  /// 精简列表里收起来的分类(只剩标题那一行)。
+  Set<String> _folded = const {};
+
+  void _fold(String category) => setState(
+    () => _folded = Set.unmodifiable(
+      _folded.contains(category)
+          ? ({..._folded}..remove(category))
+          : {..._folded, category},
+    ),
+  );
+
+  /// 精简列表:同一个分类的收在一张卡里,标题写分类名和条数,下面一条一行。
+  /// 同一组的提示词常常开头一样,每行只写它和别的不一样的那一截。
+  List<Widget> _groups(List<ArchiveEntry> shown) {
+    final byCategory = <String, List<ArchiveEntry>>{};
+    for (final e in shown) {
+      byCategory.putIfAbsent(e.category, () => []).add(e);
+    }
+    return [
+      for (final MapEntry(key: category, value: entries)
+          in byCategory.entries) ...[
+        PennaCard(
+          padding: EdgeInsets.zero,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _GroupHeader(
+                category: category,
+                count: entries.length,
+                latest: entries
+                    .map((e) => e.time)
+                    .reduce((a, b) => a.isAfter(b) ? a : b),
+                folded: _folded.contains(category),
+                onTap: () => _fold(category),
+              ),
+              if (!_folded.contains(category)) ..._rows(entries),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    ];
+  }
+
+  List<Widget> _rows(List<ArchiveEntry> entries) {
+    String previewOf(ArchiveEntry e) => _texts(e, (
+      export: widget.board.exportJson,
+      onRestore: () {},
+      onDelete: () {},
+      onUpload: () {},
+    )).preview.replaceAll(RegExp(r'\s+'), ' ');
+    final previews = [for (final e in entries) previewOf(e)];
+    final skip = commonLead(previews);
+    return [
+      for (final (i, entry) in entries.indexed) ...[
+        Divider(height: 1, color: PennaColors.border),
+        _item(
+          entry,
+          row: skip == 0 ? previews[i] : '…${previews[i].substring(skip)}',
+        ),
+      ],
+    ];
+  }
+
   void _restore(ArchiveEntry entry) {
     if (entry.kind == archiveManga) {
       final project = _mangaOf(entry);
@@ -188,7 +252,7 @@ class _ArchivePageState extends State<ArchivePage> {
     }
   }
 
-  Widget _item(ArchiveEntry entry) {
+  Widget _item(ArchiveEntry entry, {String? row}) {
     final actions = (
       export: widget.board.exportJson,
       onRestore: () => _restore(entry),
@@ -202,11 +266,19 @@ class _ArchivePageState extends State<ArchivePage> {
       onImage: (path) => _setImage(entry, readPreview(context, path)),
       child: _grid
           ? _EntryTile(entry: entry, actions: actions)
+          // 精简列表里的一行;点开了就换成带预览图和正文的那一张。
+          : row != null && !_opened.contains(entry.id)
+          ? _EntryRow(
+              entry: entry,
+              actions: actions,
+              text: row,
+              onToggle: () => _toggle(entry.id),
+            )
           : _EntryCard(
               entry: entry,
               actions: actions,
-              detail: _detail || _opened.contains(entry.id),
-              onToggle: _detail ? null : () => _toggle(entry.id),
+              onToggle: row == null ? null : () => _toggle(entry.id),
+              flat: row != null,
             ),
     );
   }
@@ -353,11 +425,13 @@ class _ArchivePageState extends State<ArchivePage> {
                         const SizedBox(height: 10),
                         if (_grid)
                           _gridOf(shown)
-                        else
+                        else if (_detail)
                           for (final entry in shown) ...[
                             _item(entry),
-                            SizedBox(height: _detail ? 10 : 4),
-                          ],
+                            const SizedBox(height: 10),
+                          ]
+                        else
+                          ..._groups(shown),
                       ],
                     ),
                   ),
@@ -466,145 +540,287 @@ Widget _iconButton(IconData icon, String tip, VoidCallback onPressed) =>
     );
 
 /// 列表里的一条:有预览图时图在左边,没有就不占地方。
-/// [detail] 关着时只有名字那一行(一条占一行),[onToggle] 给了就能点名字展开、收起。
+/// [onToggle] 给了就能点名字收回成一行;[flat] 是嵌在分组卡里,不画自己的边框。
 class _EntryCard extends StatelessWidget {
   const _EntryCard({
     required this.entry,
     required this.actions,
-    this.detail = true,
     this.onToggle,
+    this.flat = false,
   });
 
   final ArchiveEntry entry;
   final _Actions actions;
-  final bool detail;
   final VoidCallback? onToggle;
+  final bool flat;
 
   @override
   Widget build(BuildContext context) {
     final (:clean, :preview) = _texts(entry, actions);
-    return PennaCard(
-      padding: EdgeInsets.fromLTRB(12, detail ? 8 : 2, 8, detail ? 12 : 2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (detail && entry.image.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: PreviewImage(
-                path: entry.image,
-                width: 96,
-                height: 128,
-                veil: true,
-              ),
+    final body = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (entry.image.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: PreviewImage(
+              path: entry.image,
+              width: 96,
+              height: 128,
+              veil: true,
             ),
-            const SizedBox(width: 12),
-          ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
+          ),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  if (!flat) ...[
                     Flexible(flex: 0, child: _CategoryPill(entry.category)),
                     const SizedBox(width: 8),
-                    Expanded(
-                      child: InkWell(
-                        onTap: onToggle,
-                        child: Row(
-                          children: [
-                            if (onToggle != null)
-                              Icon(
-                                detail
-                                    ? Icons.expand_more
-                                    : Icons.chevron_right,
-                                size: 16,
-                                color: PennaColors.slate400,
-                              ),
-                            Flexible(
-                              child: Text(
-                                entry.title.isEmpty ? tr('未命名') : entry.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: entry.title.isEmpty
-                                      ? PennaColors.slate400
-                                      : PennaColors.text,
-                                ),
-                              ),
-                            ),
-                            // 收着时名字后面带一句正文,不点开也认得出是哪条。
-                            if (!detail) ...[
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  preview.replaceAll('\n', ' '),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    color: PennaColors.slate400,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                    Text(
-                      shortTime(entry.time),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: PennaColors.slate400,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    _iconButton(
-                      Icons.add_photo_alternate_outlined,
-                      tr('上传预览图'),
-                      actions.onUpload,
-                    ),
-                    PennaButton(
-                      label: _restoreLabel(entry),
-                      icon: Icons.keyboard_double_arrow_up,
-                      onPressed: actions.onRestore,
-                    ),
-                    PennaButton(
-                      label: entry.kind == archiveLayout
-                          ? tr('复制 JSON')
-                          : tr('复制'),
-                      icon: Icons.content_copy,
-                      onPressed: () => copyWithToast(context, clean, tr('已复制')),
-                    ),
-                    IconButton(
-                      tooltip: tr('删除'),
-                      iconSize: 15,
-                      visualDensity: VisualDensity.compact,
-                      color: PennaColors.slate400,
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: actions.onDelete,
-                    ),
                   ],
-                ),
-                if (detail) ...[
-                  const SizedBox(height: 6),
+                  Expanded(
+                    child: InkWell(
+                      onTap: onToggle,
+                      child: Row(
+                        children: [
+                          if (onToggle != null)
+                            Icon(
+                              Icons.expand_more,
+                              size: 16,
+                              color: PennaColors.slate400,
+                            ),
+                          Flexible(child: _EntryTitle(entry)),
+                        ],
+                      ),
+                    ),
+                  ),
                   Text(
-                    preview,
-                    maxLines: 5,
-                    overflow: TextOverflow.ellipsis,
-                    style: monoStyle.copyWith(fontSize: 11.5),
+                    shortTime(entry.time),
+                    style: TextStyle(fontSize: 11, color: PennaColors.slate400),
+                  ),
+                  const SizedBox(width: 4),
+                  _iconButton(
+                    Icons.add_photo_alternate_outlined,
+                    tr('上传预览图'),
+                    actions.onUpload,
+                  ),
+                  PennaButton(
+                    label: _restoreLabel(entry),
+                    icon: Icons.keyboard_double_arrow_up,
+                    onPressed: actions.onRestore,
+                  ),
+                  PennaButton(
+                    label: entry.kind == archiveLayout
+                        ? tr('复制 JSON')
+                        : tr('复制'),
+                    icon: Icons.content_copy,
+                    onPressed: () => copyWithToast(context, clean, tr('已复制')),
+                  ),
+                  IconButton(
+                    tooltip: tr('删除'),
+                    iconSize: 15,
+                    visualDensity: VisualDensity.compact,
+                    color: PennaColors.slate400,
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: actions.onDelete,
                   ),
                 ],
-              ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                preview,
+                maxLines: 5,
+                overflow: TextOverflow.ellipsis,
+                style: monoStyle.copyWith(fontSize: 11.5),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    const padding = EdgeInsets.fromLTRB(12, 8, 8, 12);
+    return flat
+        ? Padding(padding: padding, child: body)
+        : PennaCard(padding: padding, child: body);
+  }
+}
+
+/// 一条存档的名字;没起名的写「未命名」。
+class _EntryTitle extends StatelessWidget {
+  const _EntryTitle(this.entry);
+
+  final ArchiveEntry entry;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    entry.title.isEmpty ? tr('未命名') : entry.title,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: TextStyle(
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+      color: entry.title.isEmpty ? PennaColors.slate400 : PennaColors.text,
+    ),
+  );
+}
+
+/// 精简列表里一个分类的标题:点一下收起、展开这一组。
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({
+    required this.category,
+    required this.count,
+    required this.latest,
+    required this.folded,
+    required this.onTap,
+  });
+
+  final String category;
+  final int count;
+  final DateTime latest;
+  final bool folded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+      child: Row(
+        children: [
+          Tooltip(
+            message: folded ? tr('展开') : tr('收起'),
+            child: Icon(
+              folded ? Icons.chevron_right : Icons.expand_more,
+              size: 18,
+              color: PennaColors.slate500,
             ),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              tr(category),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            tr('{0} 条', [count]),
+            style: TextStyle(fontSize: 11.5, color: PennaColors.slate500),
+          ),
+          const Spacer(),
+          Text(
+            shortTime(latest),
+            style: TextStyle(fontSize: 11, color: PennaColors.slate400),
           ),
         ],
       ),
-    );
+    ),
+  );
+}
+
+/// 精简列表里的一条:一行。名字、它和同组别的条目不一样的那截正文、几个小按钮。
+/// 点名字那一截展开成带预览图和全文的样子。
+class _EntryRow extends StatelessWidget {
+  const _EntryRow({
+    required this.entry,
+    required this.actions,
+    required this.text,
+    required this.onToggle,
+  });
+
+  final ArchiveEntry entry;
+  final _Actions actions;
+  final String text;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(left: 30, right: 6),
+    child: Row(
+      children: [
+        Expanded(
+          child: InkWell(
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              child: Row(
+                children: [
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 260),
+                    child: _EntryTitle(entry),
+                  ),
+                  if (entry.image.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.image_outlined,
+                      size: 13,
+                      color: PennaColors.slate400,
+                    ),
+                  ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: PennaColors.slate500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // 最常用的一个留着字,别的几个只画图标(悬停看名字)。
+        PennaButton(
+          label: _restoreLabel(entry),
+          icon: Icons.keyboard_double_arrow_up,
+          onPressed: actions.onRestore,
+        ),
+        _iconButton(
+          Icons.content_copy,
+          entry.kind == archiveLayout ? tr('复制 JSON') : tr('复制'),
+          () => copyWithToast(context, _texts(entry, actions).clean, tr('已复制')),
+        ),
+        _iconButton(
+          Icons.add_photo_alternate_outlined,
+          tr('上传预览图'),
+          actions.onUpload,
+        ),
+        _iconButton(Icons.delete_outline, tr('删除'), actions.onDelete),
+      ],
+    ),
+  );
+}
+
+/// 几段文字开头一样的那一截有多长:只有一段、或一样的不到 [least] 个字时是 0
+/// (不值得省)。停在空格或标点上,不把一个词从中间切开。
+int commonLead(List<String> texts, {int least = 16}) {
+  if (texts.length < 2) return 0;
+  var n = texts.map((t) => t.length).reduce((a, b) => a < b ? a : b);
+  for (final t in texts.skip(1)) {
+    var i = 0;
+    while (i < n && t.codeUnitAt(i) == texts.first.codeUnitAt(i)) {
+      i++;
+    }
+    n = i;
   }
+  final lead = texts.first.substring(0, n);
+  final cut = lead.lastIndexOf(RegExp(r'[\s,,。.;;、]'));
+  final at = cut < 0 ? 0 : cut + 1;
+  return at < least ? 0 : at;
 }
 
 /// 大缩略图里的一格:上面是预览图(没有就是几行文字),下面是名字和几个小按钮。
