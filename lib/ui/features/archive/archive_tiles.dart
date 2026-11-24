@@ -104,12 +104,20 @@ class _SeriesRow extends StatelessWidget {
     required this.onTap,
     this.time,
     this.tint,
+    this.picked = false,
+    this.onMenu,
   });
 
   final String name;
   final int count;
   final bool selected;
   final VoidCallback onTap;
+
+  /// 按住 Ctrl / Shift 多选中了(描一圈主题色)。
+  final bool picked;
+
+  /// 右键:在窗口的这个位置弹菜单。
+  final ValueChanged<Offset>? onMenu;
   final DateTime? time;
 
   /// 系列的颜色;「全部」那一行没有。
@@ -119,13 +127,21 @@ class _SeriesRow extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 2),
     child: Material(
-      color: selected
+      color: selected || picked
           ? (tint?.bg ?? PennaColors.primaryBg)
           : Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: picked
+            ? BorderSide(color: PennaColors.primary, width: 1.5)
+            : BorderSide.none,
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: onTap,
+        onSecondaryTapDown: onMenu == null
+            ? null
+            : (d) => onMenu!(d.globalPosition),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(

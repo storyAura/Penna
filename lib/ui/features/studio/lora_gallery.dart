@@ -176,7 +176,7 @@ class _LoraGalleryState extends State<LoraGallery> {
               child: PennaButton(
                 label: _loading
                     ? tr('加载中…')
-                    : tr('加载更多（{0}/{1}）', [_entries.length, _total]),
+                    : tr('加载更多 {0}/{1}', [_entries.length, _total]),
                 foreground: PennaColors.primary,
                 onPressed: _loading ? null : () => _load(_page + 1),
               ),

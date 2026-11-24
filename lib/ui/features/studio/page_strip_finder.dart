@@ -134,7 +134,7 @@ class _SeriesFinderState extends State<_SeriesFinder> {
                 decoration: InputDecoration(
                   isDense: true,
                   prefixIcon: const Icon(Icons.search, size: 18),
-                  hintText: tr('找系列的名字'),
+                  hintText: tr('搜索系列'),
                   hintStyle: TextStyle(
                     fontSize: 13,
                     color: PennaColors.slate400,
@@ -227,7 +227,7 @@ class _SeriesFinderState extends State<_SeriesFinder> {
                                     [
                                       tr('{0} 页', [item.count]),
                                       current
-                                          ? tr('眼前这个')
+                                          ? tr('当前')
                                           : shortTime(
                                               DateTime.fromMillisecondsSinceEpoch(
                                                 vm.seriesUsedAt(item.series),
@@ -240,9 +240,7 @@ class _SeriesFinderState extends State<_SeriesFinder> {
                                     ),
                                   ),
                                   IconButton(
-                                    tooltip: pinned
-                                        ? tr('取消固定')
-                                        : tr('固定(不自动归档)'),
+                                    tooltip: pinned ? tr('取消固定') : tr('固定'),
                                     iconSize: 15,
                                     visualDensity: VisualDensity.compact,
                                     color: pinned

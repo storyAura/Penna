@@ -2,9 +2,10 @@
 #   pwsh tool/win_probe.ps1 -shot a.png                 # screenshot
 #   pwsh tool/win_probe.ps1 -x 38 -y 1082 -shot b.png   # click at window coords, then screenshot
 #   pwsh tool/win_probe.ps1 -x 600 -y 500 -wheel        # scroll down there
+#   pwsh tool/win_probe.ps1 -x 200 -y 300 -right        # right-click; add -ctrl to hold Ctrl while clicking
 # Coordinates are physical pixels from the window's top-left corner (same as the screenshot).
 # The first click after bringing the window to front may only focus it; click again if nothing happened.
-param([int]$procId = 0, [string]$shot, [int]$x = -1, [int]$y = -1, [switch]$wheel)
+param([int]$procId = 0, [string]$shot, [int]$x = -1, [int]$y = -1, [switch]$wheel, [switch]$right, [switch]$ctrl)
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
 using System; using System.Runtime.InteropServices;
@@ -15,6 +16,7 @@ public class PennaWin {
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(int f, int x, int y, int d, int e);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, int f, int e);
 }
 "@
 [PennaWin]::SetProcessDPIAware() | Out-Null
@@ -27,7 +29,12 @@ if ($x -ge 0) {
   [PennaWin]::SetCursorPos($r.L + $x, $r.T + $y) | Out-Null
   Start-Sleep -Milliseconds 100
   if ($wheel) { [PennaWin]::mouse_event(0x0800, 0, 0, -600, 0) }
-  else { [PennaWin]::mouse_event(2, 0, 0, 0, 0); [PennaWin]::mouse_event(4, 0, 0, 0, 0) }
+  else {
+    if ($ctrl) { [PennaWin]::keybd_event(0x11, 0, 0, 0) }
+    if ($right) { [PennaWin]::mouse_event(8, 0, 0, 0, 0); [PennaWin]::mouse_event(16, 0, 0, 0, 0) }
+    else { [PennaWin]::mouse_event(2, 0, 0, 0, 0); [PennaWin]::mouse_event(4, 0, 0, 0, 0) }
+    if ($ctrl) { [PennaWin]::keybd_event(0x11, 0, 2, 0) }
+  }
   Start-Sleep -Milliseconds 900
 }
 if ($shot) {

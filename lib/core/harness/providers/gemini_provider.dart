@@ -457,7 +457,7 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     } on LlmException catch (e) {
       // 接口不收 toolConfig、或者不认放宽的安全设定:退回普通请求,别让整条回复失败。
       if (!yielded && (e.status == 400 || e.status == 422) && req.replyTool) {
-        llmLog.add(LlmEventKind.retry, req.model, tr('接口不支持把回复写在工具调用里,改用普通回复'));
+        llmLog.add(LlmEventKind.retry, req.model, tr('接口不支持工具调用,已改用普通回复'));
         yield* _chat(client, req.withReplyTool(false));
         return;
       }
@@ -484,7 +484,7 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     llmLog.add(
       LlmEventKind.replyTool,
       req.model,
-      replyUsed ? tr('回覆走工具呼叫') : tr('模型没照工具呼叫,回覆在正文'),
+      replyUsed ? tr('回复来自工具调用') : tr('模型没用工具,回复在正文'),
     );
   }
   // 实际档位和选的不一样(比如 Priority 被降成 Standard,按 Standard 计费):记一笔。

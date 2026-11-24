@@ -104,6 +104,8 @@ Future<void> main() async {
     saveFile: File('${home.path}${sep}workspace.json'),
   );
   await vm.load();
+  // 第一次启动时把随 Penna 带的标准工作流加进列表。
+  await vm.comfy.addStandardFlows();
   // 布局页右边那场对话:和工作台的对话分开,存在 layout_chat.json。
   final layoutChat = StudioViewModel(
     config: config,

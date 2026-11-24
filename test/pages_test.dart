@@ -500,8 +500,8 @@ void main() {
     });
   });
 
-  testWidgets('保存系列:已经存过的页不再存,只存新的', (tester) async {
-    tester.view.physicalSize = const Size(1440, 900);
+  testWidgets('保存系列:一字不差存过的不再存;改过再存,同名的系列接上数字', (tester) async {
+    tester.view.physicalSize = const Size(1800, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final vm = _studio(blocks: const [(text: 'a fox', pinned: false)]);
@@ -527,14 +527,22 @@ void main() {
     await tester.tap(find.text('保存系列'));
     await tester.pump();
     expect(archive.entries, hasLength(2));
-    expect(find.text('这个系列的页都已经存过了'), findsOneWidget);
+    expect(find.text('这个系列已经存过了'), findsOneWidget);
 
     vm.addPage();
     vm.setText(0, 'an owl');
     await tester.pump();
     await tester.tap(find.text('保存系列'));
     await tester.pump();
-    expect(archive.entries.map((e) => e.text), ['an owl', 'a fox', 'a crow']);
+    final name = vm.seriesName(vm.series);
+    expect(archive.categoriesOf(archivePrompt), ['$name 2', name]);
+    expect(
+      [
+        for (final e in archive.entries)
+          if (e.category == '$name 2') e.text,
+      ],
+      ['a fox', 'a crow', 'an owl'],
+    );
   });
 
   testWidgets('页签:按住 Ctrl 多选,右键批量改名', (tester) async {
@@ -617,7 +625,7 @@ void main() {
   });
 
   testWidgets('页签:加一页、另起系列、点页码换页', (tester) async {
-    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.physicalSize = const Size(1800, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final vm = _studio(blocks: const [(text: 'a fox', pinned: false)]);

@@ -43,11 +43,7 @@ void main() {
       '{"73":{"class_type":"Text Multiline","inputs":{"value":"{{prompt}}"}},'
       '"77":{"class_type":"Text Multiline","inputs":{"text":"{{lora}}"}}}',
     );
-    final out = prepareWorkflow(
-      wf,
-      'a girl',
-      loraSyntax: '<lora:a:0.5>',
-    );
+    final out = prepareWorkflow(wf, 'a girl', loraSyntax: '<lora:a:0.5>');
     final text = ((out['77']! as Map)['inputs']! as Map)['text'];
     expect(text, '<lora:a:0.5>');
     final prompt = ((out['73']! as Map)['inputs']! as Map)['value'];

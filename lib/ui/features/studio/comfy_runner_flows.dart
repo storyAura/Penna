@@ -130,6 +130,50 @@ extension ComfyFlows on ComfyRunner {
     _changed();
   }
 
+  /// 随 Penna 带的标准工作流,第一次启动时都加进列表(2026-11-25 用户要求默认就有,
+  /// 不要的自己删;删了不再加回来)。列表原来是空的就换到第一个。
+  Future<void> addStandardFlows() async {
+    if (_settings.standardSeen) return;
+    final added = <ComfyFlow>[];
+    for (final (i, (name, asset)) in standardWorkflows.indexed) {
+      if (_settings.flows.any((f) => f.name == name)) continue;
+      added.add((
+        id: 'standard-$i-${DateTime.now().microsecondsSinceEpoch}',
+        name: name,
+        text: await rootBundle.loadString(asset),
+      ));
+    }
+    var next = _settings;
+    final empty = next.flows.isEmpty;
+    for (final f in added) {
+      next = next.putFlow(f);
+    }
+    if (empty && added.isNotEmpty) next = next.copyWith(flowId: added.first.id);
+    _put(next.copyWith(standardSeen: true));
+    _changed();
+  }
+
+  /// 连上 [url] 那台时,眼前的工作流它的 workflows 文件夹里没有同名的,就存一份到
+  /// workflows/Penna/(2026-11-25 用户要求换 ComfyUI 时看看有没有,没有就传一个上去)。
+  /// 内置文生图不存;读不了、存不了就算了,下次连上再试。
+  Future<void> _syncFlow(ComfyClient client, String url) async {
+    final flow = _settings.flow;
+    if (flow == null || !_synced.add('$url|${flow.id}')) return;
+    final name = '${flow.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}.json';
+    try {
+      final have = await client.savedWorkflows();
+      if (have.any((f) => f.split('/').last == name)) return;
+      await client.saveWorkflow('Penna/$name', flow.text);
+    } on Object catch (e) {
+      _synced.remove('$url|${flow.id}');
+      debugPrint(
+        tr('工作流没存到 ComfyUI:{0}', [
+          e is ComfyException ? e.message : e.runtimeType,
+        ]),
+      );
+    }
+  }
+
   /// 换工作流。
   void selectFlow(String id) {
     if (id == flowId) return;

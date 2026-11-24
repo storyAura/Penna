@@ -13,6 +13,20 @@ import 'package:penna/ui/shell.dart';
 import 'fixtures.dart';
 
 void main() {
+  test('档案库的系列能改名、合并、整个删掉,别的分区不动', () {
+    final archive = ArchiveStore()
+      ..add(text: 'a', category: 'A')
+      ..add(text: 'b', category: 'B')
+      ..add(text: 'c', category: 'C')
+      ..add(text: 'x', category: 'A', kind: archiveLayout);
+    archive.recategorize(archivePrompt, {'A', 'B'}, 'AB');
+    expect(archive.categoriesOf(archivePrompt).toSet(), {'AB', 'C'});
+    expect(archive.countsOf(archivePrompt)['AB'], 2);
+    expect(archive.categoriesOf(archiveLayout), ['A']);
+    archive.removeCategories(archivePrompt, {'AB'});
+    expect(archive.entries.map((e) => e.text), ['x', 'c']);
+  });
+
   group('档案库', () {
     test('拖着换顺序;换预览图存成文件,存盘读回还在,删条目时图跟着删', () async {
       final dir = Directory.systemTemp.createTempSync('penna_archive');

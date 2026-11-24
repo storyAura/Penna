@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:file_selector_platform_interface/file_selector_platform_interface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:penna/ui/features/settings/settings_piercing.dart';
 import 'package:penna/core/harness/preset_import/sillytavern_preset.dart';
 import 'package:penna/data/services/config_service.dart';
 import 'package:penna/ui/core/theme.dart';
@@ -137,10 +138,10 @@ class _PickFile extends FileSelectorPlatform {
 
 Future<void> _importFrom(WidgetTester tester, File file) async {
   FileSelectorPlatform.instance = _PickFile(file.path);
-  await tester.ensureVisible(find.text('导入'));
+  await tester.ensureVisible(find.text('导入 SillyTavern 预设'));
   await tester.pump();
   await tester.runAsync(() async {
-    await tester.tap(find.text('导入'));
+    await tester.tap(find.text('导入 SillyTavern 预设'));
     await Future<void>.delayed(const Duration(milliseconds: 200));
   });
   await tester.pump();
@@ -163,7 +164,7 @@ File _temp(String name, Object json) =>
       ..writeAsStringSync(jsonEncode(json));
 
 void widgetTests() {
-  testWidgets('穿甲弹点「导入」选 SillyTavern 预设:条目填进提示词,Preset 一个不多', (tester) async {
+  testWidgets('穿甲弹点「导入 SillyTavern 预设」:存成以文件名命名的一段并换过去,能预览', (tester) async {
     final service = tempConfig();
     final before = service.config.presets.length;
     final file = _temp('故事主持.json', {
@@ -178,8 +179,46 @@ void widgetTests() {
 
     expect(find.text('你是故事主持人\n\n<<user>>\n\n可以开始了吗'), findsOneWidget);
     expect(service.config.presets.length, before);
-    // 导入只进草稿,点「保存」才写进设置。
-    expect(service.config.piercingPrompt, isEmpty);
+    expect(service.config.piercingName, '故事主持');
+    expect(service.config.piercingSaved.single.name, '故事主持');
+    expect(service.config.piercingPrompt, contains('可以开始了吗'));
+    // 预览:开头是系统提示,事先说好的那句算用户说的,后面是聊天记录的位置。
+    Finder inPreview(String text) => find.descendant(
+      of: find.byType(PiercingPreview),
+      matching: find.text(text),
+    );
+    expect(inPreview('系统提示'), findsOneWidget);
+    expect(inPreview('可以开始了吗'), findsOneWidget);
+    expect(inPreview('聊天记录'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('工具调用模式不用写字:默认不带预设,导入的酒馆预设能挑来用', (tester) async {
+    final service = tempConfig();
+    service.update(
+      service.config.copyWith(
+        piercingSaved: const [(name: '旧的', text: '旧提示词')],
+        piercingName: '旧的',
+        piercingPrompt: '旧提示词',
+      ),
+    );
+    await tester.pumpWidget(_presetPage(service));
+    await tester.ensureVisible(find.text('工具调用'));
+    await tester.tap(find.text('工具调用'));
+    await tester.pump();
+    expect(service.config.piercingTool, isTrue);
+    expect(service.config.piercingName, isEmpty);
+    expect(service.config.piercingText, isEmpty);
+    expect(find.text('不用预设'), findsOneWidget);
+    expect(find.text('导入文本'), findsNothing);
+
+    final file = _temp('主持.json', {
+      'prompts': [_prompt('main', '你是主持人')],
+    });
+    await _importFrom(tester, file);
+    expect(service.config.piercingName, '主持');
+    expect(service.config.piercingPrompt, '你是主持人');
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('选了别的 JSON(例如 ComfyUI 工作流):提示词不动,提示不是酒馆预设', (tester) async {

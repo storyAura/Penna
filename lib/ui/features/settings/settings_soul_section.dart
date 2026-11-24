@@ -1,3 +1,5 @@
+import 'dart:math' show max;
+
 import 'package:flutter/material.dart';
 
 import '../../../data/services/config_service.dart';
@@ -149,29 +151,96 @@ class SoulSection extends StatelessWidget {
                 if (cast.isEmpty)
                   Text(tr('还没有'), style: hintStyle)
                 else
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final c in cast)
-                        InputChip(
-                          label: Text(
-                            '${c.name}  ${c.count}',
-                            style: const TextStyle(fontSize: 12.5),
-                          ),
-                          visualDensity: VisualDensity.compact,
-                          deleteIcon: const Icon(Icons.close, size: 14),
-                          deleteButtonTooltipMessage: tr('删除'),
-                          onDeleted: () => soul.forgetCharacter(c.name),
-                        ),
-                    ],
-                  ),
+                  // 横条图,同跑分榜(2026-11-25 用户要求):条长按次数比最多的那个。
+                  for (final c in [
+                    ...cast,
+                  ]..sort((a, b) => b.count.compareTo(a.count)))
+                    _CastBar(
+                      name: c.name,
+                      count: c.count,
+                      most: cast.map((c) => c.count).reduce(max),
+                      onRemove: () => soul.forgetCharacter(c.name),
+                    ),
               ],
             ),
           ),
         ],
       );
     },
+  );
+}
+
+/// 常用角色的一行:名字、按次数画的横条、次数、删除。
+class _CastBar extends StatelessWidget {
+  const _CastBar({
+    required this.name,
+    required this.count,
+    required this.most,
+    required this.onRemove,
+  });
+
+  final String name;
+  final int count;
+  final int most;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      children: [
+        SizedBox(
+          width: 200,
+          child: Tooltip(
+            message: name,
+            child: Text(
+              name,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12.5),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Container(
+            height: 14,
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(
+              color: PennaColors.slate100,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: FractionallySizedBox(
+              widthFactor: most == 0 ? 0 : count / most,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: PennaColors.primary,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 40,
+          child: Text(
+            '$count',
+            textAlign: TextAlign.right,
+            style: monoStyle.copyWith(
+              fontSize: 12,
+              color: PennaColors.slate700,
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: tr('删除'),
+          iconSize: 14,
+          visualDensity: VisualDensity.compact,
+          color: PennaColors.slate400,
+          icon: const Icon(Icons.close),
+          onPressed: onRemove,
+        ),
+      ],
+    ),
   );
 }
 

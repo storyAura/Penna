@@ -77,7 +77,9 @@ class ReplyTextReader {
   String? _whole() {
     try {
       final json = jsonDecode(_raw);
-      return json is Map && json['text'] is String ? json['text'] as String : null;
+      return json is Map && json['text'] is String
+          ? json['text'] as String
+          : null;
     } on FormatException {
       return null;
     }

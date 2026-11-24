@@ -44,7 +44,14 @@ void main() {
     test('分好几段到,转义被切开也接得回去', () {
       final reader = ReplyTextReader();
       final out = StringBuffer();
-      for (final chunk in ['{"te', 'xt":"第一', r'行\n第二\', 'u4e2d文', '\\"引号', '"}']) {
+      for (final chunk in [
+        '{"te',
+        'xt":"第一',
+        r'行\n第二\',
+        'u4e2d文',
+        '\\"引号',
+        '"}',
+      ]) {
         out.write(reader.add(chunk));
       }
       out.write(reader.flush());
@@ -53,8 +60,7 @@ void main() {
 
     test('前面有别的参数、键名之间隔着空白也认', () {
       final reader = ReplyTextReader();
-      final text =
-          reader.add('{"other": 1, "text" :  "好"}') + reader.flush();
+      final text = reader.add('{"other": 1, "text" :  "好"}') + reader.flush();
       expect(text, '好');
     });
 
@@ -77,7 +83,9 @@ void main() {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(server.close);
       server.listen((request) async {
-        sent = jsonDecode(await utf8.decodeStream(request)) as Map<String, dynamic>;
+        sent = jsonDecode(
+          await utf8.decodeStream(request),
+        ) as Map<String, dynamic>;
         request.response.write(
           '${_arg('{"text":"好"}', name: replyToolName)}'
           'data: [DONE]\n\n',
@@ -85,9 +93,8 @@ void main() {
         await request.response.close();
       });
 
-      await streamOpenAiChat(
-        _request('http://127.0.0.1:${server.port}'),
-      ).toList();
+      await streamOpenAiChat(_request('http://127.0.0.1:${server.port}'))
+          .toList();
 
       final tools = sent['tools'] as List;
       expect((tools.single as Map)['function']['name'], replyToolName);
@@ -165,7 +172,9 @@ void main() {
         calls++;
         if (body.containsKey('tool_choice')) {
           request.response.statusCode = 400;
-          request.response.write('{"error":{"message":"unknown field tool_choice"}}');
+          request.response.write(
+            '{"error":{"message":"unknown field tool_choice"}}',
+          );
         } else {
           request.response.write(
             'data: {"choices":[{"delta":{"content":"普通回复"}}]}\n\n'
@@ -254,7 +263,9 @@ void main() {
         calls++;
         if (body.containsKey('toolConfig')) {
           request.response.statusCode = 400;
-          request.response.write('{"error":{"message":"unknown field toolConfig"}}');
+          request.response.write(
+            '{"error":{"message":"unknown field toolConfig"}}',
+          );
         } else {
           request.response.write(
             'data: {"candidates":[{"content":{"parts":[{"text":"普通回复"}]},'
@@ -273,31 +284,18 @@ void main() {
     });
   });
 
-  group('Preset 的开关', () {
-    test('默认关,打开后存进设置再读回来还是开的', () {
-      const preset = AgentPreset(
-        id: 'p',
-        name: 'p',
-        systemPrompt: 'x',
-        tools: {},
-      );
-      expect(preset.replyTool, isFalse);
-
-      final back = AgentPreset.fromJson(
-        jsonDecode(jsonEncode(preset.copyWith(replyTool: true).toJson()))
-            as Map<String, dynamic>,
+  group('穿甲弹的工具调用模式', () {
+    test('默认关;选了工具调用模式且穿甲弹开着才走,存进设置读回来还在', () {
+      expect(const AppConfig().replyTool, isFalse);
+      final on = const AppConfig().copyWith(piercing: true, piercingTool: true);
+      expect(on.replyTool, isTrue);
+      expect(on.copyWith(piercing: false).replyTool, isFalse);
+      // 文档模式和它互斥。
+      expect(on.copyWith(piercingDocument: true).replyTool, isFalse);
+      final back = AppConfig.fromJson(
+        jsonDecode(jsonEncode(on.toJson())) as Map<String, dynamic>,
       );
       expect(back.replyTool, isTrue);
-    });
-
-    test('旧存档没有这一项时算关', () {
-      final back = AgentPreset.fromJson({
-        'id': 'p',
-        'name': 'p',
-        'systemPrompt': 'x',
-        'tools': <String>[],
-      });
-      expect(back.replyTool, isFalse);
     });
   });
 }

@@ -50,10 +50,11 @@ void main() {
     expect(again.staleSeries(const Duration(days: 14)), isEmpty);
   });
 
-  test('自动归档的天数存得回来,默认 14 天', () {
-    expect(const AppConfig().autoArchiveDays, 14);
-    final saved = const AppConfig().copyWith(autoArchiveDays: 0).toJson();
-    expect(AppConfig.fromJson(saved).autoArchiveDays, 0);
+  test('自动归档的天数存得回来,默认关', () {
+    expect(const AppConfig().autoArchiveDays, 0);
+    expect(AppConfig.fromJson(<String, dynamic>{}).autoArchiveDays, 0);
+    final saved = const AppConfig().copyWith(autoArchiveDays: 14).toJson();
+    expect(AppConfig.fromJson(saved).autoArchiveDays, 14);
   });
 
   test('整个系列从档案库放回工作台:另起一个同名的系列,一条一页,页名跟着', () {

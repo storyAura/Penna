@@ -8,6 +8,7 @@ import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
+import '../settings/settings_piercing.dart' show withPiercing;
 import 'comfy_panel.dart';
 import 'studio_view_model.dart';
 
@@ -269,6 +270,40 @@ class _RightBarState extends State<RightBar> {
     );
   }
 
+  /// 闪电:存了不止一段穿甲弹时弹菜单挑一段(2026-11-25 用户要求快速切换),
+  /// 否则直接开关。
+  Future<void> _piercing(BuildContext context) async {
+    final cfg = widget.config.config;
+    if (cfg.piercingSaved.length < 2) {
+      widget.config.update(cfg.copyWith(piercing: !cfg.piercing));
+      // 文档、工具调用模式不填内容也能用。
+      if (!cfg.piercing &&
+          !cfg.piercingDocument &&
+          !cfg.piercingTool &&
+          cfg.piercingPrompt.trim().isEmpty) {
+        showToast(context, tr('穿甲弹内容为空,在设置 → Preset 里填写'), warn: true);
+      }
+      return;
+    }
+    final box = context.findRenderObject()! as RenderBox;
+    final off = tr('关闭穿甲弹');
+    String label(String name) =>
+        cfg.piercing && name == cfg.piercingName ? '✓ $name' : name;
+    final picked = await popMenu(
+      context,
+      box.localToGlobal(Offset(0, box.size.height)),
+      [for (final p in cfg.piercingSaved) label(p.name), if (cfg.piercing) off],
+    );
+    if (picked == null || !mounted) return;
+    final now = widget.config.config;
+    if (picked == off) {
+      widget.config.update(now.copyWith(piercing: false));
+      return;
+    }
+    final name = picked.startsWith('✓ ') ? picked.substring(2) : picked;
+    widget.config.update(withPiercing(now, name).copyWith(piercing: true));
+  }
+
   /// 一列图标,贴在最右边。
   Widget _strip(_Panel? open) {
     final cfg = widget.config.config;
@@ -311,22 +346,20 @@ class _RightBarState extends State<RightBar> {
             onTap: () => _toggle(_Panel.history),
             child: Icon(Icons.history, size: 16, color: PennaColors.slate500),
           ),
-          _StripButton(
-            tooltip: piercing ? tr('穿甲弹:开') : tr('穿甲弹:关'),
-            selected: piercing,
-            onTap: () {
-              widget.config.update(cfg.copyWith(piercing: !piercing));
-              // 文档模式不填内容也能用。
-              if (!piercing &&
-                  !cfg.piercingDocument &&
-                  cfg.piercingPrompt.trim().isEmpty) {
-                showToast(context, tr('穿甲弹内容为空,在设置 → Preset 里填写'), warn: true);
-              }
-            },
-            child: Icon(
-              Icons.bolt,
-              size: 16,
-              color: piercing ? PennaColors.primary : PennaColors.slate500,
+          Builder(
+            builder: (context) => _StripButton(
+              tooltip: piercing
+                  ? tr('穿甲弹:{0}', [
+                      cfg.piercingName.isEmpty ? tr('开') : cfg.piercingName,
+                    ])
+                  : tr('穿甲弹:关'),
+              selected: piercing,
+              onTap: () => _piercing(context),
+              child: Icon(
+                Icons.bolt,
+                size: 16,
+                color: piercing ? PennaColors.primary : PennaColors.slate500,
+              ),
             ),
           ),
           _StripButton(

@@ -401,10 +401,15 @@ void main() {
     var polls = 0;
     final sockets = <WebSocket>[];
     Object? forgotten;
+    // ComfyUI 用户文件夹里 workflows 下的文件,和存进来的。
+    var savedFlows = <String>[];
+    final savedTo = <String, String>{};
 
     setUp(() async {
       polls = 0;
       sockets.clear();
+      savedFlows = [];
+      savedTo.clear();
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       server.listen((req) async {
         final res = req.response;
@@ -472,6 +477,12 @@ void main() {
               },
             }),
           );
+        } else if (path == '/userdata' && req.method == 'GET') {
+          res.write(jsonEncode(savedFlows));
+        } else if (path.startsWith('/userdata/') && req.method == 'POST') {
+          savedTo[Uri.decodeComponent(path.substring('/userdata/'.length))] =
+              await utf8.decoder.bind(req).join();
+          res.write('"ok"');
         } else if (path == '/history' && req.method == 'POST') {
           forgotten = jsonDecode(await utf8.decoder.bind(req).join());
           res.write('{}');
@@ -851,6 +862,34 @@ void main() {
         runner.jobs.map((j) => j.state),
         everyElement(ComfyJobState.canceled),
       );
+    });
+
+    test('连上一台时它的 workflows 里没有眼前的工作流就存一份,有同名的不存,同一台只看一次', () async {
+      final service = tempConfig();
+      final flow = (id: 'f', name: 'My Flow', text: '{"nodes": []}');
+      service.update(
+        service.config.copyWith(
+          comfy: _at(server.port).putFlow(flow).copyWith(flowId: 'f'),
+        ),
+      );
+      final runner = ComfyRunner(service);
+      await runner.check(full: true);
+      for (var i = 0; i < 50 && savedTo.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(savedTo, {'workflows/Penna/My Flow.json': '{"nodes": []}'});
+
+      savedTo.clear();
+      await runner.check(full: true);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(savedTo, isEmpty);
+
+      // 换一台(地址不同)、那台已经有同名的(放在别的文件夹里也算)。
+      savedFlows = ['old/My Flow.json'];
+      final other = ComfyRunner(service);
+      await other.check(full: true);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(savedTo, isEmpty);
     });
 
     test('测连接、读名单;内置的改过后另存一份;按名字或模型换工作流;LoRA 配置', () async {

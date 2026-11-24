@@ -95,7 +95,7 @@ class _SeriesSwitch extends StatelessWidget {
           if (many) _arrow(Icons.chevron_left, tr('上一个系列'), total - 1),
           if (many) _arrow(Icons.chevron_right, tr('下一个系列'), 1),
           Tooltip(
-            message: many ? '${tr('点一下看全部系列')} · $_gestureTip' : _gestureTip,
+            message: many ? '${tr('全部系列')} · $_gestureTip' : _gestureTip,
             waitDuration: _tipWait,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,

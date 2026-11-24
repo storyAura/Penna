@@ -59,7 +59,10 @@ LoraEntry? _entry(Map<String, Object?> m) {
     folder: folder,
     baseModel: '${m['base_model'] ?? ''}',
     preview: '${m['preview_url'] ?? ''}',
-    triggers: [if (words is List) for (final w in words) '$w'],
+    triggers: [
+      if (words is List)
+        for (final w in words) '$w',
+    ],
     favorite: m['favorite'] == true,
     usage: (m['usage_count'] as num?)?.toInt() ?? 0,
   );

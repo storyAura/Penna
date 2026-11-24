@@ -154,16 +154,12 @@ void main() {
       expect(seen.messages.last, {'role': 'user', 'content': '再来'});
     });
 
-    test('Preset 打开「回复写在工具调用里」时请求带上它,关着时不带', () async {
+    test('穿甲弹选了工具调用模式时请求带上它,关掉穿甲弹就不带', () async {
       final config = tempConfig();
       final base = const AppConfig()
           .putLlm(_llm)
           .setSecret(llmSecretKey('a'), 'sk-x');
-      config.update(
-        base.addPreset(
-          base.activePreset.copyWith(id: 'custom-reply-tool', replyTool: true),
-        ),
-      );
+      config.update(base.copyWith(piercing: true, piercingTool: true));
       late LlmRequest seen;
       final vm = sampleStudio(
         config: config,
@@ -177,9 +173,7 @@ void main() {
       await pumpEventQueue();
       expect(seen.replyTool, isTrue);
 
-      config.update(
-        config.config.copyWith(activePresetId: base.activePreset.id),
-      );
+      config.update(config.config.copyWith(piercing: false));
       expect(vm.send('再来'), isNull);
       await pumpEventQueue();
       expect(seen.replyTool, isFalse);
@@ -424,7 +418,7 @@ void main() {
   });
 
   testWidgets('有待确认 diff 时点击采纳后 diff 块消失', (tester) async {
-    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.physicalSize = const Size(1800, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final vm = sampleStudio();

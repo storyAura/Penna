@@ -5,6 +5,7 @@ import 'dart:math' show max, min;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/comfy_workflow.dart';
@@ -87,6 +88,9 @@ class ComfyRunner extends ChangeNotifier {
   ComfyNodeInfo _info = const {};
   String? _optionsOf;
 
+  /// 已经看过(或存过)眼前工作流的「地址|工作流 id」,同一台同一个只看一次。
+  final _synced = <String>{};
+
   /// 各工作流在这台上缺什么(工作流 id → 当时的全文、缺的),换了名单就清掉。
   final _problems = <String, (String, List<String>)>{};
 
@@ -167,6 +171,7 @@ class ComfyRunner extends ChangeNotifier {
     try {
       final p = await client.ping();
       _status = (connected: true, ms: p.ms, version: p.version, error: null);
+      unawaited(_syncFlow(client, url));
       if (full || _optionsOf != url) {
         final info = await client.objectInfo();
         // 读的时候换了一台:这份名单不是眼前那台的,不要。
@@ -199,11 +204,24 @@ class ComfyRunner extends ChangeNotifier {
     return dir.isEmpty ? defaultImageDir(config.dir) : dir;
   }
 
-  /// 存档案库时配的图:用这条提示词出的最新一张;没有时 [any] 为真就给最新的一张。
-  // ponytail: 改了几个字再存也配最新的一张,可能是别的页出的;配错了在档案库里换图。
-  String? latestFor(String prompt, {bool any = true}) =>
-      _stills.where((i) => i.prompt == prompt).firstOrNull?.path ??
-      (any ? _stills.firstOrNull?.path : null);
+  /// 存档案库时配的图:用这条提示词出的最新一张(空白差别不算),先找这次出的,
+  /// 再找出图队列的记录(最多 100 单,比这次留着的 40 张远);没有时 [any] 为真就给最新的一张。
+  /// 2026-11-25 用户反馈保存系列配图有的没配上、有的配错:以前只比这次的 40 张、一字不差才算,
+  /// 单条保存还会拿别的提示词出的图凑数。
+  String? latestFor(String prompt, {bool any = true}) {
+    final want = _plain(prompt);
+    final hit =
+        _stills.where((i) => _plain(i.prompt) == want).firstOrNull?.path ??
+        [
+          for (final j in jobs)
+            if (_plain(j.prompt) == want)
+              for (final path in j.images)
+                if (!isVideoFile(path) && File(path).existsSync()) path,
+        ].firstOrNull;
+    return hit ?? (any ? _stills.firstOrNull?.path : null);
+  }
+
+  static String _plain(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
 
   /// 出过的图里不是视频的(视频做不了预览图)。
   Iterable<GeneratedImage> get _stills =>

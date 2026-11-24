@@ -277,6 +277,25 @@ const failoverOff = 'off';
 const failoverModes = [failoverAll, failoverProvider, failoverOff];
 
 /// Preset = 系统提示 + 工具白名单。Skills 对所有 Preset 生效,见 [AppConfig.disabledSkills]。
+/// 一段存下的穿甲弹提示词。
+typedef PiercingPrompt = ({String name, String text});
+
+/// 读存下的穿甲弹;旧设置只有一段 `piercingPrompt`,有字就算第一段。
+List<PiercingPrompt> _piercingSaved(Map<String, dynamic> m) {
+  final saved = m['piercingSaved'];
+  if (saved is List) {
+    return List.unmodifiable([
+      for (final p in saved)
+        if (p is Map && p['name'] is String && p['text'] is String)
+          (name: p['name'] as String, text: p['text'] as String),
+    ]);
+  }
+  final old = (m['piercingPrompt'] as String? ?? '').trim();
+  return old.isEmpty
+      ? const []
+      : [(name: '1', text: m['piercingPrompt'] as String)];
+}
+
 @immutable
 class AgentPreset {
   const AgentPreset({
@@ -286,7 +305,6 @@ class AgentPreset {
     required this.tools,
     this.temperature = 0.7,
     this.topP = 1,
-    this.replyTool = false,
   });
 
   factory AgentPreset.fromJson(Map<String, dynamic> j) => AgentPreset(
@@ -296,7 +314,6 @@ class AgentPreset {
     tools: {...(j['tools'] as List).cast<String>()},
     temperature: ((j['temperature'] as num?) ?? 0.7).clamp(0, 2).toDouble(),
     topP: ((j['topP'] as num?) ?? 1).clamp(0.1, 1).toDouble(),
-    replyTool: j['replyTool'] as bool? ?? false,
   );
 
   final String id;
@@ -307,10 +324,6 @@ class AgentPreset {
 
   /// 只在累计概率排在前这么多的词里选;1 是不限制(不发给模型)。
   final double topP;
-
-  /// 回复写在工具调用里(OpenAI 兼容接口):模型把这一轮要说的话写在 reply 工具的
-  /// text 参数里,正文留空。有的接口只审查正文;也让模型先把话想完整再交出来。
-  final bool replyTool;
 
   /// 界面上显示的名字;名字被清空时给个占位,免得出现点不到的空白项。
   /// 界面上显示的名字:内置 Preset 的名字按界面语言翻译,自己起的原样。
@@ -323,7 +336,6 @@ class AgentPreset {
     'tools': tools.toList(),
     'temperature': temperature,
     'topP': topP,
-    if (replyTool) 'replyTool': true,
   };
 
   AgentPreset copyWith({
@@ -333,7 +345,6 @@ class AgentPreset {
     Set<String>? tools,
     double? temperature,
     double? topP,
-    bool? replyTool,
   }) => AgentPreset(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -341,7 +352,6 @@ class AgentPreset {
     tools: tools ?? this.tools,
     temperature: temperature ?? this.temperature,
     topP: topP ?? this.topP,
-    replyTool: replyTool ?? this.replyTool,
   );
 }
 
@@ -469,13 +479,16 @@ class AppConfig {
     this.piercing = false,
     this.piercingPrompt = '',
     this.piercingDocument = false,
+    this.piercingTool = false,
+    this.piercingSaved = const [],
+    this.piercingName = '',
     this.layoutQuality = defaultLayoutQuality,
     this.layoutSnap = defaultLayoutSnap,
     this.compressImages = true,
     this.chatIdeas = true,
     this.soulOn = false,
     this.failover = failoverAll,
-    this.autoArchiveDays = 14,
+    this.autoArchiveDays = 0,
     this.seriesColors = const {},
     this.seriesSort = seriesSortRecent,
     this.blurImages = false,
@@ -564,6 +577,12 @@ class AppConfig {
       piercing: m['piercing'] as bool? ?? false,
       piercingPrompt: m['piercingPrompt'] as String? ?? '',
       piercingDocument: m['piercingDocument'] as bool? ?? false,
+      piercingTool: m['piercingTool'] as bool? ?? false,
+      piercingSaved: _piercingSaved(m),
+      piercingName:
+          m['piercingName'] as String? ??
+          _piercingSaved(m).firstOrNull?.name ??
+          '',
       layoutQuality: m['layoutQuality'] as String? ?? defaultLayoutQuality,
       layoutSnap: ((m['layoutSnap'] as num?) ?? defaultLayoutSnap)
           .clamp(minLayoutSnap, maxLayoutSnap)
@@ -574,7 +593,7 @@ class AppConfig {
       failover: failoverModes.contains(m['failover'])
           ? m['failover'] as String
           : failoverAll,
-      autoArchiveDays: ((m['autoArchiveDays'] as int?) ?? 14).clamp(0, 365),
+      autoArchiveDays: ((m['autoArchiveDays'] as int?) ?? 0).clamp(0, 365),
       seriesColors: Map.unmodifiable({
         if (m['seriesColors'] case final Map colors)
           for (final MapEntry(:key, :value) in colors.entries)
@@ -749,6 +768,18 @@ class AppConfig {
   /// (`piercing_document.dart`)。只用在对话上,润色、反推照旧接在系统提示前面。
   final bool piercingDocument;
 
+  /// 穿甲弹的工具调用模式:提示词照样接在前面,回复要求写在 reply 工具的参数里
+  /// (2026-11-25 用户要求从 Preset 挪到穿甲弹)。和文档模式互斥。
+  final bool piercingTool;
+
+  /// 存下的几段穿甲弹提示词,侧栏的闪电能在它们之间切换;[piercingName] 是眼前用的那段
+  /// ([piercingPrompt] 是它的文字)。
+  final List<PiercingPrompt> piercingSaved;
+  final String piercingName;
+
+  /// 回复要写在工具调用里(穿甲弹开着且是工具调用模式)。
+  bool get replyTool => piercing && piercingTool && !piercingDocument;
+
   /// 区域控制交出去的 JSON 里 summary.caption 最前面的质量词;空串是不加。
   final String layoutQuality;
 
@@ -853,6 +884,11 @@ class AppConfig {
     'piercing': piercing,
     'piercingPrompt': piercingPrompt,
     'piercingDocument': piercingDocument,
+    'piercingTool': piercingTool,
+    'piercingSaved': [
+      for (final p in piercingSaved) {'name': p.name, 'text': p.text},
+    ],
+    'piercingName': piercingName,
     'layoutQuality': layoutQuality,
     'layoutSnap': layoutSnap,
     'compressImages': compressImages,
@@ -953,6 +989,9 @@ class AppConfig {
     bool? piercing,
     String? piercingPrompt,
     bool? piercingDocument,
+    bool? piercingTool,
+    List<PiercingPrompt>? piercingSaved,
+    String? piercingName,
     String? layoutQuality,
     int? layoutSnap,
     bool? compressImages,
@@ -1010,6 +1049,11 @@ class AppConfig {
     piercing: piercing ?? this.piercing,
     piercingPrompt: piercingPrompt ?? this.piercingPrompt,
     piercingDocument: piercingDocument ?? this.piercingDocument,
+    piercingTool: piercingTool ?? this.piercingTool,
+    piercingSaved: piercingSaved == null
+        ? this.piercingSaved
+        : List.unmodifiable(piercingSaved),
+    piercingName: piercingName ?? this.piercingName,
     layoutQuality: layoutQuality ?? this.layoutQuality,
     layoutSnap: layoutSnap ?? this.layoutSnap,
     compressImages: compressImages ?? this.compressImages,

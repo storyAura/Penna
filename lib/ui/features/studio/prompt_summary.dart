@@ -3,7 +3,7 @@ part of 'prompt_pane.dart';
 // 工作区下半区:成稿汇总、最终提示词和历史提示词。
 
 class _SummarySection extends StatefulWidget {
-  const _SummarySection({required this.vm});
+  const _SummarySection({super.key, required this.vm});
 
   final StudioViewModel vm;
 

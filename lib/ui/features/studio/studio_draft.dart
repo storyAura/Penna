@@ -48,9 +48,10 @@ extension StudioDraft on StudioViewModel {
     final here = page == _page;
     final blocks = here ? _blocks : _pages[page].blocks;
     final added = {
-      for (final d in here
-          ? [?_pending, ..._queued]
-          : [?_pages[page].pending, ..._pages[page].queued])
+      for (final d
+          in here
+              ? [?_pending, ..._queued]
+              : [?_pages[page].pending, ..._pages[page].queued])
         d.segmentIndex: d.added,
     };
     return _joined(

@@ -17,7 +17,7 @@ import 'widgets.dart';
   LlmEventKind.search => (tr('联网搜索'), PennaColors.primary),
   LlmEventKind.retry => (tr('重试'), PennaColors.slate500),
   LlmEventKind.tier => (tr('档位'), PennaColors.primary),
-  LlmEventKind.replyTool => (tr('工具回覆'), PennaColors.primary),
+  LlmEventKind.replyTool => (tr('工具回复'), PennaColors.primary),
 };
 
 String _clock(DateTime t) =>
@@ -80,7 +80,7 @@ class _LogBodyState extends State<_LogBody> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              _calls ? tr('最近 40 次,只留在内存里,关掉软件就没了') : '',
+              _calls ? tr('最近 40 次') : '',
               overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 12, color: PennaColors.slate500),
             ),
@@ -173,7 +173,7 @@ class _CallRow extends StatelessWidget {
             Text(
               [
                 tr('发 {0} 条', [call.messages.length]),
-                tr('回 {0} 字', [call.output.length]),
+                tr('回复 {0} 字', [call.output.length]),
                 if (took != null) tr('{0} 秒', [took.inSeconds]),
               ].join(' · '),
               style: TextStyle(fontSize: 12, color: PennaColors.slate500),
@@ -237,8 +237,8 @@ Future<void> showLlmCall(BuildContext context, LlmCall call) {
                   _CallPart(tr('模型的思考'), ''),
                   _CallText('', said.thinking),
                 ],
-                _CallPart(tr('模型回的'), call.took == null ? tr('还在写') : ''),
-                _CallText('', said.rest.isEmpty ? tr('(没有内容)') : said.rest),
+                _CallPart(tr('模型回的'), call.took == null ? tr('生成中') : ''),
+                _CallText('', said.rest.isEmpty ? tr('(空)') : said.rest),
                 if (call.error case final error?) ...[
                   _CallPart(tr('出错'), ''),
                   _CallText('', error),

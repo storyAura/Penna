@@ -99,6 +99,35 @@ class ArchiveStore extends ChangeNotifier {
     _set(_entries.where((e) => e.id != id));
   }
 
+  /// [kind] 分区里分类在 [from] 里的条目都改成分类 [to](改名、合并几个系列)。
+  void recategorize(String kind, Set<String> from, String to) {
+    final name = to.trim().isEmpty ? uncategorized : to.trim();
+    _set([
+      for (final e in _entries)
+        e.kind == kind && from.contains(e.category)
+            ? (
+                id: e.id,
+                time: e.time,
+                category: name,
+                title: e.title,
+                text: e.text,
+                kind: e.kind,
+                image: e.image,
+              )
+            : e,
+    ]);
+  }
+
+  /// 删掉 [kind] 分区里分类在 [categories] 里的全部条目(连预览图)。
+  void removeCategories(String kind, Set<String> categories) {
+    bool gone(ArchiveEntry e) =>
+        e.kind == kind && categories.contains(e.category);
+    for (final e in _entries.where(gone)) {
+      _deleteImage(e.image);
+    }
+    _set(_entries.where((e) => !gone(e)));
+  }
+
   /// 把 [id] 挪到 [before] 前面(拖着换顺序)。
   void move(String id, String before) {
     final moving = _entries.where((e) => e.id == id).firstOrNull;

@@ -372,7 +372,7 @@ class _ChatOptions extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(tr('系列自动归档'), style: titleStyle),
-              Text(tr('这么久没用的系列收进档案库,右键「固定」的不收'), style: hintStyle),
+              Text(tr('久未使用的系列收进档案库'), style: hintStyle),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 6,

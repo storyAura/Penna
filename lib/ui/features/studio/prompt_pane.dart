@@ -58,7 +58,7 @@ class _Stat extends StatelessWidget {
 }
 
 /// 左栏:上半成稿工作区,下半提示词汇总。
-class PromptPane extends StatelessWidget {
+class PromptPane extends StatefulWidget {
   const PromptPane({
     super.key,
     required this.vm,
@@ -73,7 +73,16 @@ class PromptPane extends StatelessWidget {
   final ValueChanged<String>? onDiscuss;
 
   @override
+  State<PromptPane> createState() => _PromptPaneState();
+}
+
+class _PromptPaneState extends State<PromptPane> {
+  /// 顶栏的「出图」点了之后,下半区换到「出图」页签。
+  final _summary = GlobalKey<_SummarySectionState>();
+
+  @override
   Widget build(BuildContext context) {
+    final vm = widget.vm;
     return ColoredBox(
       color: PennaColors.card,
       child: Column(
@@ -84,14 +93,18 @@ class PromptPane extends StatelessWidget {
               'studio.draft',
               child: _DraftSection(
                 vm: vm,
-                archive: archive,
-                onDiscuss: onDiscuss,
+                archive: widget.archive,
+                onDiscuss: widget.onDiscuss,
+                onGenerate: () => _summary.currentState?._showImages(),
               ),
             ),
           ),
           Expanded(
             flex: 10,
-            child: TourSpot('studio.summary', child: _SummarySection(vm: vm)),
+            child: TourSpot(
+              'studio.summary',
+              child: _SummarySection(key: _summary, vm: vm),
+            ),
           ),
         ],
       ),
@@ -104,7 +117,11 @@ class _DraftSection extends StatefulWidget {
     required this.vm,
     required this.archive,
     required this.onDiscuss,
+    required this.onGenerate,
   });
+
+  /// 顶栏的「出图」点了(换到下半区的「出图」页签)。
+  final VoidCallback onGenerate;
 
   final StudioViewModel vm;
   final ArchiveStore archive;
@@ -162,45 +179,48 @@ class _DraftSectionState extends State<_DraftSection> {
       category: picked.category,
     );
     if (context.mounted) showToast(context, tr('已存进档案库'));
-    await archivePreview(archive, id, vm.comfy.latestFor(vm.finalPrompt));
+    await archivePreview(
+      archive,
+      id,
+      vm.comfy.latestFor(vm.finalPrompt, any: false),
+    );
   }
 
   /// 把眼前这个系列的每一页都存进档案库:一页一条,分类就是系列的名字。
-  /// 档案库里已经有一字不差的就跳过,只存新的和改过的。
   void _saveSeries(BuildContext context) {
     final done = _storeSeries(vm.series);
     if (done.total == 0) {
       return showToast(context, tr('这个系列还是空的'), warn: true);
     }
     if (done.saved == 0) {
-      return showToast(context, tr('这个系列的页都已经存过了'), warn: true);
+      return showToast(context, tr('这个系列已经存过了'), warn: true);
     }
-    final category = vm.seriesName(vm.series);
-    final skipped = done.total - done.saved;
-    showToast(
-      context,
-      skipped == 0
-          ? tr('「{0}」的 {1} 页已存进档案库', [category, done.saved])
-          : tr('「{0}」新存了 {1} 页,{2} 页之前存过', [category, done.saved, skipped]),
-    );
+    showToast(context, tr('「{0}」的 {1} 页已存进档案库', [done.category, done.saved]));
   }
 
-  /// 把第 [s] 个系列有字的每一页存进档案库,分类是系列名;一字不差存过的跳过,
-  /// 用这一页的提示词出过图的配上预览图。返回有字的页数、新存了几页。
-  ({int total, int saved}) _storeSeries(int s) {
+  /// 把第 [s] 个系列有字的每一页存进档案库,分类是系列名;用这一页的提示词出过图的配上预览图。
+  /// 档案库里已经有同名的系列时:各页一字不差就不再存,否则存成「名字 2」这样的新系列
+  /// (2026-11-25 用户要求同名自动加数字)。返回有字的页数、存了几页、存在哪个分类。
+  ({int total, int saved, String category}) _storeSeries(int s) {
     final all = vm.promptsOf(s);
-    final saved = {
-      for (final e in archive.entries)
-        if (e.kind == archivePrompt) e.text,
-    };
-    final prompts = [
-      for (final p in all)
-        if (!saved.contains(p.text)) p,
-    ];
-    final category = vm.seriesName(s);
+    final name = vm.seriesName(s);
+    final taken = archive.categoriesOf(archivePrompt).toSet();
+    if (taken.contains(name)) {
+      final old = {
+        for (final e in archive.entries)
+          if (e.kind == archivePrompt && e.category == name) e.text,
+      };
+      if (all.every((p) => old.contains(p.text))) {
+        return (total: all.length, saved: 0, category: name);
+      }
+    }
+    var category = name;
+    for (var n = 2; taken.contains(category); n++) {
+      category = '$name $n';
+    }
     final now = DateTime.now();
     // 档案库里新的在前:倒着存,第 1 页才排在最上面。时间各错开一点,编号不会撞。
-    for (final (i, p) in prompts.reversed.indexed) {
+    for (final (i, p) in all.reversed.indexed) {
       final id = archive.add(
         text: p.text,
         title: p.title,
@@ -216,7 +236,7 @@ class _DraftSectionState extends State<_DraftSection> {
         ),
       );
     }
-    return (total: all.length, saved: prompts.length);
+    return (total: all.length, saved: all.length, category: category);
   }
 
   /// 归档:几个系列都存进档案库,再从工作区删掉(对话收进历史)。
@@ -386,6 +406,21 @@ class _DraftSectionState extends State<_DraftSection> {
               ? () => setState(() => _zhOpen = !_zhOpen)
               : null,
         ),
+        const SizedBox(width: 6),
+        // 同区域控制顶栏的出图(2026-11-25 用户要求):眼前这页的最终提示词排进队列。
+        PennaButton(
+          label: label(tr('出图')),
+          icon: Icons.brush_outlined,
+          tooltip: tip(tr('出图'), tr('用 ComfyUI 出图')),
+          background: PennaColors.primary,
+          foreground: Colors.white,
+          onPressed: prompt.isEmpty
+              ? null
+              : () {
+                  widget.onGenerate();
+                  unawaited(vm.comfy.generate(prompt));
+                },
+        ),
       ],
     );
   }
@@ -409,6 +444,7 @@ class _DraftSectionState extends State<_DraftSection> {
               if (_gloss) tr('翻译'),
               tr('合并'),
               _zhOpen ? tr('收起') : tr('展开'),
+              tr('出图'),
             ];
             // 左右边距、圆点和「工作区」三个字大约占 140。
             final compact =

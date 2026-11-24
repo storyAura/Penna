@@ -144,7 +144,7 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     }
     // 接口不收 tool_choice 或工具表:退回普通请求,回复照旧能出来。
     if (rejected && req.replyTool) {
-      llmLog.add(LlmEventKind.retry, req.model, tr('接口不支持把回复写在工具调用里,改用普通回复'));
+      llmLog.add(LlmEventKind.retry, req.model, tr('接口不支持工具调用,已改用普通回复'));
       yield* _send(client, req.withReplyTool(false), usage: true);
       return;
     }
@@ -258,7 +258,7 @@ Stream<String> _send(
 void _logReplyTool(LlmRequest req, bool used) => llmLog.add(
   LlmEventKind.replyTool,
   req.model,
-  used ? tr('回覆走工具呼叫') : tr('模型没照工具呼叫,回覆在正文'),
+  used ? tr('回复来自工具调用') : tr('模型没用工具,回复在正文'),
 );
 
 /// 流式回来的这一行里,工具参数的文字片段(reply 那个工具的)。

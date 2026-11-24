@@ -607,7 +607,7 @@ extension StudioContext on StudioViewModel {
         toolsPrompt: mcpPrompt,
         toolsNote: mcpTools.isEmpty ? '' : mcpNativeNote,
         // 回复写在工具调用里:只给对话用,润色、反推要的是原样的结果。
-        replyTool: tools && preset.replyTool,
+        replyTool: tools && cfg.replyTool,
         thoughts: tools,
         token: llm.protocol == protocolGrok
             ? () => grokAccessToken(config, llm.id)

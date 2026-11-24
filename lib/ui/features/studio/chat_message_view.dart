@@ -323,7 +323,7 @@ class ChatMessageView extends StatelessWidget {
         splitLighting(splitPerspective(splitLayers(laid.prose).prose).prose)
             .prose,
       ),
-      tr('让 AI 自己决定'),
+      tr('让 AI 决定'),
     );
     // 挑成稿里的段:直接列当前页的各段。模型自己列出的多选项正好全是段名时也照此显示。
     final labels = {for (final s in draftSections) s.label};

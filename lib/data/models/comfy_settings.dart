@@ -96,6 +96,7 @@ class ComfySettings {
     this.orientation = orientationKeep,
     this.outputDirs = const {},
     this.sizes = comfyDefaultSizes,
+    this.standardSeen = false,
     this.loraTexts = const {},
     this.loraOff = const {},
     this.loraOrder = const {},
@@ -209,6 +210,7 @@ class ComfySettings {
             if (key is String && value is String && value.isNotEmpty)
               key: value,
       }),
+      standardSeen: m['standardSeen'] as bool? ?? false,
       sizes: m['sizes'] is List
           ? List.unmodifiable([
               for (final v in m['sizes'] as List)
@@ -277,6 +279,9 @@ class ComfySettings {
   /// 没填的本机 ComfyUI 照它的启动参数自己找。
   final Map<String, String> outputDirs;
 
+  /// 随 Penna 带的标准工作流已经自动加过一次了(之后用户删掉的不再加回来)。
+  final bool standardSeen;
+
   /// 侧栏「画面大小」里存下的常用尺寸(各工作流共用)。
   final List<({int width, int height})> sizes;
 
@@ -344,6 +349,7 @@ class ComfySettings {
     'autoGenerate': autoGenerate,
     'orientation': orientation,
     if (outputDirs.isNotEmpty) 'outputDirs': outputDirs,
+    'standardSeen': standardSeen,
     'sizes': [
       for (final s in sizes) [s.width, s.height],
     ],
@@ -371,6 +377,7 @@ class ComfySettings {
     String? orientation,
     Map<String, String>? outputDirs,
     List<({int width, int height})>? sizes,
+    bool? standardSeen,
     Map<String, String>? loraTexts,
     Map<String, List<LoraSetting>>? loraOff,
     Map<String, List<String>>? loraOrder,
@@ -393,6 +400,7 @@ class ComfySettings {
         ? this.outputDirs
         : Map.unmodifiable(outputDirs),
     sizes: sizes == null ? this.sizes : List.unmodifiable(sizes),
+    standardSeen: standardSeen ?? this.standardSeen,
     loraTexts: loraTexts == null ? this.loraTexts : Map.unmodifiable(loraTexts),
     loraOff: loraOff == null ? this.loraOff : Map.unmodifiable(loraOff),
     loraOrder: loraOrder == null ? this.loraOrder : Map.unmodifiable(loraOrder),

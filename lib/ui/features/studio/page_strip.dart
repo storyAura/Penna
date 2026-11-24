@@ -185,7 +185,7 @@ class _PageStripState extends State<PageStrip> {
   }
 
   Future<void> _seriesMenu(BuildContext context, Offset at, int series) async {
-    final pin = vm.seriesPinned(series) ? tr('取消固定') : tr('固定(不自动归档)');
+    final pin = vm.seriesPinned(series) ? tr('取消固定') : tr('固定');
     final picked = await popMenu(context, at, [
       tr('改名'),
       if (onArchive != null) pin,

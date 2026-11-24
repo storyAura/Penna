@@ -514,6 +514,25 @@ class ComfyClient {
     }
   }
 
+  /// ComfyUI 用户文件夹里 workflows 下存着的工作流(相对路径,斜杠统一成 `/`)。
+  Future<List<String>> savedWorkflows() async {
+    final list = await _json(
+      'GET',
+      '/userdata?dir=workflows&recurse=true&split=false',
+    );
+    return [
+      for (final f in list is List ? list : const [])
+        if (f is String) f.replaceAll(r'\', '/'),
+    ];
+  }
+
+  /// 把 [text] 存成 ComfyUI 的 workflows/[path];那里已经有同名文件就不盖。
+  Future<void> saveWorkflow(String path, String text) => _send(
+    'POST',
+    '/userdata/${Uri.encodeComponent('workflows/$path')}?overwrite=false',
+    (ContentType.json, utf8.encode(text)),
+  );
+
   /// 测试连接:能连上就返回 ComfyUI 的版本(老版本不报版本时是空串)。
   Future<String> version() async {
     final stats = await _json('GET', '/system_stats');

@@ -97,8 +97,7 @@ String _rewriteLoraTags(
   final out = text.replaceAllMapped(_loraTag, (m) {
     if (m.group(1)!.trim() != name.trim()) return m.group(0)!;
     if (off) return '';
-    final s =
-        strength ?? double.tryParse(m.group(2) ?? '') ?? 1;
+    final s = strength ?? double.tryParse(m.group(2) ?? '') ?? 1;
     return '<lora:${m.group(1)}:${_strengthText(s)}>';
   });
   // 删掉一条之后别留下两个空格。
@@ -393,7 +392,12 @@ ComfyWorkflow setLora(
   // 文本标签:<lora:名字:权重> 那一串
   if (v is String && _loraTag.hasMatch(v)) {
     if (name == null) return out;
-    inputs[key] = _rewriteLoraTags(v, name, strength: strength, off: on == false);
+    inputs[key] = _rewriteLoraTags(
+      v,
+      name,
+      strength: strength,
+      off: on == false,
+    );
     return out;
   }
   if (v is Map) {
@@ -478,9 +482,9 @@ List<({String name, double strength})> parseLoraTags(String text) => [
 
 /// 工作流里有没有写着 `{{lora}}` 的框。
 /// 有的话，LoRA 就由「设置里存的那段语法」决定，工作流别的节点一概不动。
-bool usesLoraMark(ComfyWorkflow wf) => _nodes(wf).any(
-  (n) => n.$3.values.any((v) => v is String && v.contains(comfyLoraMark)),
-);
+bool usesLoraMark(ComfyWorkflow wf) => _nodes(
+  wf,
+).any((n) => n.$3.values.any((v) => v is String && v.contains(comfyLoraMark)));
 
 /// 工作流里「装 LoRA 语法」的那个文本框。
 ///
@@ -552,7 +556,8 @@ String _bareName(String s) {
 
 /// 往一段语法里加一条;已经有同名的就只改权重。
 String loraSyntaxAdd(String text, String name, double strength) {
-  final has = parseLoraTags(text).any((e) => _bareName(e.name) == _bareName(name));
+  final has = parseLoraTags(text)
+      .any((e) => _bareName(e.name) == _bareName(name));
   if (has) return loraSyntaxSet(text, name, strength);
   final body = text.trim();
   final tag = '<lora:$name:${_strengthText(strength)}>';
@@ -596,9 +601,8 @@ String loraSyntaxNormalize(String text) {
 
 /// 工作流用文本标签(`<lora:名字:权重>`)装 LoRA 吗。
 /// 是的话，加 LoRA 只写文件名(和 Lora Manager 自己写的一致)。
-bool usesLoraTags(ComfyWorkflow wf) => _nodes(wf).any(
-  (n) => n.$3.values.any((v) => v is String && _loraTag.hasMatch(v)),
-);
+bool usesLoraTags(ComfyWorkflow wf) => _nodes(wf)
+    .any((n) => n.$3.values.any((v) => v is String && _loraTag.hasMatch(v)));
 
 /// 加一个 LoRA。工作流用文本装 LoRA 时追加一条 `<lora:名字:权重>`;
 /// 有 Power Lora Loader 就加在它里面;
@@ -625,8 +629,8 @@ ComfyWorkflow addLora(ComfyWorkflow wf, String name, double strength) {
     for (final key in inputs.keys) {
       final v = inputs[key];
       if (v is String && _loraTag.hasMatch(v)) {
-        inputs[key] =
-            '${v.trimRight()} <lora:$name:${_strengthText(strength)}>'.trim();
+        inputs[key] = '${v.trimRight()} <lora:$name:${_strengthText(strength)}>'
+            .trim();
         return out;
       }
     }

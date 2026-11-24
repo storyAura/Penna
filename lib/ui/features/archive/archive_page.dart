@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../../../core/harness/draft_block.dart';
 import '../../../core/harness/layout.dart';
@@ -185,6 +186,109 @@ class _ArchivePageState extends State<ArchivePage> {
   /// 左边找系列时打的字。
   var _query = '';
 
+  /// 左边按住 Ctrl / Shift 多选中的系列;[_anchor] 是 Shift 连选的起点。
+  Set<String> _picked = const {};
+  String? _anchor;
+
+  /// 点左边一行:Ctrl 加减、Shift 连选(同页签),不按就是换过去看。
+  void _tapSeries(String c, List<String> shown, String? selected) {
+    final keys = HardwareKeyboard.instance;
+    if (keys.isControlPressed) {
+      final base = _picked.isEmpty && selected != null ? {selected} : _picked;
+      setState(() {
+        _anchor = c;
+        _picked = base.contains(c) ? ({...base}..remove(c)) : {...base, c};
+      });
+      return;
+    }
+    if (keys.isShiftPressed) {
+      final from = shown.indexOf(_anchor ?? selected ?? c);
+      final to = shown.indexOf(c);
+      final (lo, hi) = from < 0
+          ? (to, to)
+          : from < to
+          ? (from, to)
+          : (to, from);
+      setState(() => _picked = shown.sublist(lo, hi + 1).toSet());
+      return;
+    }
+    setState(() {
+      _category = c;
+      _all = false;
+      _picked = const {};
+      _anchor = null;
+    });
+  }
+
+  /// 右键左边一行:选中了几个就是批量菜单(合并、批量改名、删除),否则只对这一个。
+  /// 2026-11-25 用户要求。
+  Future<void> _seriesMenu(String c, Offset at, List<String> shown) async {
+    final many = _picked.length > 1 && _picked.contains(c);
+    // 按左边列的先后,批量改名时编号才对得上眼睛看到的顺序。
+    final which = many
+        ? [
+            for (final s in shown)
+              if (_picked.contains(s)) s,
+          ]
+        : [c];
+    final merge = tr('合并成一个系列…'),
+        rename = many ? tr('批量改名…') : tr('改名…'),
+        delete = tr('删除');
+    final picked = await popMenu(context, at, [
+      if (many) merge,
+      rename,
+      delete,
+    ]);
+    if (picked == null || !mounted) return;
+    final archive = widget.archive;
+    if (picked == delete) {
+      final total = [
+        for (final e in archive.entries)
+          if (e.kind == _kind && which.contains(e.category)) e,
+      ].length;
+      if (!await confirmDelete(
+        context,
+        which.length == 1
+            ? tr('删除「{0}」的 {1} 条存档?', [tr(which.single), total])
+            : tr('删除 {0} 个系列的 {1} 条存档?', [which.length, total]),
+        tr('删掉后找不回来。'),
+      )) {
+        return;
+      }
+      archive.removeCategories(_kind, which.toSet());
+    } else {
+      final name = await askName(
+        context,
+        picked,
+        tr(which.first),
+        hint: picked == rename && many ? tr('按顺序接上 1、2、3…') : '',
+      );
+      final base = name?.trim() ?? '';
+      if (base.isEmpty || !mounted) return;
+      if (picked == merge || !many) {
+        archive.recategorize(_kind, which.toSet(), base);
+        _category = base;
+      } else {
+        // 新名字不和没选中的系列撞上(撞了会并进去)。
+        final taken = {
+          for (final s in archive.categoriesOf(_kind))
+            if (!which.contains(s)) s,
+        };
+        var n = 1;
+        for (final s in which) {
+          while (taken.contains('$base $n')) {
+            n++;
+          }
+          archive.recategorize(_kind, {s}, '$base ${n++}');
+        }
+      }
+    }
+    setState(() {
+      _picked = const {};
+      _anchor = null;
+    });
+  }
+
   /// 整个系列放回工作台:另起一个同名的系列,一条存档一页。存档留在档案库里不动。
   void _restoreSeries(String category, List<ArchiveEntry> entries) {
     final problem = widget.vm.restoreSeries(tr(category), [
@@ -241,10 +345,17 @@ class _ArchivePageState extends State<ArchivePage> {
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           child: TextField(
             style: const TextStyle(fontSize: 13),
+            contextMenuBuilder: pennaTextMenu,
             decoration: InputDecoration(
               isDense: true,
+              // 图标框和输入框一样高,图标和字才在一条线上(2026-11-25 用户反馈没对齐)。
               prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: tr('找系列的名字'),
+              prefixIconConstraints: const BoxConstraints(
+                minWidth: 34,
+                minHeight: 34,
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 9),
+              hintText: tr('搜索系列'),
               hintStyle: TextStyle(fontSize: 13, color: PennaColors.slate400),
             ),
             onChanged: (v) => setState(() => _query = v),
@@ -270,10 +381,9 @@ class _ArchivePageState extends State<ArchivePage> {
                   time: latest(c),
                   tint: _tintOf(c),
                   selected: c == selected,
-                  onTap: () => setState(() {
-                    _category = c;
-                    _all = false;
-                  }),
+                  picked: _picked.contains(c),
+                  onTap: () => _tapSeries(c, shown, selected),
+                  onMenu: (at) => _seriesMenu(c, at, shown),
                 ),
             ],
           ),
@@ -314,24 +424,34 @@ class _ArchivePageState extends State<ArchivePage> {
                 ),
                 const SizedBox(width: 10),
               ],
-              Flexible(
-                child: Text(
-                  selected == null ? tr('全部') : tr(selected),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: tint?.text,
-                  ),
+              // 名字和条数占满左边,操作按钮靠右(2026-11-25 用户反馈:以前名字和 Spacer
+              // 对半分剩下的宽度,按钮挤在中间)。
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        selected == null ? tr('全部') : tr(selected),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: tint?.text,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      tr('{0} 条', [shown.length]),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: PennaColors.slate500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 10),
-              Text(
-                tr('{0} 条', [shown.length]),
-                style: TextStyle(fontSize: 12, color: PennaColors.slate500),
-              ),
-              const Spacer(),
               if (selected != null && _kind == archivePrompt) ...[
                 PennaButton(
                   label: tr('整个系列放回工作台'),
@@ -479,6 +599,7 @@ class _ArchivePageState extends State<ArchivePage> {
                       onTap: () => setState(() {
                         _kind = kind;
                         _category = null;
+                        _picked = const {};
                         _all = false;
                         _query = '';
                       }),
