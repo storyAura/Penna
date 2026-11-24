@@ -210,6 +210,28 @@ class _LlmSectionState extends State<LlmSection> {
                 ),
                 gap,
                 WebSearchPicker(service: service),
+                gap,
+                // 选中的模型没出字就失败时换不换别的模型。
+                Text(tr('失败后'), style: titleStyle),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final (mode, label) in [
+                      (failoverAll, tr('换其他接口')),
+                      (failoverProvider, tr('只在这个接口里换模型')),
+                      (failoverOff, tr('不换,直接报错')),
+                    ])
+                      PennaChip(
+                        label: label,
+                        selected: cfg.failover == mode,
+                        onTap: () => service.update(
+                          service.config.copyWith(failover: mode),
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),

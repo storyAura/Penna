@@ -126,12 +126,15 @@ String _brief(Object error) =>
 /// 已经开始回复后再出错,就把错误原样抛出(不能接着另一个模型的话往下说)。
 /// [onTrying] 在开始问某个模型时调用,[onAnswering] 在它开始回复时调用,都告知名字。
 ///
+/// [sameVendor] 为真时同一家剩下的模型也挨个试(用户选了只在这个接口里换模型)。
+///
 /// 取消订阅会立刻停掉正在请求的模型,也不会再去问后面的模型。
 Stream<String> streamWithFailover(
   List<(String name, LlmRequest request)> chain,
   ChatStreamer stream, {
   void Function(String name)? onTrying,
   void Function(String name)? onAnswering,
+  bool sameVendor = false,
 }) {
   StreamSubscription<String>? inner;
   Completer<Object?>? waiting;
@@ -182,7 +185,7 @@ Stream<String> streamWithFailover(
     final failed = <String>{};
     for (final (name, request) in chain) {
       if (cancelled) return;
-      if (failed.contains(vendor(request))) continue;
+      if (!sameVendor && failed.contains(vendor(request))) continue;
       onTrying?.call(name);
       final (started, error) = await runOne(name, request);
       if (cancelled) return;

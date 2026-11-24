@@ -303,6 +303,7 @@ extension StudioChat on StudioViewModel {
     );
     _reply =
         streamWithFailover(
+          sameVendor: config.config.failover == failoverProvider,
           requests,
           this.streamChat,
           // 还在等的时候也标上正在问哪个模型,轮换到哪一个看得见。
@@ -418,6 +419,7 @@ extension StudioChat on StudioViewModel {
   }) {
     final cfg = config.config;
     return streamWithFailover(
+      sameVendor: config.config.failover == failoverProvider,
       _requests(
         cfg,
         [llm.copyWith(model: model)],

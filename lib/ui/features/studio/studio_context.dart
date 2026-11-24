@@ -620,11 +620,19 @@ extension StudioContext on StudioViewModel {
       );
     }
 
-    return [
+    final all = [
       for (final llm in chain)
         for (final model in llm.models)
           (nameOf(llm, model), request(llm, model)),
     ];
+    // 失败后换不换模型由用户定(「设置 → API 管理」):不换就只留第一个,
+    // 只在同一个接口里换就只留第一个接口填的那几个模型。
+    return switch (cfg.failover) {
+      failoverOff => all.take(1).toList(),
+      failoverProvider when chain.isNotEmpty =>
+        all.take(chain.first.models.length).toList(),
+      _ => all,
+    };
   }
 
   /// 各条消息里的图,按请求里的下标排(+1:前面还有一条系统提示)。

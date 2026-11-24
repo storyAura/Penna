@@ -10,6 +10,7 @@ import '../../../core/harness/layout.dart';
 import '../../../core/harness/manga/manga_script.dart' show storyboardTag;
 import '../../../core/harness/providers/llm_router.dart';
 import '../../../core/harness/thinking.dart';
+import '../../../data/models/app_config.dart' show failoverProvider;
 import '../../../l10n/l10n.dart';
 import 'studio_view_model.dart';
 
@@ -423,6 +424,7 @@ class SideChat extends ChangeNotifier {
     ]);
     _reply =
         streamWithFailover(
+          sameVendor: main.config.config.failover == failoverProvider,
           requests,
           main.streamChat,
           onTrying: (name) => _update((m) => m.copyWith(by: name)),

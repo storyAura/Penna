@@ -257,6 +257,13 @@ class LlmProfile {
 /// Google 接口能选的用量档位(2026-11-13 用户给的《Gemini 用量方案与 Penna 适配》)。
 const geminiTiers = ['standard', 'flex', 'priority'];
 
+/// 失败后怎么换模型:[failoverAll] 依次换到其他启用的接口(一直以来的做法);
+/// [failoverProvider] 只在选中的接口里换它填的其他模型;[failoverOff] 不换,失败就停。
+const failoverAll = 'all';
+const failoverProvider = 'provider';
+const failoverOff = 'off';
+const failoverModes = [failoverAll, failoverProvider, failoverOff];
+
 /// Preset = 系统提示 + 工具白名单。Skills 对所有 Preset 生效,见 [AppConfig.disabledSkills]。
 @immutable
 class AgentPreset {
@@ -454,6 +461,7 @@ class AppConfig {
     this.layoutSnap = defaultLayoutSnap,
     this.compressImages = true,
     this.chatIdeas = true,
+    this.failover = failoverAll,
     this.blurImages = false,
     this.tutorialSeen = false,
     this.mascot = false,
@@ -546,6 +554,9 @@ class AppConfig {
           .toInt(),
       compressImages: m['compressImages'] as bool? ?? true,
       chatIdeas: m['chatIdeas'] as bool? ?? true,
+      failover: failoverModes.contains(m['failover'])
+          ? m['failover'] as String
+          : failoverAll,
       blurImages: m['blurImages'] as bool? ?? false,
       // 旧设置里没有这一项:用过的人不再自动弹教程。
       tutorialSeen: m['tutorialSeen'] as bool? ?? true,
@@ -728,6 +739,9 @@ class AppConfig {
   /// 新对话里没说话时,用 Agent 的模型想几条创作点子摆在空白处。
   final bool chatIdeas;
 
+  /// 选中的模型没出字就失败时换不换别的模型,见 [failoverModes]。
+  final String failover;
+
   /// 出的图、档案库的图先糊着,点一下才看清(只是显示上的处理;2026-11-17 用户要求,默认关)。
   final bool blurImages;
 
@@ -803,6 +817,7 @@ class AppConfig {
     'layoutSnap': layoutSnap,
     'compressImages': compressImages,
     'chatIdeas': chatIdeas,
+    'failover': failover,
     'blurImages': blurImages,
     'tutorialSeen': tutorialSeen,
     'mascot': mascot,
@@ -898,6 +913,7 @@ class AppConfig {
     int? layoutSnap,
     bool? compressImages,
     bool? chatIdeas,
+    String? failover,
     bool? blurImages,
     bool? tutorialSeen,
     bool? mascot,
@@ -950,6 +966,7 @@ class AppConfig {
     layoutSnap: layoutSnap ?? this.layoutSnap,
     compressImages: compressImages ?? this.compressImages,
     chatIdeas: chatIdeas ?? this.chatIdeas,
+    failover: failover ?? this.failover,
     blurImages: blurImages ?? this.blurImages,
     tutorialSeen: tutorialSeen ?? this.tutorialSeen,
     mascot: mascot ?? this.mascot,
