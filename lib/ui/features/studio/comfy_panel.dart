@@ -288,12 +288,15 @@ class ComfyPanel extends StatelessWidget {
       report(runner.edit((wf) => addLora(wf, name, 1)));
     }
 
+    // 整个 LoRA 区能折起来(2026-11-25 用户要求),默认展开。
     return [
-      _heading(
-        count == 0 ? 'LoRA' : 'LoRA · $count',
+      _Fold(
+        key: const ValueKey('lora-fold'),
+        title: count == 0 ? 'LoRA' : 'LoRA · $count',
+        open: true,
         // 用 PennaButton:TextButton 自己给的字体样式会盖掉 Penna 的字体。
         // 文本模式不加这个按钮:加 LoRA 就是在语法框里写,别去动工作流。
-        textMode
+        trailing: textMode
             ? null
             : PennaButton(
                 icon: Icons.add,
@@ -310,115 +313,122 @@ class ComfyPanel extends StatelessWidget {
                   }
                 },
               ),
-      ),
-      // 存好的几套 LoRA:点一套就换成它的名单;最后一项「新建」把眼前的存成一套。
-      // 旁边的保存把改动存回眼前这一套。
-      Row(
         children: [
-          Expanded(
-            child: _PresetMenu(
-              label: runner.loraPreset?.name ?? tr('LoRA 配置'),
-              items: [
-                for (final p in runner.loraPresets)
-                  (value: p.name, label: p.name),
-              ],
-              icon: Icons.layers_outlined,
-              selected: runner.loraPreset?.name,
-              onSelected: (name) => report(
-                runner.applyLoraPreset(
-                  runner.loraPresets.firstWhere((p) => p.name == name),
+          // 存好的几套 LoRA:点一套就换成它的名单;最后一项「新建」把眼前的存成一套。
+          // 旁边的保存把改动存回眼前这一套。
+          Row(
+            children: [
+              Expanded(
+                child: _PresetMenu(
+                  label: runner.loraPreset?.name ?? tr('LoRA 配置'),
+                  items: [
+                    for (final p in runner.loraPresets)
+                      (value: p.name, label: p.name),
+                  ],
+                  icon: Icons.layers_outlined,
+                  selected: runner.loraPreset?.name,
+                  onSelected: (name) => report(
+                    runner.applyLoraPreset(
+                      runner.loraPresets.firstWhere((p) => p.name == name),
+                    ),
+                  ),
+                  onCreate: () async {
+                    final asked = await _askText(context, tr('存成一套 LoRA 配置'));
+                    if (asked != null) report(runner.saveLoraPreset(asked));
+                  },
+                  onRemove: runner.removeLoraPreset,
+                  onReorder: runner.moveLoraPreset,
                 ),
               ),
-              onCreate: () async {
-                final asked = await _askText(context, tr('存成一套 LoRA 配置'));
-                if (asked != null) report(runner.saveLoraPreset(asked));
-              },
-              onRemove: runner.removeLoraPreset,
-              onReorder: runner.moveLoraPreset,
-            ),
+              if (runner.loraPreset case final preset?)
+                IconButton(
+                  tooltip: tr('保存'),
+                  iconSize: 16,
+                  visualDensity: VisualDensity.compact,
+                  color: PennaColors.primary,
+                  icon: const Icon(Icons.save_outlined),
+                  onPressed: runner.loraPresetChanged
+                      ? () {
+                          final problem = runner.saveLoraPreset(preset.name);
+                          problem == null
+                              ? showToast(context, tr('已保存'))
+                              : report(problem);
+                        }
+                      : null,
+                ),
+            ],
           ),
-          if (runner.loraPreset case final preset?)
-            IconButton(
-              tooltip: tr('保存'),
-              iconSize: 16,
-              visualDensity: VisualDensity.compact,
-              color: PennaColors.primary,
-              icon: const Icon(Icons.save_outlined),
-              onPressed: runner.loraPresetChanged
-                  ? () {
-                      final problem = runner.saveLoraPreset(preset.name);
-                      problem == null
-                          ? showToast(context, tr('已保存'))
-                          : report(problem);
-                    }
-                  : null,
+          const SizedBox(height: 6),
+          if (textMode)
+            // 文本模式:增删改都在这个语法框里,每条前面有开关,名字上悬停看预览。
+            LoraSyntaxEditor(
+              text: syntax,
+              rows: rows,
+              onChanged: writeSyntax,
+              onToggle: toggleLora,
+              onOffStrength: offStrength,
+              onForget: forgetOff,
+              previewOf: previewOf,
+              imageHeaders: runner.client.headers,
+            )
+          else
+            // 按住左边的把手拖着换顺序。
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              itemCount: slots.length,
+              onReorderItem: (from, to) =>
+                  report(runner.edit((wf) => moveLora(wf, from, to))),
+              itemBuilder: (context, i) => _LoraRow(
+                key: ValueKey('${slots[i].node}/${slots[i].key}'),
+                index: i,
+                slot: slots[i],
+                missing: _missing(slots[i].name, runner.loraOptions),
+                onOn: (on) => report(
+                  runner.edit(
+                    (wf) => setLora(
+                      wf,
+                      slots[i].node,
+                      slots[i].key,
+                      on: on,
+                      name: slots[i].name,
+                    ),
+                  ),
+                ),
+                onStrength: (v) => report(
+                  runner.edit(
+                    (wf) => setLora(
+                      wf,
+                      slots[i].node,
+                      slots[i].key,
+                      strength: v,
+                      name: slots[i].name,
+                    ),
+                  ),
+                ),
+                onRemove: () => report(
+                  runner.edit(
+                    (wf) => removeLora(
+                      wf,
+                      slots[i].node,
+                      slots[i].key,
+                      name: slots[i].name,
+                    ),
+                  ),
+                ),
+              ),
             ),
+          // Lora Manager 的库:搜索、筛选、预览图卡片,点一下加/减。
+          _heading(tr('Lora Manager 库')),
+          LoraGallery(
+            key: const ValueKey('lora-gallery'),
+            runner: runner,
+            added: added,
+            onTap: pick,
+          ),
         ],
       ),
-      const SizedBox(height: 6),
-      if (textMode)
-        // 文本模式:增删改都在这个语法框里,每条前面有开关,名字上悬停看预览。
-        LoraSyntaxEditor(
-          text: syntax,
-          rows: rows,
-          onChanged: writeSyntax,
-          onToggle: toggleLora,
-          onOffStrength: offStrength,
-          onForget: forgetOff,
-          previewOf: previewOf,
-          imageHeaders: runner.client.headers,
-        )
-      else
-        // 按住左边的把手拖着换顺序。
-        ReorderableListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          buildDefaultDragHandles: false,
-          itemCount: slots.length,
-          onReorderItem: (from, to) =>
-              report(runner.edit((wf) => moveLora(wf, from, to))),
-          itemBuilder: (context, i) => _LoraRow(
-            key: ValueKey('${slots[i].node}/${slots[i].key}'),
-            index: i,
-            slot: slots[i],
-            missing: _missing(slots[i].name, runner.loraOptions),
-            onOn: (on) => report(
-              runner.edit(
-                (wf) => setLora(
-                  wf,
-                  slots[i].node,
-                  slots[i].key,
-                  on: on,
-                  name: slots[i].name,
-                ),
-              ),
-            ),
-            onStrength: (v) => report(
-              runner.edit(
-                (wf) => setLora(
-                  wf,
-                  slots[i].node,
-                  slots[i].key,
-                  strength: v,
-                  name: slots[i].name,
-                ),
-              ),
-            ),
-            onRemove: () => report(
-              runner.edit(
-                (wf) => removeLora(
-                  wf,
-                  slots[i].node,
-                  slots[i].key,
-                  name: slots[i].name,
-                ),
-              ),
-            ),
-          ),
-        ),
-      // Lora Manager 的库:搜索、筛选、预览图卡片,点一下加/减。
-      _heading(tr('Lora Manager 库')),
-      LoraGallery(runner: runner, added: added, onTap: pick),
     ];
   }
 }

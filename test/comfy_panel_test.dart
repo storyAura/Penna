@@ -96,7 +96,8 @@ void main() {
     expect(find.text('example.png'), findsOneWidget);
 
     // LoRA 配置的下拉:两套都在,能拖动的那几项排得开,没有布局报错。
-    await tester.scrollUntilVisible(find.text('LoRA 配置'), 100);
+    await tester.ensureVisible(find.text('LoRA 配置'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('LoRA 配置'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

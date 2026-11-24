@@ -42,7 +42,13 @@ const _sorts = [
   (value: 'recent', label: '最近'),
 ];
 
-class _LoraGalleryState extends State<LoraGallery> {
+// 侧栏是按需建的列表:滚出去会被拆掉、回来重读,高度一缩整个面板就弹回顶上
+// (2026-11-25 用户反馈),所以留着它。
+class _LoraGalleryState extends State<LoraGallery>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   final _search = TextEditingController();
   Timer? _typing;
 
@@ -99,7 +105,6 @@ class _LoraGalleryState extends State<LoraGallery> {
     setState(() {
       _loading = true;
       _error = null;
-      if (page == 1) _entries = const [];
     });
     try {
       final json = await widget.runner.client.loraLibrary(
@@ -138,8 +143,42 @@ class _LoraGalleryState extends State<LoraGallery> {
       widget.added.contains(loraKey(e.stem)) ||
       widget.added.contains(loraKey(e.file));
 
+  /// 右键一张卡片:收藏或取消收藏(写回 Lora Manager)。
+  Future<void> _menu(LoraEntry e, Offset at) async {
+    final label = e.favorite ? tr('取消收藏') : tr('收藏');
+    final picked = await popMenu(context, at, [label]);
+    if (picked == null || !mounted) return;
+    try {
+      await widget.runner.client.setLoraFavorite(e.path, !e.favorite);
+      if (!mounted) return;
+      setState(() {
+        _entries = [
+          for (final x in _entries)
+            if (x.path == e.path)
+              (
+                name: x.name,
+                file: x.file,
+                path: x.path,
+                stem: x.stem,
+                folder: x.folder,
+                baseModel: x.baseModel,
+                preview: x.preview,
+                triggers: x.triggers,
+                favorite: !x.favorite,
+                usage: x.usage,
+              )
+            else
+              x,
+        ];
+      });
+    } on ComfyException catch (err) {
+      if (mounted) showToast(context, err.message, warn: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -160,10 +199,11 @@ class _LoraGalleryState extends State<LoraGallery> {
             physics: const NeverScrollableScrollPhysics(),
             itemCount: _entries.length,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              childAspectRatio: 0.78,
+              // 三列方格(2026-11-25 用户嫌两列竖卡太长)。
+              crossAxisCount: 3,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+              childAspectRatio: 1,
             ),
             itemBuilder: (context, i) {
               final e = _entries[i];
@@ -502,12 +542,12 @@ class _LoraGalleryState extends State<LoraGallery> {
         if (e.folder.isNotEmpty) e.folder,
         if (e.baseModel.isNotEmpty) e.baseModel,
         if (e.triggers.isNotEmpty) e.triggers.join(', '),
-        tr(added ? '点一下从工作流里去掉' : '点一下加进工作流'),
       ].join('\n'),
       waitDuration: const Duration(milliseconds: 500),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: () => widget.onTap(e),
+        onSecondaryTapDown: (d) => _menu(e, d.globalPosition),
         child: Container(
           decoration: BoxDecoration(
             color: PennaColors.card,
@@ -552,14 +592,25 @@ class _LoraGalleryState extends State<LoraGallery> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 10.5,
-                    height: 1.25,
+                    fontSize: 10,
+                    height: 1.2,
                     color: Colors.white,
                   ),
                 ),
               ),
-              if (e.baseModel.isNotEmpty)
-                Positioned(left: 5, top: 5, child: _badge(e.baseModel)),
+              // 底模不明的不标(以前满屏 Unknown)。
+              if (e.baseModel.isNotEmpty &&
+                  e.baseModel.toLowerCase() != 'unknown')
+                // 右边让出「+」的位置,长的底模名截断。
+                Positioned(
+                  left: 4,
+                  top: 4,
+                  right: 26,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _badge(e.baseModel),
+                  ),
+                ),
               Positioned(
                 right: 5,
                 top: 5,
@@ -582,9 +633,9 @@ class _LoraGalleryState extends State<LoraGallery> {
               ),
               if (e.favorite)
                 const Positioned(
-                  right: 5,
-                  bottom: 5,
-                  child: Icon(Icons.star, size: 12, color: Colors.amber),
+                  right: 4,
+                  top: 25,
+                  child: Icon(Icons.star, size: 13, color: Colors.amber),
                 ),
             ],
           ),

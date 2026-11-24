@@ -186,20 +186,41 @@ class _SizeMenu extends StatelessWidget {
 
 /// 一块参数:标题一行,点了展开 / 收起,默认收起。
 class _Fold extends StatefulWidget {
-  const _Fold({super.key, required this.title, required this.children});
+  const _Fold({
+    super.key,
+    required this.title,
+    required this.children,
+    this.trailing,
+    this.open = false,
+  });
 
   final String title;
   final List<Widget> children;
+
+  /// 标题右边的按钮(在折叠箭头前面)。
+  final Widget? trailing;
+
+  /// 一开始是不是展开的。
+  final bool open;
 
   @override
   State<_Fold> createState() => _FoldState();
 }
 
-class _FoldState extends State<_Fold> {
-  bool _open = false;
+// 侧栏是按需建的列表,滚出去会拆掉:留着,折没折起来才不会被重置。
+class _FoldState extends State<_Fold> with AutomaticKeepAliveClientMixin {
+  late bool _open = widget.open;
 
   @override
-  Widget build(BuildContext context) => Column(
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return _column(context);
+  }
+
+  Widget _column(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       InkWell(
@@ -207,15 +228,21 @@ class _FoldState extends State<_Fold> {
         onTap: () => setState(() => _open = !_open),
         child: _heading(
           widget.title,
-          AnimatedRotation(
-            turns: _open ? 0.5 : 0,
-            duration: Motion.of(context, Motion.base),
-            curve: Motion.expand,
-            child: Icon(
-              Icons.expand_more,
-              size: 16,
-              color: PennaColors.slate400,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ?widget.trailing,
+              AnimatedRotation(
+                turns: _open ? 0.5 : 0,
+                duration: Motion.of(context, Motion.base),
+                curve: Motion.expand,
+                child: Icon(
+                  Icons.expand_more,
+                  size: 16,
+                  color: PennaColors.slate400,
+                ),
+              ),
+            ],
           ),
         ),
       ),

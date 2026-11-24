@@ -13,6 +13,9 @@ typedef LoraEntry = ({
   /// 写进工作流的名字:相对 loras 目录的路径，带扩展名，反斜杠分隔。
   String file,
 
+  /// Lora Manager 自己认的路径(服务器上的完整路径),收藏这类改动按它找。
+  String path,
+
   /// 文件名，不带目录和后缀。文本标签(`<lora:名字:权重>`)里用的就是它。
   String stem,
 
@@ -55,6 +58,7 @@ LoraEntry? _entry(Map<String, Object?> m) {
   return (
     name: name,
     file: _relative(file, fileName, folder),
+    path: file,
     stem: fileName,
     folder: folder,
     baseModel: '${m['base_model'] ?? ''}',

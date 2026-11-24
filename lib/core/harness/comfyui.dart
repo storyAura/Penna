@@ -454,10 +454,14 @@ class ComfyClient {
       if (body case (final ContentType type, final List<int> bytes)) {
         // 传文件(multipart):自己拼好的整段。
         req.headers.contentType = type;
+        req.contentLength = bytes.length;
         req.add(bytes);
       } else if (body != null) {
+        // 写明长度,不分块发:有的反向代理、简单的服务端读不了分块的请求体。
+        final bytes = utf8.encode(jsonEncode(body));
         req.headers.contentType = ContentType.json;
-        req.add(utf8.encode(jsonEncode(body)));
+        req.contentLength = bytes.length;
+        req.add(bytes);
       }
       return await req.close();
     } on SocketException {
@@ -646,6 +650,13 @@ class ComfyClient {
   }) => _json(
     'GET',
     '/api/lm/loras/list?${Uri(queryParameters: {'page': '$page', 'page_size': '$pageSize', 'sort_by': sortBy, if (search.trim().isNotEmpty) 'search': search.trim(), if (folder.isNotEmpty) 'folder': folder, if (favoritesOnly) 'favorites_only': 'true'}).query}',
+  );
+
+  /// 在 Lora Manager 里收藏或取消收藏 [path](列表里的 `file_path`);同它网页上的星标。
+  Future<void> setLoraFavorite(String path, bool favorite) => _json(
+    'POST',
+    '/api/lm/loras/save-metadata',
+    {'file_path': path, 'favorite': favorite},
   );
 
   /// Lora Manager 的文件夹列表(第一项一般是空串,表示根)。

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/comfy_workflow.dart';
 import 'package:penna/core/harness/comfyui.dart';
+import 'package:penna/core/harness/lora_library.dart';
 
 void main() {
   test('从文本里取出 <lora:名字:权重>,按出现顺序', () {
@@ -48,5 +49,24 @@ void main() {
     expect(text, '<lora:a:0.5>');
     final prompt = ((out['73']! as Map)['inputs']! as Map)['value'];
     expect(prompt, 'a girl');
+  });
+
+  test('Lora Manager 的列表:收藏要用的完整路径留着,底模、收藏照读', () {
+    final page = parseLoraPage({
+      'items': [
+        {
+          'file_path': '/srv/ComfyUI/models/loras/style/a.safetensors',
+          'file_name': 'a',
+          'folder': 'style',
+          'base_model': 'Illustrious',
+          'favorite': true,
+        },
+      ],
+      'total': 1,
+    });
+    final e = page.entries.single;
+    expect(e.path, '/srv/ComfyUI/models/loras/style/a.safetensors');
+    expect(e.file, r'style\a.safetensors');
+    expect(e.favorite, isTrue);
   });
 }
