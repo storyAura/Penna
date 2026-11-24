@@ -432,6 +432,10 @@ class StudioViewModel extends ChangeNotifier {
 
   /// 排在 [pending] 后面等确认的改动(成稿被固定区隔成几栏时,每栏一处)。
   List<DiffProposal> _queued = const [];
+
+  /// 页签上按住 Ctrl / Shift 多选中的页(`pages` 的下标)。页签和下半区的「出选中的图」共用
+  /// (2026-11-25 用户要求多选了页时能按顺序出这几张)。
+  final pickedPages = ValueNotifier<Set<int>>(const {});
   int get queuedDiffs => _queued.length;
 
   /// 所有还没确认的改动里要换上去的文字,用来看某份成稿是不是已经在等确认了。
@@ -496,6 +500,7 @@ class StudioViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    pickedPages.dispose();
     if (layoutOnly) layout?.removeListener(_boardListener);
     // 还有没落盘的改动就趁现在存掉。
     if (_saveTimer?.isActive ?? false) {

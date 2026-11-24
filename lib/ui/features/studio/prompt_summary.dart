@@ -106,6 +106,23 @@ class _SummarySectionState extends State<_SummarySection> {
                             extra: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                // 页签上多选了几页:按页的先后出这几张。
+                                ValueListenableBuilder(
+                                  valueListenable: vm.pickedPages,
+                                  builder: (context, picked, _) =>
+                                      picked.length < 2
+                                      ? const SizedBox.shrink()
+                                      : Padding(
+                                          padding: const EdgeInsets.only(
+                                            right: 6,
+                                          ),
+                                          child: _PickedGenerateButton(
+                                            vm: vm,
+                                            pages: picked,
+                                            onStart: _showImages,
+                                          ),
+                                        ),
+                                ),
                                 if (vm.seriesLength > 1) ...[
                                   _SeriesGenerateButton(
                                     vm: vm,

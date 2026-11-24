@@ -73,6 +73,37 @@ class _SeriesGenerateButton extends StatelessWidget {
   );
 }
 
+/// 「出选中的图」:页签上多选的几页按页的先后排进队列,做完清掉选择。
+class _PickedGenerateButton extends StatelessWidget {
+  const _PickedGenerateButton({
+    required this.vm,
+    required this.pages,
+    required this.onStart,
+  });
+
+  final StudioViewModel vm;
+  final Set<int> pages;
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context) => PennaButton(
+    label: tr('出选中的图({0})', [pages.length]),
+    icon: Icons.checklist,
+    tooltip: tr('页签上选中的几页按顺序出图'),
+    borderColor: PennaColors.primaryBorder,
+    foreground: PennaColors.primary,
+    onPressed: () {
+      final count = vm.generatePages(pages);
+      vm.pickedPages.value = const {};
+      if (count == 0) {
+        return showToast(context, tr('这些页还是空的'), warn: true);
+      }
+      onStart();
+      showToast(context, tr('已排进出图队列 {0} 张', [count]));
+    },
+  );
+}
+
 /// 「出图」页签:进度、错误和这次出过的图(新的在前,点开看大图)。
 class _ComfyStrip extends StatelessWidget {
   const _ComfyStrip({required this.runner});

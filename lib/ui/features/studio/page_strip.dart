@@ -59,7 +59,26 @@ class _PageStripState extends State<PageStrip> {
 
   /// 多选中的页(`pages` 的下标)。做完一次批量操作、单击换页就清掉。
   // ponytail: 按下标记,选着的时候 Agent 加了页,选中的会错位;做完一件事就清掉,够用。
-  Set<int> _picked = const {};
+  // 记在 vm 上:下半区的「出选中的图」也要看(2026-11-25)。
+  Set<int> get _picked => vm.pickedPages.value;
+  set _picked(Set<int> v) => vm.pickedPages.value = v;
+
+  @override
+  void initState() {
+    super.initState();
+    vm.pickedPages.addListener(_onPicked);
+  }
+
+  @override
+  void dispose() {
+    vm.pickedPages.removeListener(_onPicked);
+    super.dispose();
+  }
+
+  /// 别处(「出选中的图」)清掉了选择,页签跟着变。
+  void _onPicked() {
+    if (mounted) setState(() {});
+  }
 
   /// Shift 连选的起点:上一次 Ctrl 点的那页;没有就是眼前这页。
   int? _anchor;
@@ -101,17 +120,12 @@ class _PageStripState extends State<PageStrip> {
 
   /// 按页的先后排进出图队列。
   void _generate(BuildContext context, Iterable<int> which) {
-    final prompts = [
-      for (final i in which.toList()..sort()) vm.finalPromptOf(i),
-    ].where((p) => p.trim().isNotEmpty).toList();
+    final count = vm.generatePages(which);
     _do(context, null);
-    if (prompts.isEmpty) {
+    if (count == 0) {
       return showToast(context, tr('这些页还是空的'), warn: true);
     }
-    for (final p in prompts) {
-      unawaited(vm.comfy.generate(p));
-    }
-    showToast(context, tr('已排进出图队列 {0} 张', [prompts.length]));
+    showToast(context, tr('已排进出图队列 {0} 张', [count]));
   }
 
   /// 多选时右键:对选中的几页一起做。
@@ -317,7 +331,12 @@ class _PageStripState extends State<PageStrip> {
   Widget build(BuildContext context) {
     _autoArchive();
     final pages = vm.pages;
-    if (_picked.any((i) => i >= pages.length)) _picked = const {};
+    // 选中的页被删掉了:等这一帧画完再清(画的时候通知别人会报错)。
+    if (_picked.any((i) => i >= pages.length)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _picked = const {};
+      });
+    }
     if ((_anchor ?? 0) >= pages.length) _anchor = null;
     final groups = _groups;
     Widget frameOf(int g, List<int> group) => _SeriesFrame(

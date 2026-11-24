@@ -577,6 +577,43 @@ void main() {
     expect([for (final p in vm.pages) p.name], ['女仆 1', '', '女仆 2']);
   });
 
+  testWidgets('多选了几页:最终提示词旁边出现「出选中的图」,按页的先后排进队列', (tester) async {
+    tester.view.physicalSize = const Size(1800, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final vm = _studio(blocks: const [(text: 'a fox', pinned: false)]);
+    vm.addPage();
+    vm.setText(0, 'a crow');
+    vm.addPage();
+    vm.setText(0, 'an owl');
+    vm.openPage(0);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: pennaTheme(),
+        home: AppShell(vm: vm, config: vm.config, skills: tempSkills()),
+      ),
+    );
+    expect(find.textContaining('出选中的图'), findsNothing);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.tap(_tab(3));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(find.text('出选中的图(2)'), findsOneWidget);
+
+    await tester.tap(find.text('出选中的图(2)'));
+    await tester.pump();
+    expect([for (final j in vm.comfy.jobs.reversed) j.prompt], [
+      'a fox',
+      'an owl',
+    ]);
+    // 出完清掉选择,按钮收起来。
+    expect(vm.pickedPages.value, isEmpty);
+    expect(find.textContaining('出选中的图'), findsNothing);
+    vm.comfy.cancelAll();
+    await tester.pump(const Duration(seconds: 5));
+  });
+
   testWidgets('页签:按住 Shift 点首尾,中间的页一起选上', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;

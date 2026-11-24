@@ -1841,4 +1841,6 @@ const en = <String, String>{
   '按顺序接上 1、2、3…': 'Numbered 1, 2, 3… in order',
   '工作流没存到 ComfyUI:{0}': 'Workflow not saved to ComfyUI: {0}',
   '不用预设': 'No preset',
+  '出选中的图({0})': 'Generate selected ({0})',
+  '页签上选中的几页按顺序出图': 'Generate the pages selected in the tabs, in order',
 };

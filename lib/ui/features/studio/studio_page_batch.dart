@@ -125,6 +125,18 @@ extension StudioPageBatch on StudioViewModel {
     });
   }
 
+  /// 把 [which] 这几页按页的先后排进出图队列(空白页跳过),返回排了几张。
+  int generatePages(Iterable<int> which) {
+    final prompts = [
+      for (final i in which.toList()..sort())
+        if (i < _pages.length) finalPromptOf(i),
+    ].where((p) => p.trim().isNotEmpty).toList();
+    for (final p in prompts) {
+      unawaited(comfy.generate(p));
+    }
+    return prompts.length;
+  }
+
   /// 第 [i] 页交付出去的提示词(出图用)。
   String finalPromptOf(int i) => i == _page
       ? finalPrompt
