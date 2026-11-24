@@ -138,6 +138,18 @@ class _ArchivePageState extends State<ArchivePage> {
   /// 大缩略图(看预览图)还是列表。
   var _grid = false;
 
+  /// 列表里是不是每条都带着预览图和正文;关着时一条只占一行,点一下那一行才展开。
+  var _detail = false;
+
+  /// 精简列表里点开了的那几条。
+  Set<String> _opened = const {};
+
+  void _toggle(String id) => setState(
+    () => _opened = Set.unmodifiable(
+      _opened.contains(id) ? ({..._opened}..remove(id)) : {..._opened, id},
+    ),
+  );
+
   void _restore(ArchiveEntry entry) {
     if (entry.kind == archiveManga) {
       final project = _mangaOf(entry);
@@ -190,7 +202,12 @@ class _ArchivePageState extends State<ArchivePage> {
       onImage: (path) => _setImage(entry, readPreview(context, path)),
       child: _grid
           ? _EntryTile(entry: entry, actions: actions)
-          : _EntryCard(entry: entry, actions: actions),
+          : _EntryCard(
+              entry: entry,
+              actions: actions,
+              detail: _detail || _opened.contains(entry.id),
+              onToggle: _detail ? null : () => _toggle(entry.id),
+            ),
     );
   }
 
@@ -271,6 +288,14 @@ class _ArchivePageState extends State<ArchivePage> {
                       ),
                     ),
                     const Spacer(),
+                    if (!_grid) ...[
+                      PennaChip(
+                        label: tr('显示细节'),
+                        selected: _detail,
+                        onTap: () => setState(() => _detail = !_detail),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     ViewSwitch(
                       grid: _grid,
                       onChanged: (g) => setState(() => _grid = g),
@@ -331,7 +356,7 @@ class _ArchivePageState extends State<ArchivePage> {
                         else
                           for (final entry in shown) ...[
                             _item(entry),
-                            const SizedBox(height: 10),
+                            SizedBox(height: _detail ? 10 : 4),
                           ],
                       ],
                     ),
@@ -441,21 +466,29 @@ Widget _iconButton(IconData icon, String tip, VoidCallback onPressed) =>
     );
 
 /// 列表里的一条:有预览图时图在左边,没有就不占地方。
+/// [detail] 关着时只有名字那一行(一条占一行),[onToggle] 给了就能点名字展开、收起。
 class _EntryCard extends StatelessWidget {
-  const _EntryCard({required this.entry, required this.actions});
+  const _EntryCard({
+    required this.entry,
+    required this.actions,
+    this.detail = true,
+    this.onToggle,
+  });
 
   final ArchiveEntry entry;
   final _Actions actions;
+  final bool detail;
+  final VoidCallback? onToggle;
 
   @override
   Widget build(BuildContext context) {
     final (:clean, :preview) = _texts(entry, actions);
     return PennaCard(
-      padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
+      padding: EdgeInsets.fromLTRB(12, detail ? 8 : 2, 8, detail ? 12 : 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (entry.image.isNotEmpty) ...[
+          if (detail && entry.image.isNotEmpty) ...[
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: PreviewImage(
@@ -476,16 +509,48 @@ class _EntryCard extends StatelessWidget {
                     Flexible(flex: 0, child: _CategoryPill(entry.category)),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        entry.title.isEmpty ? tr('未命名') : entry.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: entry.title.isEmpty
-                              ? PennaColors.slate400
-                              : PennaColors.text,
+                      child: InkWell(
+                        onTap: onToggle,
+                        child: Row(
+                          children: [
+                            if (onToggle != null)
+                              Icon(
+                                detail
+                                    ? Icons.expand_more
+                                    : Icons.chevron_right,
+                                size: 16,
+                                color: PennaColors.slate400,
+                              ),
+                            Flexible(
+                              child: Text(
+                                entry.title.isEmpty ? tr('未命名') : entry.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: entry.title.isEmpty
+                                      ? PennaColors.slate400
+                                      : PennaColors.text,
+                                ),
+                              ),
+                            ),
+                            // 收着时名字后面带一句正文,不点开也认得出是哪条。
+                            if (!detail) ...[
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  preview.replaceAll('\n', ' '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: PennaColors.slate400,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ),
@@ -524,13 +589,15 @@ class _EntryCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  preview,
-                  maxLines: 5,
-                  overflow: TextOverflow.ellipsis,
-                  style: monoStyle.copyWith(fontSize: 11.5),
-                ),
+                if (detail) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    preview,
+                    maxLines: 5,
+                    overflow: TextOverflow.ellipsis,
+                    style: monoStyle.copyWith(fontSize: 11.5),
+                  ),
+                ],
               ],
             ),
           ),

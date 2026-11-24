@@ -610,16 +610,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(vm.pages.map((p) => p.series), [0, 0, 1]);
     expect(_inStudio(find.text('系列 2')), findsOneWidget);
-    // 每个系列的页码都从 1 数。
-    expect(_tab(1), findsNWidgets(2));
+    // 只有眼前的系列展开着各页(页码从 1 数),别的系列收成一个小标签。
+    expect(_tab(1), findsOneWidget);
+    expect(_inStudio(find.text('系列 1')), findsOneWidget);
 
-    await tester.tap(_tab(1).first);
+    // 点标签换到那个系列的第一页。
+    await tester.tap(_inStudio(find.text('系列 1')));
     await tester.pumpAndSettle();
     expect(vm.pageIndex, 0);
     expect(find.text('a fox'), findsWidgets);
+    expect(_tab(2), findsOneWidget);
 
     // 右键页签:空白页直接删,不用确认。
-    await tester.tap(_tab(1).last, buttons: kSecondaryButton);
+    await tester.tap(_inStudio(find.text('系列 2')));
+    await tester.pumpAndSettle();
+    await tester.tap(_tab(1), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除这一页'));
     await tester.pumpAndSettle();

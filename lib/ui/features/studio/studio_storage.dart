@@ -115,6 +115,20 @@ extension StudioStorage on StudioViewModel {
     _page = page;
     _seriesChats = seriesChats;
     _seriesNames = seriesNames;
+    // 以前的存档没记哪个系列什么时候用过:都按现在算,不会一升级就被归档。
+    final loadedAt = DateTime.now().millisecondsSinceEpoch;
+    final used = (j['seriesUsed'] as Map?) ?? const {};
+    _seriesUsed = {
+      for (final p in pages)
+        p.series: switch (used['${p.series}']) {
+          final int at => at,
+          _ => loadedAt,
+        },
+    };
+    _seriesPinned = Set.unmodifiable({
+      for (final s in (j['seriesPinned'] as List?) ?? const [])
+        if (s is int) s,
+    });
     _blocks = pages[page].blocks;
     _pending = null;
     _queued = const [];

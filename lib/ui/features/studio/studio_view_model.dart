@@ -357,6 +357,13 @@ class StudioViewModel extends ChangeNotifier {
   /// 起过名字的系列;没起的显示成「系列 N」。
   Map<int, String> _seriesNames = const {};
 
+  /// 各系列最后一次用到是什么时候(毫秒时间戳);没记过的在读档时按当时算。
+  /// 自动归档看它:一段时间没用的系列收进档案库(见 [StudioPages.staleSeries])。
+  Map<int, int> _seriesUsed = {};
+
+  /// 用户固定的系列:不自动归档。
+  Set<int> _seriesPinned = const {};
+
   /// Agent 要另起系列却满了时的提醒(见 [StudioPages.seriesAlert])。
   String? _seriesAlert;
 

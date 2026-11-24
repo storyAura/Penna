@@ -233,6 +233,8 @@ extension StudioChat on StudioViewModel {
     final cfg = config.config;
     final chain = _usable(cfg.agentChain);
     if (chain.isEmpty) return tr('请先在设置里添加模型并填写模型名称');
+    // 在这个系列里说话就算用过它(自动归档看的是多久没用)。
+    _touchSeries();
 
     // 出错的、被停在开头的空回复不算历史,有的接口会拒收空内容;
     // 写了半截才出错的留下写好的部分(去掉出错原因),模型知道自己写到了哪。

@@ -462,6 +462,7 @@ class AppConfig {
     this.compressImages = true,
     this.chatIdeas = true,
     this.failover = failoverAll,
+    this.autoArchiveDays = 14,
     this.blurImages = false,
     this.tutorialSeen = false,
     this.mascot = false,
@@ -557,6 +558,7 @@ class AppConfig {
       failover: failoverModes.contains(m['failover'])
           ? m['failover'] as String
           : failoverAll,
+      autoArchiveDays: ((m['autoArchiveDays'] as int?) ?? 14).clamp(0, 365),
       blurImages: m['blurImages'] as bool? ?? false,
       // 旧设置里没有这一项:用过的人不再自动弹教程。
       tutorialSeen: m['tutorialSeen'] as bool? ?? true,
@@ -742,6 +744,9 @@ class AppConfig {
   /// 选中的模型没出字就失败时换不换别的模型,见 [failoverModes]。
   final String failover;
 
+  /// 系列这么多天没用就自动归档进档案库(固定的不归档);0 是不自动归档。
+  final int autoArchiveDays;
+
   /// 出的图、档案库的图先糊着,点一下才看清(只是显示上的处理;2026-11-17 用户要求,默认关)。
   final bool blurImages;
 
@@ -818,6 +823,7 @@ class AppConfig {
     'compressImages': compressImages,
     'chatIdeas': chatIdeas,
     'failover': failover,
+    'autoArchiveDays': autoArchiveDays,
     'blurImages': blurImages,
     'tutorialSeen': tutorialSeen,
     'mascot': mascot,
@@ -914,6 +920,7 @@ class AppConfig {
     bool? compressImages,
     bool? chatIdeas,
     String? failover,
+    int? autoArchiveDays,
     bool? blurImages,
     bool? tutorialSeen,
     bool? mascot,
@@ -967,6 +974,7 @@ class AppConfig {
     compressImages: compressImages ?? this.compressImages,
     chatIdeas: chatIdeas ?? this.chatIdeas,
     failover: failover ?? this.failover,
+    autoArchiveDays: autoArchiveDays ?? this.autoArchiveDays,
     blurImages: blurImages ?? this.blurImages,
     tutorialSeen: tutorialSeen ?? this.tutorialSeen,
     mascot: mascot ?? this.mascot,

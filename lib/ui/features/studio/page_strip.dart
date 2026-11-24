@@ -177,13 +177,18 @@ class _PageStripState extends State<PageStrip> {
   }
 
   Future<void> _seriesMenu(BuildContext context, Offset at, int series) async {
+    final pin = vm.seriesPinned(series) ? tr('取消固定') : tr('固定(不自动归档)');
     final picked = await popMenu(context, at, [
       tr('改名'),
+      if (onArchive != null) pin,
       if (onArchive != null) tr('归档'),
       tr('删除整个系列'),
       tr('批量管理…'),
     ]);
     if (!context.mounted || picked == null) return;
+    if (picked == pin) {
+      return vm.pinSeries(series, on: !vm.seriesPinned(series));
+    }
     if (picked == tr('改名')) return _renameSeries(context, series);
     if (picked == tr('归档')) return onArchive!({series});
     if (picked == tr('批量管理…')) {
@@ -219,8 +224,25 @@ class _PageStripState extends State<PageStrip> {
     if (context.mounted) _do(context, vm.removeSeries(series));
   }
 
+  /// 上次看有没有该归档的系列时,眼前是哪个系列。
+  int? _checkedFor;
+
+  /// 很久没用的系列收进档案库(设置里定多久,固定的不收)。进来时、换了系列时看一眼。
+  void _autoArchive() {
+    final archive = onArchive;
+    final days = vm.config.config.autoArchiveDays;
+    if (archive == null || days <= 0 || _checkedFor == vm.series) return;
+    _checkedFor = vm.series;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || vm.isStreaming) return;
+      final stale = vm.staleSeries(Duration(days: days));
+      if (stale.isNotEmpty) archive(stale);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    _autoArchive();
     final pages = vm.pages;
     if (_picked.any((i) => i >= pages.length)) _picked = const {};
     // 系列满了不能再另起;往已有的系列里加页不限。
@@ -266,83 +288,108 @@ class _PageStripState extends State<PageStrip> {
           ),
         ),
         Expanded(
-          // 一层最多放 perLayer 个系列,多的用左右箭头翻;一层里放不下时自己折行。
+          // 眼前这个系列展开成一个框(各页都在里面);别的系列收成小标签(名字和页数),
+          // 点一下换过去,页也能拖到标签上归进那个系列。系列再多也只是多几个标签。
           // 系列满了而 Agent 还要另起时,下面亮出提醒叫用户清理。
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SeriesPager(
-                current: groups.indexWhere(
-                  (g) => pages[g.first].series == vm.series,
-                ),
-                currentSeries: vm.series,
-                trailing: Tooltip(
-                  message: tr('另起一个系列,对话和别的系列分开'),
-                  child: PennaButton(
-                    label: tr('新系列'),
-                    icon: Icons.add,
-                    borderColor: PennaColors.border,
-                    onPressed: full
-                        ? null
-                        : () => _do(context, vm.addPage(newSeries: true)),
-                  ),
-                ),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   for (final (g, group) in groups.indexed)
-                    _SeriesFrame(
-                      tint: _seriesTints[g % _seriesTints.length],
-                      // 眼前这个系列的框描深一点。
-                      current: pages[group.first].series == vm.series,
-                      children: [
-                        _SeriesLabel(
-                          name: vm.seriesName(pages[group.first].series),
-                          tint: _seriesTints[g % _seriesTints.length],
-                          onMenu: (at) => _seriesMenu(
-                            context,
-                            at,
-                            pages[group.first].series,
+                    if (pages[group.first].series != vm.series)
+                      _SeriesTag(
+                        name: vm.seriesName(pages[group.first].series),
+                        count: group.length,
+                        pinned: vm.seriesPinned(pages[group.first].series),
+                        waiting: group.any((i) => pages[i].pending != null),
+                        tint: _seriesTints[g % _seriesTints.length],
+                        onTap: () => _do(context, vm.openPage(group.first)),
+                        onMenu: (at) =>
+                            _seriesMenu(context, at, pages[group.first].series),
+                        onRename: () =>
+                            _renameSeries(context, pages[group.first].series),
+                        // 拖过来的页排到这个系列的最后。
+                        onDrop: (from) => _do(
+                          context,
+                          vm.movePages(
+                            _picked.contains(from) ? _picked : [from],
+                            group.last,
                           ),
-                          onRename: () =>
-                              _renameSeries(context, pages[group.first].series),
                         ),
-                        for (final i in group)
-                          _PageChip(
-                            index: i,
-                            number: vm.pageNumber(i),
-                            name: pages[i].name,
+                      )
+                    else
+                      _SeriesFrame(
+                        tint: _seriesTints[g % _seriesTints.length],
+                        current: true,
+                        children: [
+                          _SeriesLabel(
+                            name: vm.seriesName(pages[group.first].series),
+                            pinned: vm.seriesPinned(pages[group.first].series),
                             tint: _seriesTints[g % _seriesTints.length],
-                            selected: i == vm.pageIndex,
-                            picked: _picked.contains(i),
-                            // 拖着的是选中的一页时,选中的几页一起走。
-                            dragCount: _picked.contains(i) ? _picked.length : 1,
-                            waiting: pages[i].pending != null,
-                            // 别的系列的页也收:挪过来归进这个系列。
-                            accepts: (from) =>
-                                from != i &&
-                                !(_picked.contains(from) &&
-                                    _picked.contains(i)),
-                            onTap: () => _tap(i),
-                            onMenu: (at) => _pageMenu(context, at, i),
-                            onRename: () => _renamePage(context, i),
-                            onDrop: (from) => _do(
+                            onMenu: (at) => _seriesMenu(
                               context,
-                              vm.movePages(
-                                _picked.contains(from) ? _picked : [from],
-                                i,
-                              ),
+                              at,
+                              pages[group.first].series,
+                            ),
+                            onRename: () => _renameSeries(
+                              context,
+                              pages[group.first].series,
                             ),
                           ),
-                        _IconChip(
-                          icon: Icons.add,
-                          tip: tr('在这个系列里加一页'),
-                          color: _seriesTints[g % _seriesTints.length].text,
-                          onTap: () => _do(
-                            context,
-                            vm.addPage(toSeries: pages[group.first].series),
+                          for (final i in group)
+                            _PageChip(
+                              index: i,
+                              number: vm.pageNumber(i),
+                              name: pages[i].name,
+                              tint: _seriesTints[g % _seriesTints.length],
+                              selected: i == vm.pageIndex,
+                              picked: _picked.contains(i),
+                              // 拖着的是选中的一页时,选中的几页一起走。
+                              dragCount: _picked.contains(i)
+                                  ? _picked.length
+                                  : 1,
+                              waiting: pages[i].pending != null,
+                              accepts: (from) =>
+                                  from != i &&
+                                  !(_picked.contains(from) &&
+                                      _picked.contains(i)),
+                              onTap: () => _tap(i),
+                              onMenu: (at) => _pageMenu(context, at, i),
+                              onRename: () => _renamePage(context, i),
+                              onDrop: (from) => _do(
+                                context,
+                                vm.movePages(
+                                  _picked.contains(from) ? _picked : [from],
+                                  i,
+                                ),
+                              ),
+                            ),
+                          _IconChip(
+                            icon: Icons.add,
+                            tip: tr('在这个系列里加一页'),
+                            color: _seriesTints[g % _seriesTints.length].text,
+                            onTap: () => _do(
+                              context,
+                              vm.addPage(toSeries: pages[group.first].series),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                  Tooltip(
+                    message: tr('另起一个系列,对话和别的系列分开'),
+                    child: PennaButton(
+                      label: tr('新系列'),
+                      icon: Icons.add,
+                      borderColor: PennaColors.border,
+                      onPressed: full
+                          ? null
+                          : () => _do(context, vm.addPage(newSeries: true)),
                     ),
+                  ),
                 ],
               ),
               if (vm.seriesAlert case final alert?)
@@ -354,9 +401,6 @@ class _PageStripState extends State<PageStrip> {
     );
   }
 }
-
-/// 页签上一层放几个系列。
-const _perLayer = StudioPages.perLayer;
 
 /// 系列满了、Agent 放不下时的提醒:叫用户删掉一些系列。删到不满就自己消失。
 class _SeriesAlert extends StatelessWidget {
@@ -401,87 +445,99 @@ class _SeriesAlert extends StatelessWidget {
   );
 }
 
-/// 系列多了分层:一层 [_perLayer] 个,左右箭头翻层。默认停在眼前这个系列那一层;
-/// 用户翻到别的层后,换了系列(新建、切过去)又跟回眼前这一层。
-class _SeriesPager extends StatefulWidget {
-  const _SeriesPager({
-    required this.children,
-    required this.current,
-    required this.currentSeries,
-    required this.trailing,
+/// 没展开的系列:一个小标签,写着名字和页数。点一下换到这个系列,双击改名,右键更多,
+/// 页拖到它上面就归进这个系列。[waiting] 是里面有页带着待确认的改动。
+class _SeriesTag extends StatelessWidget {
+  const _SeriesTag({
+    required this.name,
+    required this.count,
+    required this.pinned,
+    required this.waiting,
+    required this.tint,
+    required this.onTap,
+    required this.onMenu,
+    required this.onRename,
+    required this.onDrop,
   });
 
-  /// 每个系列一个框,按先后排。
-  final List<Widget> children;
-
-  /// 眼前这个系列是 [children] 里的第几个。
-  final int current;
-  final int currentSeries;
-
-  /// 跟在每一层最后的「新系列」按钮。
-  final Widget trailing;
-
-  @override
-  State<_SeriesPager> createState() => _SeriesPagerState();
-}
-
-class _SeriesPagerState extends State<_SeriesPager> {
-  /// 用户翻到的层,和翻的时候眼前是哪个系列。
-  int? _picked, _pickedFor;
+  final String name;
+  final int count;
+  final bool pinned;
+  final bool waiting;
+  final _Tint tint;
+  final VoidCallback onTap;
+  final ValueChanged<Offset> onMenu;
+  final VoidCallback onRename;
+  final ValueChanged<int> onDrop;
 
   @override
-  Widget build(BuildContext context) {
-    final layers = (widget.children.length / _perLayer).ceil().clamp(
-      1,
-      1 << 20,
-    );
-    final home = widget.current < 0 ? 0 : widget.current ~/ _perLayer;
-    final layer =
-        ((_pickedFor == widget.currentSeries ? _picked : null) ?? home).clamp(
-          0,
-          layers - 1,
-        );
-    void go(int to) => setState(() {
-      _picked = to;
-      _pickedFor = widget.currentSeries;
-    });
-    Widget arrow(IconData icon, String tip, int? to) => IconButton(
-      tooltip: tip,
-      iconSize: 18,
-      visualDensity: VisualDensity.compact,
-      icon: Icon(icon),
-      onPressed: to == null ? null : () => go(to),
-    );
-    final row = Wrap(
-      spacing: 8,
-      runSpacing: 6,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        ...widget.children.skip(layer * _perLayer).take(_perLayer),
-        widget.trailing,
-      ],
-    );
-    if (layers == 1) return row;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        arrow(Icons.chevron_left, tr('上一层'), layer > 0 ? layer - 1 : null),
-        Expanded(child: row),
-        arrow(
-          Icons.chevron_right,
-          tr('下一层'),
-          layer < layers - 1 ? layer + 1 : null,
-        ),
-        Padding(
-          padding: const EdgeInsets.only(top: 9, left: 2),
-          child: Text(
-            '${layer + 1}/$layers',
-            style: TextStyle(fontSize: 11, color: PennaColors.slate500),
+  Widget build(BuildContext context) => DragTarget<int>(
+    onWillAcceptWithDetails: (_) => true,
+    onAcceptWithDetails: (d) => onDrop(d.data),
+    builder: (context, incoming, _) => Tooltip(
+      message: [
+        tr('{0} · {1} 页', [name, count]),
+        if (pinned) tr('已固定'),
+        if (waiting) tr('有待确认的改动'),
+        _gestureTip,
+      ].join(' · '),
+      waitDuration: _tipWait,
+      child: _QuickTap(
+        onTap: onTap,
+        onDoubleTap: onRename,
+        onMenu: onMenu,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: AnimatedContainer(
+            duration: Motion.base,
+            height: 30,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: tint.bg,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: incoming.isNotEmpty ? tint.text : tint.border,
+                width: incoming.isNotEmpty ? 2 : 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (pinned) ...[
+                  Icon(Icons.push_pin, size: 11, color: tint.text),
+                  const SizedBox(width: 3),
+                ],
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 120),
+                  child: Text(
+                    name,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: tint.text,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: tint.text.withValues(alpha: 0.7),
+                  ),
+                ),
+                if (waiting) ...[
+                  const SizedBox(width: 4),
+                  CircleAvatar(radius: 3, backgroundColor: PennaColors.amber),
+                ],
+              ],
+            ),
           ),
         ),
-      ],
-    );
-  }
+      ),
+    ),
+  );
 }
 
 /// 把同一个系列的页框在一起的彩色框。
@@ -524,9 +580,13 @@ class _SeriesLabel extends StatelessWidget {
     required this.tint,
     required this.onMenu,
     required this.onRename,
+    this.pinned = false,
   });
 
   final String name;
+
+  /// 固定的系列(不自动归档),名字前面画个图钉。
+  final bool pinned;
   final _Tint tint;
   final ValueChanged<Offset> onMenu;
   final VoidCallback onRename;
@@ -542,17 +602,26 @@ class _SeriesLabel extends StatelessWidget {
         onSecondaryTapDown: (d) => onMenu(d.globalPosition),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 5),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 120),
-            child: Text(
-              name,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                color: tint.text,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (pinned) ...[
+                Icon(Icons.push_pin, size: 11, color: tint.text),
+                const SizedBox(width: 3),
+              ],
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 160),
+                child: Text(
+                  name,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: tint.text,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),

@@ -105,6 +105,8 @@ extension StudioPages on StudioViewModel {
     _blocks = next.blocks;
     _pending = next.pending;
     _queued = next.queued;
+    // 换到哪个系列就算用过它(自动归档看的是多久没用)。
+    _touchSeries();
     if (next.series == from) return;
     final chat = _seriesChats[next.series];
     _seriesChats = Map.unmodifiable({
@@ -134,6 +136,7 @@ extension StudioPages on StudioViewModel {
     if (i == _page || i < 0 || i >= _pages.length) return null;
     if (isStreaming) return tr('正在生成,稍后再换页');
     _show(i);
+    _touchSeries();
     _leftPage();
     return null;
   }
@@ -275,6 +278,39 @@ extension StudioPages on StudioViewModel {
       for (final e in _seriesNames.entries)
         if (e.key != s) e.key: e.value,
     });
+    _seriesUsed.remove(s);
+    _seriesPinned = Set.unmodifiable({..._seriesPinned}..remove(s));
+  }
+
+  /// 这个系列是不是固定的(固定的不自动归档)。
+  bool seriesPinned(int s) => _seriesPinned.contains(s);
+
+  void pinSeries(int s, {required bool on}) {
+    if (on == _seriesPinned.contains(s)) return;
+    _seriesPinned = Set.unmodifiable(
+      on ? {..._seriesPinned, s} : ({..._seriesPinned}..remove(s)),
+    );
+    _changed();
+  }
+
+  /// 记下眼前这个系列刚刚用过(换到它、在它里面发消息时)。
+  void _touchSeries([DateTime? now]) =>
+      _seriesUsed[series] = (now ?? DateTime.now()).millisecondsSinceEpoch;
+
+  /// 超过 [idle] 没用过的系列:眼前这个、固定的不算。给自动归档用。
+  Set<int> staleSeries(Duration idle, {DateTime? now}) {
+    final before = (now ?? DateTime.now())
+        .subtract(idle)
+        .millisecondsSinceEpoch;
+    // 还没记过时间的系列(刚建的、Agent 另起的)从这一刻算起。
+    final seen = DateTime.now().millisecondsSinceEpoch;
+    return {
+      for (final p in _pages)
+        if (p.series != series &&
+            !_seriesPinned.contains(p.series) &&
+            _seriesUsed.putIfAbsent(p.series, () => seen) < before)
+          p.series,
+    };
   }
 
   /// 把第 [from] 页挪到第 [to] 页的位置上;只能在同一个系列里挪。
@@ -598,6 +634,8 @@ extension StudioPages on StudioViewModel {
     ],
     'page': _page,
     'seriesNames': {for (final e in _seriesNames.entries) '${e.key}': e.value},
+    'seriesUsed': {for (final e in _seriesUsed.entries) '${e.key}': e.value},
+    'seriesPinned': [..._seriesPinned],
     'seriesChats': {
       for (final e in _seriesChats.entries)
         '${e.key}': {
