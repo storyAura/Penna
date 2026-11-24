@@ -303,6 +303,9 @@ const en = <String, String>{
   '文本': 'Text',
   '读不了这个文件': 'Cannot read this file',
   '这不是 SillyTavern 预设': 'This is not a SillyTavern preset',
+  '{0} 秒': '{0}s',
+  '{0} 分 {1} 秒': '{0}m {1}s',
+  '已等 {0}': 'Waited {0}',
   '文本或 SillyTavern 预设': 'Text or SillyTavern preset',
   '各占一行的 <<user>>、<<assistant>> 把后面的话当成事先说好的一轮对话,<<history>> 是聊天记录的位置':
       'A line reading <<user>> or <<assistant>> turns the text after it into a pre-agreed chat turn; <<history>> marks where the chat history goes',

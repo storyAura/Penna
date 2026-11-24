@@ -101,3 +101,29 @@ const thinkRule =
     '【思考】回复里不写思考过程、规则自查、分析步骤;要先想,就整段写进回复最开头的 '
     '<think></think> 里(程序会折起来,不进成稿),写完 </think> 再写给用户的话和标签。'
     '<think> 外面提到标签名时不带尖括号。';
+
+/// 接口单独给的思考(Gemini 的思考摘要、OpenAI 兼容接口的 reasoning_content)接进回复里:
+/// 包成 `<think>…</think>`,界面和存档照 [splitThinking] 的老路走。
+class ThoughtStream {
+  var _open = false;
+
+  /// 这一段数据里的思考 [thought] 和正文 [text],换成接进回复的文字。
+  String add({String thought = '', String text = ''}) {
+    final out = StringBuffer();
+    if (thought.isNotEmpty) {
+      if (!_open) out.write('<think>');
+      _open = true;
+      out.write(thought);
+    }
+    if (text.isNotEmpty) {
+      if (_open) out.write('</think>\n\n');
+      _open = false;
+      out.write(text);
+    }
+    return out.toString();
+  }
+}
+
+/// [text] 里有没有开了没关的 `<think>`(思考到一半断了)。
+bool hasOpenThink(String text) =>
+    '<think>'.allMatches(text).length > '</think>'.allMatches(text).length;

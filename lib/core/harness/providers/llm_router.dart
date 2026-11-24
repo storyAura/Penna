@@ -11,6 +11,7 @@ import 'gemini_provider.dart';
 import 'openai_provider.dart';
 import 'responses_provider.dart';
 import '../llm_log.dart';
+import '../thinking.dart';
 import '../web_search.dart';
 import '../../../l10n/l10n.dart';
 
@@ -143,12 +144,17 @@ Stream<String> streamWithFailover(
     LlmRequest request,
   ) async {
     var started = false;
+    // 只有思考还不算开始回复:想到一半失败了照样换下一个模型。
+    final seen = StringBuffer();
     final done = waiting = Completer<Object?>();
     inner = stream(request).listen(
       (delta) {
         if (!started) {
-          started = true;
-          onAnswering?.call(name);
+          seen.write(delta);
+          if (splitThinking('$seen', done: false).rest.trim().isNotEmpty) {
+            started = true;
+            onAnswering?.call(name);
+          }
         }
         out.add(delta);
       },
@@ -162,6 +168,8 @@ Stream<String> streamWithFailover(
     );
     // 先等它跑完再读 started;写成一行会在等待之前就把 started 读走。
     final error = await done.future;
+    // 思考写到一半就断了:替它把标签关上,后面模型的话才不会被算进思考里。
+    if (!started && hasOpenThink('$seen')) out.add('</think>\n\n');
     return (started, error);
   }
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../llm_log.dart';
+import '../thinking.dart';
 import '../mcp/mcp_tools.dart';
 import 'llm_http.dart';
 import 'reply_tool.dart';
@@ -202,7 +203,8 @@ const _flexBackoff = Duration(seconds: 5);
 ///
 /// 带上 `includeThoughts`:不带时模型默默想完才回第一个字,想得久(看图、长文)时
 /// 一个字节都没有,用户的代理约 47 秒就把连接掐了(2026-11-07 实测);带上后
-/// 边想边发思考摘要,连接一直有数据。摘要由 [parseGeminiLine] 去掉,不进回复。
+/// 边想边发思考摘要,连接一直有数据。摘要不算回复正文([parseGeminiLine] 不带它),
+/// 由 [parseGeminiThought] 取出来折进「思考过程」。
 ///
 /// 没调思考强度时也要带:2.5 起的模型默认就会思考,不带的话照样一声不吭地想,
 /// 超过 [llmStallTimeout] 就被当成卡住(2026-11-24 用户反馈「模型接口超时」)。
@@ -276,6 +278,23 @@ String? parseGeminiLine(String line) {
     throw LlmException(tr('Google 中止了回复:{0}', [reason]));
   }
   return text;
+}
+
+/// 一行 SSE 里的思考摘要(`thought: true` 的那几段);没有是空的。
+String parseGeminiThought(String line) {
+  final json = sseJson(line);
+  final candidates = json is Map ? json['candidates'] : null;
+  final first = candidates is List && candidates.isNotEmpty
+      ? candidates.first
+      : null;
+  final content = first is Map ? first['content'] : null;
+  final parts = content is Map ? content['parts'] : null;
+  return [
+    if (parts is List)
+      for (final p in parts)
+        if (p is Map && p['text'] is String && p['thought'] == true)
+          p['text'] as String,
+  ].join();
 }
 
 /// 一行 SSE 里的结束原因;这一行没写是 null。
@@ -399,6 +418,7 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
   String? finish;
   String? served;
   final sources = <String, String>{};
+  final thoughts = ThoughtStream();
   for (var attempt = 0; ; attempt++) {
     // Key 放请求头而不是网址里,免得出现在任何报错或日志中。
     final lines = postForLines(
@@ -420,15 +440,18 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
                 line,
                 skip: req.replyTool ? replyToolName : null,
               );
-        final delta = '${parseGeminiLine(line) ?? ''}$calls${replyText ?? ''}';
+        final said = '${parseGeminiLine(line) ?? ''}$calls${replyText ?? ''}';
+        // 思考摘要也给用户看(折在「思考过程」里),但不算出了字:只有思考就失败照样换模型。
+        final delta = thoughts.add(
+          thought: req.thoughts ? parseGeminiThought(line) : '',
+          text: said,
+        );
         reportUsage(req, sseJson(line));
         finish = parseGeminiFinish(line) ?? finish;
         served = parseGeminiTier(line) ?? served;
         if (req.webSearch) sources.addAll(parseGeminiSources(line));
-        if (delta.isNotEmpty) {
-          yielded = true;
-          yield delta;
-        }
+        if (said.isNotEmpty) yielded = true;
+        if (delta.isNotEmpty) yield delta;
       }
       break;
     } on LlmException catch (e) {

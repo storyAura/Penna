@@ -297,6 +297,9 @@ const zhHant = <String, String>{
   '文本': '文字',
   '读不了这个文件': '讀不了這個檔案',
   '这不是 SillyTavern 预设': '這不是 SillyTavern 預設',
+  '{0} 秒': '{0} 秒',
+  '{0} 分 {1} 秒': '{0} 分 {1} 秒',
+  '已等 {0}': '已等 {0}',
   '文本或 SillyTavern 预设': '文字或 SillyTavern 預設',
   '各占一行的 <<user>>、<<assistant>> 把后面的话当成事先说好的一轮对话,<<history>> 是聊天记录的位置':
       '各佔一行的 <<user>>、<<assistant>> 把後面的話當成事先說好的一輪對話,<<history>> 是聊天記錄的位置',

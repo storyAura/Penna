@@ -5,6 +5,7 @@ import 'llm_http.dart';
 import 'reply_tool.dart';
 import '../attachment.dart';
 import '../llm_log.dart';
+import '../thinking.dart';
 import '../mcp/mcp_tools.dart';
 import '../web_search.dart';
 import '../../../l10n/l10n.dart';
@@ -27,6 +28,16 @@ String? parseSseLine(String line) {
   final delta = first is Map ? first['delta'] : null;
   final content = delta is Map ? delta['content'] : null;
   return content is String ? content : null;
+}
+
+/// 一段流式数据里的思考:各家叫 `reasoning_content` 或 `reasoning`;没有是空的。
+String parseSseThought(Object? json) {
+  final choices = json is Map ? json['choices'] : null;
+  final first = choices is List && choices.isNotEmpty ? choices.first : null;
+  final delta = first is Map ? first['delta'] : null;
+  if (delta is! Map) return '';
+  final thought = delta['reasoning_content'] ?? delta['reasoning'];
+  return thought is String ? thought : '';
 }
 
 /// `/models` 响应里的模型名;有的兼容接口不包 `data`,直接回一个数组。
@@ -133,11 +144,7 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     }
     // 接口不收 tool_choice 或工具表:退回普通请求,回复照旧能出来。
     if (rejected && req.replyTool) {
-      llmLog.add(
-        LlmEventKind.retry,
-        req.model,
-        tr('接口不支持把回复写在工具调用里,改用普通回复'),
-      );
+      llmLog.add(LlmEventKind.retry, req.model, tr('接口不支持把回复写在工具调用里,改用普通回复'));
       yield* _send(client, req.withReplyTool(false), usage: true);
       return;
     }
@@ -184,6 +191,7 @@ Stream<String> _send(
   String? finish;
   final plain = StringBuffer();
   final calls = OpenAiToolCalls();
+  final thoughts = ThoughtStream();
   // 回复写在工具调用里时,参数一段段解成文字,当普通回复吐出去。
   final reply = req.replyTool ? ReplyTextReader() : null;
   await for (final line in lines) {
@@ -210,11 +218,14 @@ Stream<String> _send(
         }
       }
     }
-    final delta = parseSseLine(line);
-    if (delta != null && delta.isNotEmpty) {
-      yielded = true;
-      yield delta;
-    }
+    final said = parseSseLine(line) ?? '';
+    // 思考(reasoning_content)也给用户看,但不算出了字。
+    final delta = thoughts.add(
+      thought: req.thoughts ? parseSseThought(json) : '',
+      text: said,
+    );
+    if (said.isNotEmpty) yielded = true;
+    if (delta.isNotEmpty) yield delta;
   }
   if (reply != null) {
     final tail = reply.flush();
