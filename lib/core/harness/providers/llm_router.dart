@@ -1,6 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 
 import '../../../data/models/app_config.dart';
+import '../../../data/services/app_paths.dart';
 import 'cli_provider.dart';
 import 'gemini_provider.dart';
 import 'openai_provider.dart';
@@ -74,6 +79,44 @@ Future<List<String>> listModels({
   return models.toSet().toList()..sort();
 }
 
+/// 已经存了几份被拦的请求。
+var _dumps = 0;
+const _maxDumps = 5;
+
+/// 请求还没出字就失败时,把发出去的请求原样存一份到「文档\Penna\blocked-*.json」,
+/// 好弄清接口到底拦了什么。最多存 [_maxDumps] 份;里面没有 Key(请求体本来就没有)。
+void _dumpBlocked(String name, LlmRequest request, Object error) {
+  final home = pennaHome;
+  if (home == null || _dumps >= _maxDumps) return;
+  _dumps++;
+  try {
+    final t = DateTime.now();
+    String two(int n) => '$n'.padLeft(2, '0');
+    final stamp =
+        '${t.year}${two(t.month)}${two(t.day)}-'
+        '${two(t.hour)}${two(t.minute)}${two(t.second)}';
+    final file = File(
+      '${home.path}${Platform.pathSeparator}blocked-$stamp.json',
+    );
+    file.writeAsStringSync(
+      const JsonEncoder.withIndent('  ').convert({
+        'time': t.toIso8601String(),
+        'name': name,
+        'protocol': request.protocol,
+        'baseUrl': request.baseUrl,
+        'model': request.model,
+        'replyTool': request.replyTool,
+        'tools': [for (final tool in request.tools) tool.name],
+        'error': _brief(error),
+        'messages': request.messages,
+      }),
+    );
+    debugPrint('被拦的请求存到了 ${file.path}');
+  } on Object {
+    // 存不了就算了,别耽误换下一个模型。
+  }
+}
+
 /// 给人看的错误:认得的说原因,认不出的只报类型(原文可能带着 Key)。
 String _brief(Object error) =>
     error is LlmException ? error.message : '${error.runtimeType}';
@@ -144,6 +187,8 @@ Stream<String> streamWithFailover(
       }
       failed.add(vendor(request));
       failures.add('$name:${error ?? '没有返回内容'}');
+      // 还没出字就被打回来:留一份请求,好查是哪里被拦的。
+      if (error != null) _dumpBlocked(name, request, error);
       // 后面的模型接上了,这条原因就不会显示在回复上:记进模型日志(左侧栏能看)。
       llmLog.add(
         LlmEventKind.failover,

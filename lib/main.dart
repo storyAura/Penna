@@ -16,6 +16,7 @@ import 'core/harness/tags/tag_dictionary.dart';
 import 'core/harness/tags/tag_search.dart';
 import 'core/harness/update/updater.dart';
 import 'data/models/app_config.dart';
+import 'data/services/app_paths.dart';
 import 'data/services/archive_store.dart';
 import 'data/services/notebook_store.dart';
 import 'data/services/soul_store.dart';
@@ -46,6 +47,7 @@ Future<void> main() async {
       : Directory(
           '${(await getApplicationDocumentsDirectory()).path}${sep}Penna',
         );
+  pennaHome = home;
   final config = ConfigService(
     dir: home,
     legacyFile: ConfigService.defaultLegacyFile(),
