@@ -222,6 +222,7 @@ Stream<String> _send(
       yielded = true;
       yield tail;
     }
+    if (yielded) _logReplyTool(req, reply.emitted > 0);
   }
   // 模型发的函数调用:换成 <mcp-call> 标签接在回复后面,后面的工具循环只认标签。
   // reply 是这个开关自己的工具,不当成外接工具。
@@ -241,6 +242,13 @@ Stream<String> _send(
   if (whole == null) throw LlmException(tr('模型没有返回可识别的内容'));
   yield whole;
 }
+
+/// 让用户看得见这次到底有没有走工具:模型日志里一条,左侧栏不亮提醒。
+void _logReplyTool(LlmRequest req, bool used) => llmLog.add(
+  LlmEventKind.replyTool,
+  req.model,
+  used ? tr('回覆走工具呼叫') : tr('模型没照工具呼叫,回覆在正文'),
+);
 
 /// 流式回来的这一行里,工具参数的文字片段(reply 那个工具的)。
 Iterable<String> _toolArgDeltas(Object? json) sync* {
@@ -310,6 +318,7 @@ String? _wholeReply(String body, LlmRequest req) {
       : '${said is String ? said : ''}'
             '${calls.text(skip: req.replyTool ? replyToolName : null)}';
   if (content.isEmpty) return null;
+  if (req.replyTool) _logReplyTool(req, reply.isNotEmpty);
   if (openAiCut(_finishReason(json)) case final cut?) req.onCut?.call(cut);
   return content;
 }

@@ -173,7 +173,7 @@ class _PresetSectionState extends State<PresetSection> {
                         Text(
                           tr(
                             '模型把这一轮要说的话写在 reply 工具的 text 参数里,正文留空 · '
-                            '只对 OpenAI 相容接口有效',
+                            'OpenAI 相容与 Google 接口都有效,Google 上同时放宽安全筛选',
                           ),
                           style: hintStyle,
                         ),

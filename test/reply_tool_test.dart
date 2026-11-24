@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:penna/core/harness/providers/gemini_provider.dart';
 import 'package:penna/core/harness/providers/openai_provider.dart';
 import 'package:penna/core/harness/providers/reply_tool.dart';
 import 'package:penna/data/models/app_config.dart';
@@ -176,6 +177,94 @@ void main() {
 
       final chunks = await streamOpenAiChat(
         _request('http://127.0.0.1:${server.port}'),
+      ).toList();
+
+      expect(chunks.join(), '普通回复');
+      expect(calls, 2);
+    });
+  });
+
+  group('Google 接口', () {
+    LlmRequest gemini(String baseUrl, {bool replyTool = true}) => LlmRequest(
+      baseUrl: baseUrl,
+      model: 'm',
+      apiKey: 'k',
+      messages: const [
+        {'role': 'user', 'content': 'hi'},
+      ],
+      replyTool: replyTool,
+    );
+
+    test('请求体带 reply 工具,toolConfig 钉死,同时放宽安全筛选', () {
+      final body = geminiBody(gemini(''));
+
+      final tools = body['tools'] as List;
+      final declarations =
+          (tools.single as Map)['functionDeclarations'] as List;
+      expect((declarations.single as Map)['name'], replyToolName);
+      expect(body['toolConfig'], {
+        'functionCallingConfig': {
+          'mode': 'ANY',
+          'allowedFunctionNames': [replyToolName],
+        },
+      });
+      final safety = body['safetySettings'] as List;
+      expect(safety, hasLength(4));
+      expect((safety.first as Map)['threshold'], 'BLOCK_NONE');
+    });
+
+    test('关着时不带工具和放宽的安全设定', () {
+      final body = geminiBody(gemini('', replyTool: false));
+      expect(body.containsKey('tools'), isFalse);
+      expect(body.containsKey('toolConfig'), isFalse);
+      expect(body.containsKey('safetySettings'), isFalse);
+    });
+
+    test('流式回来的 functionCall.text 当普通回复,不写成 <mcp-call>', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(server.close);
+      server.listen((request) async {
+        await utf8.decodeStream(request);
+        request.response
+          ..write(
+            'data: {"candidates":[{"content":{"parts":[{"functionCall":'
+            '{"name":"$replyToolName","args":{"text":"你好"}}}]}}]}\n\n',
+          )
+          ..write(
+            'data: {"candidates":[{"content":{"parts":[]},"finishReason":"STOP"}]}\n\n',
+          );
+        await request.response.close();
+      });
+
+      final chunks = await streamGeminiChat(
+        gemini('http://127.0.0.1:${server.port}'),
+      ).toList();
+
+      expect(chunks.join(), '你好');
+      expect(chunks.join(), isNot(contains('<mcp-call>')));
+    });
+
+    test('接口不收 toolConfig 时退回普通回复,不是整条失败', () async {
+      var calls = 0;
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(server.close);
+      server.listen((request) async {
+        final body = jsonDecode(await utf8.decodeStream(request)) as Map;
+        calls++;
+        if (body.containsKey('toolConfig')) {
+          request.response.statusCode = 400;
+          request.response.write('{"error":{"message":"unknown field toolConfig"}}');
+        } else {
+          request.response.write(
+            'data: {"candidates":[{"content":{"parts":[{"text":"普通回复"}]},'
+            '"finishReason":"STOP"}]}\n\n',
+          );
+        }
+        await request.response.close();
+      });
+
+      final chunks = await streamGeminiChat(
+        gemini('http://127.0.0.1:${server.port}'),
       ).toList();
 
       expect(chunks.join(), '普通回复');

@@ -27,6 +27,9 @@ enum LlmEventKind {
 
   /// 接口实际用的用量档位和选的不一样(Google 的 Priority 被降成 Standard)。
   tier,
+
+  /// 回复写在工具调用里:这次回话到底有没有走工具、还是模型照旧写在正文。
+  replyTool,
 }
 
 typedef LlmEvent = ({
@@ -53,7 +56,10 @@ class LlmLog extends ChangeNotifier {
       (time: DateTime.now(), kind: kind, model: model, message: message),
       ..._events.take(_max - 1),
     ]);
-    if (kind != LlmEventKind.stopped) _unseen++;
+    // 停止和「回覆走工具呼叫」不是问题,不点亮左侧栏的提醒。
+    if (kind != LlmEventKind.stopped && kind != LlmEventKind.replyTool) {
+      _unseen++;
+    }
     debugPrint('模型日志 [${kind.name}] $model:$message');
     notifyListeners();
   }

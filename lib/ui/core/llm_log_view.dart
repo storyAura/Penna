@@ -16,6 +16,7 @@ import 'widgets.dart';
   LlmEventKind.search => (tr('联网搜索'), PennaColors.primary),
   LlmEventKind.retry => (tr('重试'), PennaColors.slate500),
   LlmEventKind.tier => (tr('档位'), PennaColors.primary),
+  LlmEventKind.replyTool => (tr('工具回覆'), PennaColors.primary),
 };
 
 String _clock(DateTime t) =>

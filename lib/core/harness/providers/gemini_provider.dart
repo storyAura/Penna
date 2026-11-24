@@ -4,10 +4,19 @@ import 'dart:io';
 import '../llm_log.dart';
 import '../mcp/mcp_tools.dart';
 import 'llm_http.dart';
+import 'reply_tool.dart';
 import 'responses_provider.dart' show sourcesText;
 import '../../../l10n/l10n.dart';
 
 const _normalFinish = {'STOP', 'MAX_TOKENS', 'FINISH_REASON_UNSPECIFIED'};
+
+/// 放宽安全筛选时给的四类(1.5 起的模型都认这些;更新的一类没有把握就不给)。
+const _harmCategories = [
+  'HARM_CATEGORY_HARASSMENT',
+  'HARM_CATEGORY_HATE_SPEECH',
+  'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+  'HARM_CATEGORY_DANGEROUS_CONTENT',
+];
 const _defaultBase = 'https://generativelanguage.googleapis.com/v1beta';
 
 /// 把 OpenAI 格式的消息转成 Google 的请求体:system 单独放,
@@ -33,6 +42,29 @@ Map<String, Object?> geminiBody(LlmRequest req) {
     if (!blank) contents.last.texts.add(text);
     contents.last.images.addAll(images);
   }
+  // 回复写在工具调用里:多给一个 reply 工具,只准它被调用。
+  final reply = req.replyTool;
+  final functions = [
+    for (final t in req.tools)
+      {
+        'name': t.name,
+        'description': t.description,
+        'parametersJsonSchema': t.schema,
+      },
+    if (reply)
+      {
+        'name': replyToolName,
+        'description': tr('把这一轮回复的全部内容写在 text 里,正文留空。'),
+        'parametersJsonSchema': const {
+          'type': 'object',
+          'properties': {
+            'text': {'type': 'string', 'description': '回复的全部内容,格式照要求'},
+          },
+          'required': ['text'],
+          'additionalProperties': false,
+        },
+      },
+  ];
   return {
     if (system.isNotEmpty)
       'systemInstruction': {
@@ -61,23 +93,25 @@ Map<String, Object?> geminiBody(LlmRequest req) {
       if (req.topP < 1) 'topP': req.topP,
       'thinkingConfig': ?_thinkingConfig(req),
     },
-    if (req.webSearch)
+    if (req.webSearch || functions.isNotEmpty)
       'tools': [
-        {'google_search': <String, Object>{}},
-      ]
-    // 外接工具(MCP):参数表原样给(`parametersJsonSchema` 收完整的 JSON Schema)。
-    else if (req.tools.isNotEmpty)
-      'tools': [
-        {
-          'functionDeclarations': [
-            for (final t in req.tools)
-              {
-                'name': t.name,
-                'description': t.description,
-                'parametersJsonSchema': t.schema,
-              },
-          ],
+        if (req.webSearch) {'google_search': <String, Object>{}},
+        // 外接工具(MCP):参数表原样给(`parametersJsonSchema` 收完整的 JSON Schema)。
+        if (functions.isNotEmpty) {'functionDeclarations': functions},
+      ],
+    // 钉死在 reply 上:模型只能用这个工具回话。
+    if (reply)
+      'toolConfig': {
+        'functionCallingConfig': {
+          'mode': 'ANY',
+          'allowedFunctionNames': [replyToolName],
         },
+      },
+    // Google 自己的安全筛选会把整段回复掐掉(报 PROHIBITED_CONTENT / SAFETY)。
+    // 这个开关打开时一起放宽:内容要不要写由用户和模型决定,不是接口替用户决定。
+    if (reply)
+      'safetySettings': [
+        for (final c in _harmCategories) {'category': c, 'threshold': 'BLOCK_NONE'},
       ],
     // 用量档位:Developer API 放在请求体最外层;Vertex 走请求头(见 [geminiHeaders])。
     if (req.serviceTier.isNotEmpty &&
@@ -297,7 +331,8 @@ Future<List<String>> listGeminiModels(String baseUrl, String apiKey) async {
 }
 
 /// 一行里的函数调用(`functionCall` 分段),写成 `<mcp-call>` 标签;没有是空串。
-String parseGeminiCalls(String line) {
+/// [skip] 是不写进标签的调用名(回复写在工具调用里时,reply 不是外接工具)。
+String parseGeminiCalls(String line, {String? skip}) {
   final json = sseJson(line);
   final candidates = json is Map ? json['candidates'] : null;
   final first = candidates is List && candidates.isNotEmpty
@@ -310,8 +345,29 @@ String parseGeminiCalls(String line) {
       for (final p in parts)
         if (p is Map)
           if (p['functionCall'] case {'name': final String name} && final call)
-            mcpCallText(name, jsonEncode(call['args'] ?? const {})),
+            if (name != skip)
+              mcpCallText(name, jsonEncode(call['args'] ?? const {})),
   ].join();
+}
+
+/// 一行里 reply 工具的参数(`{"text": "..."}` 里的 text);这一行没有是 null。
+String? geminiReplyText(String line) {
+  final json = sseJson(line);
+  final candidates = json is Map ? json['candidates'] : null;
+  final first = candidates is List && candidates.isNotEmpty
+      ? candidates.first
+      : null;
+  final content = first is Map ? first['content'] : null;
+  final parts = content is Map ? content['parts'] : null;
+  if (parts is! List) return null;
+  for (final p in parts) {
+    if (p is! Map) continue;
+    final call = p['functionCall'];
+    if (call is! Map || call['name'] != replyToolName) continue;
+    final args = call['args'];
+    if (args is Map && args['text'] is String) return args['text'] as String;
+  }
+  return null;
 }
 
 /// 调用 Google Gemini 原生接口 `models/{model}:streamGenerateContent`。
@@ -325,6 +381,7 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     '/models/$model:streamGenerateContent',
   ).replace(queryParameters: {'alt': 'sse'});
   var yielded = false;
+  var replyUsed = false;
   String? finish;
   String? served;
   final sources = <String, String>{};
@@ -339,22 +396,40 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     );
     try {
       await for (final line in lines) {
+        // 回复写在工具调用里:参数就是这一轮要说的话,当普通回复吐出去。
+        final replyText = req.replyTool ? geminiReplyText(line) : null;
+        if (replyText != null && replyText.isNotEmpty) replyUsed = true;
         // 模型发的函数调用:换成 <mcp-call> 标签接在回复里。
-        final calls = req.tools.isEmpty ? '' : parseGeminiCalls(line);
-        final delta = calls.isEmpty
-            ? parseGeminiLine(line)
-            : '${parseGeminiLine(line) ?? ''}$calls';
+        final calls = req.tools.isEmpty && !req.replyTool
+            ? ''
+            : parseGeminiCalls(
+                line,
+                skip: req.replyTool ? replyToolName : null,
+              );
+        final delta = '${parseGeminiLine(line) ?? ''}$calls${replyText ?? ''}';
         reportUsage(req, sseJson(line));
         finish = parseGeminiFinish(line) ?? finish;
         served = parseGeminiTier(line) ?? served;
         if (req.webSearch) sources.addAll(parseGeminiSources(line));
-        if (delta != null && delta.isNotEmpty) {
+        if (delta.isNotEmpty) {
           yielded = true;
           yield delta;
         }
       }
       break;
     } on LlmException catch (e) {
+      // 接口不收 toolConfig、或者不认放宽的安全设定:退回普通请求,别让整条回复失败。
+      if (!yielded &&
+          (e.status == 400 || e.status == 422) &&
+          req.replyTool) {
+        llmLog.add(
+          LlmEventKind.retry,
+          req.model,
+          tr('接口不支持把回复写在工具调用里,改用普通回复'),
+        );
+        yield* _chat(client, req.withReplyTool(false));
+        return;
+      }
       // Flex 容量不够(503)、限速(429):还是用 Flex 退避重试,不换成 Standard(会涨价)。
       final busy = e.status == 429 || e.status == 503;
       if (yielded ||
@@ -373,6 +448,14 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
     }
   }
   if (!yielded) throw LlmException(tr('模型没有返回内容'));
+  // 让用户看得见这次到底有没有走工具:模型日志里一条,左侧栏不亮提醒。
+  if (req.replyTool) {
+    llmLog.add(
+      LlmEventKind.replyTool,
+      req.model,
+      replyUsed ? tr('回覆走工具呼叫') : tr('模型没照工具呼叫,回覆在正文'),
+    );
+  }
   // 实际档位和选的不一样(比如 Priority 被降成 Standard,按 Standard 计费):记一笔。
   if (req.serviceTier.isNotEmpty &&
       served != null &&
