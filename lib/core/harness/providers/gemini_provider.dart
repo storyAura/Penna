@@ -203,9 +203,18 @@ const _flexBackoff = Duration(seconds: 5);
 /// 带上 `includeThoughts`:不带时模型默默想完才回第一个字,想得久(看图、长文)时
 /// 一个字节都没有,用户的代理约 47 秒就把连接掐了(2026-11-07 实测);带上后
 /// 边想边发思考摘要,连接一直有数据。摘要由 [parseGeminiLine] 去掉,不进回复。
+///
+/// 没调思考强度时也要带:2.5 起的模型默认就会思考,不带的话照样一声不吭地想,
+/// 超过 [llmStallTimeout] 就被当成卡住(2026-11-24 用户反馈「模型接口超时」)。
+/// 更早的模型(1.x、2.0)不会思考,带了接口会报错,所以不带。
 Map<String, Object>? _thinkingConfig(LlmRequest req) {
   final effort = req.effort;
-  if (effort == null) return null;
+  if (effort == null) {
+    final old = RegExp(r'^gemini-(1|2\.0)').hasMatch(req.model);
+    return old || !req.model.startsWith('gemini-')
+        ? null
+        : const {'includeThoughts': true};
+  }
   return {
     if (req.model.startsWith('gemini-2'))
       'thinkingBudget': switch (effort) {
@@ -424,14 +433,8 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
       break;
     } on LlmException catch (e) {
       // 接口不收 toolConfig、或者不认放宽的安全设定:退回普通请求,别让整条回复失败。
-      if (!yielded &&
-          (e.status == 400 || e.status == 422) &&
-          req.replyTool) {
-        llmLog.add(
-          LlmEventKind.retry,
-          req.model,
-          tr('接口不支持把回复写在工具调用里,改用普通回复'),
-        );
+      if (!yielded && (e.status == 400 || e.status == 422) && req.replyTool) {
+        llmLog.add(LlmEventKind.retry, req.model, tr('接口不支持把回复写在工具调用里,改用普通回复'));
         yield* _chat(client, req.withReplyTool(false));
         return;
       }

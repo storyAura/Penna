@@ -361,6 +361,9 @@ Duration llmStallFor(LlmRequest req) => req.serviceTier == 'flex'
     ? const Duration(minutes: 15)
     : req.effort == 'high' || req.effort == 'xhigh'
     ? const Duration(minutes: 5)
+    // 回复写在工具调用里时,有的接口(Google)写完才一次交出来,中间一个字都没有。
+    : req.replyTool
+    ? const Duration(minutes: 3)
     : llmStallTimeout;
 
 LlmException _statusError(int status, String body) {
