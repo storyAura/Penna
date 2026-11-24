@@ -454,7 +454,6 @@ class AppConfig {
     this.layoutSnap = defaultLayoutSnap,
     this.compressImages = true,
     this.chatIdeas = true,
-    this.presetDialogue = true,
     this.blurImages = false,
     this.tutorialSeen = false,
     this.mascot = false,
@@ -547,7 +546,6 @@ class AppConfig {
           .toInt(),
       compressImages: m['compressImages'] as bool? ?? true,
       chatIdeas: m['chatIdeas'] as bool? ?? true,
-      presetDialogue: m['presetDialogue'] as bool? ?? true,
       blurImages: m['blurImages'] as bool? ?? false,
       // 旧设置里没有这一项:用过的人不再自动弹教程。
       tutorialSeen: m['tutorialSeen'] as bool? ?? true,
@@ -730,9 +728,6 @@ class AppConfig {
   /// 新对话里没说话时,用 Agent 的模型想几条创作点子摆在空白处。
   final bool chatIdeas;
 
-  /// Preset 的系统提示里写了对话标记(`<<user>>` 等)时,是否拆成一轮一轮的消息发给模型。
-  final bool presetDialogue;
-
   /// 出的图、档案库的图先糊着,点一下才看清(只是显示上的处理;2026-11-17 用户要求,默认关)。
   final bool blurImages;
 
@@ -808,7 +803,6 @@ class AppConfig {
     'layoutSnap': layoutSnap,
     'compressImages': compressImages,
     'chatIdeas': chatIdeas,
-    'presetDialogue': presetDialogue,
     'blurImages': blurImages,
     'tutorialSeen': tutorialSeen,
     'mascot': mascot,
@@ -904,7 +898,6 @@ class AppConfig {
     int? layoutSnap,
     bool? compressImages,
     bool? chatIdeas,
-    bool? presetDialogue,
     bool? blurImages,
     bool? tutorialSeen,
     bool? mascot,
@@ -957,7 +950,6 @@ class AppConfig {
     layoutSnap: layoutSnap ?? this.layoutSnap,
     compressImages: compressImages ?? this.compressImages,
     chatIdeas: chatIdeas ?? this.chatIdeas,
-    presetDialogue: presetDialogue ?? this.presetDialogue,
     blurImages: blurImages ?? this.blurImages,
     tutorialSeen: tutorialSeen ?? this.tutorialSeen,
     mascot: mascot ?? this.mascot,

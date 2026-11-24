@@ -107,18 +107,16 @@ void main() {
       expect(seen.messages.last, {'role': 'user', 'content': '你好'});
     });
 
-    test('Preset 里写了对话标记:拆成几轮发出去,Penna 的规则放进最后一条;关掉就照旧整段发', () async {
+    test('穿甲弹里写了对话标记:拆成几轮发出去,Preset 的系统提示原样留着;关掉穿甲弹就不带', () async {
       final config = tempConfig();
-      final base = const AppConfig()
-          .putLlm(_llm)
-          .setSecret(llmSecretKey('a'), 'sk-x');
       config.update(
-        base.addPreset(
-          base.activePreset.copyWith(
-            id: 'custom-dialogue',
-            systemPrompt: '你是主持人\n<<assistant>>\n要我主持吗\n<<user>>\n要',
-          ),
-        ),
+        const AppConfig()
+            .putLlm(_llm)
+            .setSecret(llmSecretKey('a'), 'sk-x')
+            .copyWith(
+              piercing: true,
+              piercingPrompt: '你是主持人\n<<assistant>>\n要我主持吗\n<<user>>\n要',
+            ),
       );
       late LlmRequest seen;
       final vm = sampleStudio(
@@ -128,27 +126,31 @@ void main() {
           return const Stream.empty();
         },
       );
+      final preset = config.config.activePreset.systemPrompt;
 
       expect(vm.send('你好'), isNull);
       await pumpEventQueue();
 
       expect(seen.messages[0]['role'], 'system');
-      expect(seen.messages[0]['content'], startsWith('你是主持人\n\n【回复语言】'));
+      expect(seen.messages[0]['content'], startsWith('你是主持人\n\n$preset'));
+      expect(seen.messages[0]['content'], isNot(contains('<<assistant>>')));
       expect(seen.messages[1], {'role': 'assistant', 'content': '要我主持吗'});
       // 示例对话里原有的几句排在说好的对话后面。
       expect(seen.messages[2]['role'], 'user');
       expect(seen.messages[2]['content'], startsWith('要\n\n'));
       expect(seen.messages.last['role'], 'user');
-      expect(seen.messages.last['content'], startsWith('【这次的工作】'));
-      expect(seen.messages.last['content'], contains('【固定区】'));
+      expect(seen.messages.last['content'], startsWith('【提醒】'));
       expect(seen.messages.last['content'], endsWith('【用户这次的话】\n你好'));
 
-      config.update(config.config.copyWith(presetDialogue: false));
+      config.update(config.config.copyWith(piercing: false));
       expect(vm.send('再来'), isNull);
       await pumpEventQueue();
 
-      expect(seen.messages.first['role'], 'system');
-      expect(seen.messages.first['content'], contains('<<assistant>>'));
+      expect(seen.messages.first['content'], startsWith(preset));
+      expect(
+        seen.messages.any((m) => m['content']!.contains('要我主持吗')),
+        isFalse,
+      );
       expect(seen.messages.last, {'role': 'user', 'content': '再来'});
     });
 
@@ -175,7 +177,9 @@ void main() {
       await pumpEventQueue();
       expect(seen.replyTool, isTrue);
 
-      config.update(config.config.copyWith(activePresetId: base.activePreset.id));
+      config.update(
+        config.config.copyWith(activePresetId: base.activePreset.id),
+      );
       expect(vm.send('再来'), isNull);
       await pumpEventQueue();
       expect(seen.replyTool, isFalse);

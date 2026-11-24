@@ -8,7 +8,6 @@ import 'package:file_selector_platform_interface/file_selector_platform_interfac
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/core/harness/preset_import/sillytavern_preset.dart';
-import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/config_service.dart';
 import 'package:penna/ui/core/theme.dart';
 import 'package:penna/ui/features/settings/settings_agent_sections.dart';
@@ -30,10 +29,8 @@ Map<String, dynamic> _slot(String id, {bool enabled = true}) => {
 void main() {
   widgetTests();
 
-  test('启用的条目按 prompt_order 的顺序拼成系统提示', () {
-    final preset = sillyTavernToPreset({
-      'temperature': 1.09,
-      'top_p': 0.98,
+  test('启用的条目按 prompt_order 的顺序拼成一段', () {
+    final text = sillyTavernToPrompt({
       'prompts': [
         _prompt('style', '文风要求'),
         _prompt('main', '你是主持人'),
@@ -57,39 +54,32 @@ void main() {
           ],
         },
       ],
-    }, name: '测试');
+    });
 
-    expect(preset.systemPrompt, '你是主持人\n\n文风要求');
-    expect(preset.name, '测试');
-    expect(preset.temperature, 1.09);
-    expect(preset.topP, 0.98);
-    expect(preset.tools, {for (final o in builtinTools) o.id});
-    expect(isFactoryPreset(preset.id), isFalse);
+    expect(text, '你是主持人\n\n文风要求');
   });
 
   test('没有 prompt_order 时按条目本身的顺序', () {
-    final preset = sillyTavernToPreset({
+    final text = sillyTavernToPrompt({
       'prompts': [_prompt('a', '第一段'), _prompt('b', '第二段')],
-    }, name: 'x');
+    });
 
-    expect(preset.systemPrompt, '第一段\n\n第二段');
-    expect(preset.temperature, 0.7);
-    expect(preset.topP, 1);
+    expect(text, '第一段\n\n第二段');
   });
 
   test('注释宏和 {{trim}} 去掉,其他宏原样留着', () {
-    final preset = sillyTavernToPreset({
+    final text = sillyTavernToPrompt({
       'prompts': [
         _prompt('a', '{{trim}}{{// 作者\n说明}}'),
         _prompt('b', '{{// 只改 {{user}} 的部分\n}}你好 {{user}}{{trim}}'),
       ],
-    }, name: 'x');
+    });
 
-    expect(preset.systemPrompt, '你好 {{user}}');
+    expect(text, '你好 {{user}}');
   });
 
   test('条目的角色和聊天记录的位置写成对话标记', () {
-    final preset = sillyTavernToPreset({
+    final text = sillyTavernToPrompt({
       'prompts': [
         _prompt('main', '你是主持人'),
         _prompt('q', '可以开始了吗', role: 'user'),
@@ -98,58 +88,34 @@ void main() {
         _prompt('chatHistory', '', marker: true),
         _prompt('after', '记得写短一点'),
       ],
-    }, name: 'x');
+    });
 
     expect(
-      preset.systemPrompt,
+      text,
       '你是主持人\n\n<<user>>\n\n可以开始了吗\n\n<<assistant>>\n\n可以\n\n请说\n\n'
       '<<history>>\n\n<<user>>\n\n记得写短一点',
     );
   });
 
   test('全是系统条目的预设不写对话标记', () {
-    final preset = sillyTavernToPreset({
+    final text = sillyTavernToPrompt({
       'prompts': [
         _prompt('main', '你是主持人'),
         _prompt('chatHistory', '', marker: true),
         _prompt('after', '记得写短一点'),
       ],
-    }, name: 'x');
+    });
 
-    expect(preset.systemPrompt, '你是主持人\n\n记得写短一点');
-  });
-
-  test('超出范围的参数收进 Penna 的范围', () {
-    final preset = sillyTavernToPreset({
-      'temperature': 5,
-      'top_p': 0,
-      'prompts': [_prompt('a', '内容')],
-    }, name: 'x');
-
-    expect(preset.temperature, 2);
-    expect(preset.topP, 0.1);
-  });
-
-  test('转出来的 Preset 能存进设置再读回来', () {
-    final preset = sillyTavernToPreset({
-      'prompts': [_prompt('a', '内容')],
-    }, name: 'x');
-
-    final back = AgentPreset.fromJson(preset.toJson());
-
-    expect(back.systemPrompt, preset.systemPrompt);
-    expect(back.tools, preset.tools);
+    expect(text, '你是主持人\n\n记得写短一点');
   });
 
   test('不是酒馆预设的 JSON 报错', () {
+    expect(() => sillyTavernToPrompt({'nodes': []}), throwsFormatException);
+    expect(() => sillyTavernToPrompt([1, 2]), throwsFormatException);
     expect(
-      () => sillyTavernToPreset({'nodes': []}, name: 'x'),
-      throwsFormatException,
-    );
-    expect(
-      () => sillyTavernToPreset({
+      () => sillyTavernToPrompt({
         'prompts': [_prompt('chatHistory', '', marker: true)],
-      }, name: 'x'),
+      }),
       throwsFormatException,
     );
   });
@@ -171,8 +137,10 @@ class _PickFile extends FileSelectorPlatform {
 
 Future<void> _importFrom(WidgetTester tester, File file) async {
   FileSelectorPlatform.instance = _PickFile(file.path);
+  await tester.ensureVisible(find.text('导入'));
+  await tester.pump();
   await tester.runAsync(() async {
-    await tester.tap(find.text('导入 SillyTavern 预设'));
+    await tester.tap(find.text('导入'));
     await Future<void>.delayed(const Duration(milliseconds: 200));
   });
   await tester.pump();
@@ -190,48 +158,39 @@ Widget _presetPage(ConfigService service) => MaterialApp(
   ),
 );
 
+File _temp(String name, Object json) =>
+    File('${Directory.systemTemp.createTempSync('st').path}/$name')
+      ..writeAsStringSync(jsonEncode(json));
+
 void widgetTests() {
-  testWidgets('设置里点「导入 SillyTavern 预设」:多出一个 Preset 并切过去,名字用文件名', (
-    tester,
-  ) async {
+  testWidgets('穿甲弹点「导入」选 SillyTavern 预设:条目填进提示词,Preset 一个不多', (tester) async {
     final service = tempConfig();
     final before = service.config.presets.length;
-    final file =
-        File('${Directory.systemTemp.createTempSync('st').path}/故事主持-2.1.json')
-          ..writeAsStringSync(
-            jsonEncode({
-              'temperature': 1.09,
-              'top_p': 0.98,
-              'prompts': [_prompt('main', '你是故事主持人')],
-            }),
-          );
+    final file = _temp('故事主持.json', {
+      'prompts': [
+        _prompt('main', '你是故事主持人'),
+        _prompt('q', '可以开始了吗', role: 'user'),
+      ],
+    });
     await tester.pumpWidget(_presetPage(service));
 
     await _importFrom(tester, file);
 
-    final active = service.config.activePreset;
-    expect(service.config.presets.length, before + 1);
-    expect(active.name, '故事主持-2.1');
-    expect(active.systemPrompt, '你是故事主持人');
-    expect(active.temperature, 1.09);
-    expect(find.text('故事主持-2.1'), findsWidgets);
-    expect(find.text('你是故事主持人'), findsOneWidget);
-    // 提示还挂着一个定时器,等它走完。
-    await tester.pump(const Duration(seconds: 5));
+    expect(find.text('你是故事主持人\n\n<<user>>\n\n可以开始了吗'), findsOneWidget);
+    expect(service.config.presets.length, before);
+    // 导入只进草稿,点「保存」才写进设置。
+    expect(service.config.piercingPrompt, isEmpty);
   });
 
-  testWidgets('选了别的 JSON(例如 ComfyUI 工作流):不加 Preset,提示不是酒馆预设', (tester) async {
+  testWidgets('选了别的 JSON(例如 ComfyUI 工作流):提示词不动,提示不是酒馆预设', (tester) async {
     final service = tempConfig();
-    final before = service.config.presets.length;
-    final file = File(
-      '${Directory.systemTemp.createTempSync('st').path}/workflow.json',
-    )..writeAsStringSync(jsonEncode({'nodes': [], 'links': []}));
+    final file = _temp('workflow.json', {'nodes': [], 'links': []});
     await tester.pumpWidget(_presetPage(service));
 
     await _importFrom(tester, file);
 
-    expect(service.config.presets.length, before);
     expect(find.text('这不是 SillyTavern 预设'), findsOneWidget);
+    expect(service.config.piercingPrompt, isEmpty);
     await tester.pump(const Duration(seconds: 5));
   });
 }

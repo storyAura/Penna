@@ -503,6 +503,12 @@ extension StudioContext on StudioViewModel {
         '${names.join('、')}';
   }
 
+  /// 穿甲弹里写了对话时,放在用户最后一句话前面的提醒:对话只管口吻,
+  /// 该做的事和回复格式照系统提示(Preset 和 Penna 的规则)。
+  static const _dialogueReminder =
+      '【提醒】前面对话里说好的人设、语气和文风只管你说话的口吻和措辞;'
+      '这次要做的事、回复的格式和标签,一律照系统提示里的规则。';
+
   // ponytail: 现在只是带系统提示的直连对话,成稿作为上下文附上;
   // Skills / 工具白名单要等 AgentHarness(工具循环)做出来才生效。
   /// 给 [chain] 里的每个模型各备一份同样内容的请求,供依次尝试。
@@ -532,6 +538,24 @@ extension StudioContext on StudioViewModel {
     final pierce = piercing ?? cfg.piercingText;
     final system = messages.isNotEmpty && messages.first['role'] == 'system';
     final asDocument = document && system && cfg.piercingDocument;
+    // 穿甲弹里写了对话标记:开头那段照旧接在系统提示前面,几轮对话拆成真正的消息,
+    // 排在聊天记录前后(见 preset_dialogue.dart)。Preset 的系统提示原样留着。
+    final dialogue = system ? presetDialogue(pierce) : null;
+    final lead = dialogue?.lead ?? pierce;
+    final placed = dialogue == null
+        ? null
+        : withPresetDialogue(
+            dialogue,
+            messages.sublist(1),
+            closing: _dialogueReminder,
+          );
+    if (placed != null) {
+      // 图是按第几条消息挂的(系统提示算第 0 条),消息挪了位置图跟着挪。
+      images = {
+        for (final MapEntry(:key, :value) in images.entries)
+          key == 0 ? 0 : placed.at[key - 1] + 1: value,
+      };
+    }
     // 说给用户的话用什么语言:接在系统提示最后,盖得过前面的要求(见 [replyLanguageRule])。
     final sent = !system
         ? messages
@@ -539,12 +563,12 @@ extension StudioContext on StudioViewModel {
             {
               'role': 'system',
               'content': [
-                if (pierce.isNotEmpty) pierce,
+                if (lead.isNotEmpty) lead,
                 messages.first['content'],
                 replyLanguageRule(cfg.language),
               ].join('\n\n'),
             },
-            ...messages.skip(1),
+            ...placed?.messages ?? messages.skip(1),
           ];
     // Google 接口能把文档当文件收;别的接口收不了文本文件,文档包进消息里。
     final asFile = documentRequest(sent, images, asFile: true);

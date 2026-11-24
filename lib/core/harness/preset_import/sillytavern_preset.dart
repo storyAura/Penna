@@ -1,13 +1,12 @@
-import '../../../data/models/app_config.dart';
 import '../preset_dialogue.dart';
 
-// 把 SillyTavern 的 Chat Completion 预设(酒馆预设 JSON)转成 Penna 的 Preset。
-// 只做机械转换:温度、Top P 照搬;系统提示按 prompt_order 里启用的条目依次拼接,
+// 把 SillyTavern 的 Chat Completion 预设(酒馆预设 JSON)转成一段给穿甲弹用的话。
+// 只做机械转换:按 prompt_order 里启用的条目依次拼接,
 // 条目的角色(user / assistant)和聊天记录的位置写成对话标记(见 preset_dialogue.dart)。
-// Penna 没有对应的东西(top_k、各种 penalty、角色卡与世界书的占位、扩展脚本)一律略过,
+// Penna 没有对应的东西(温度等采样参数归 Preset 管;角色卡与世界书的占位、扩展脚本)一律略过,
 // 条目里的 {{user}}、{{char}} 等宏原样留在文字里,由用户自己改。
 
-/// 单个条目超过这么多字就当成扩展存的配置数据,不拼进系统提示。
+/// 单个条目超过这么多字就当成扩展存的配置数据,不拼进去。
 const _maxEntryChars = 20000;
 
 /// 去掉酒馆里展开后什么都不留的宏:`{{// 注释}}` 和 `{{trim}}`。
@@ -41,29 +40,17 @@ String _dropEmptyMacros(String text) {
   return out.toString().replaceAll('{{trim}}', '');
 }
 
-/// [json] 是解析好的酒馆预设,[name] 是新 Preset 的名字。
+/// [json] 是解析好的酒馆预设。返回拼好的那段话(给穿甲弹用)。
 /// 不是酒馆预设、或里面没有可用的提示词时抛 [FormatException]。
-AgentPreset sillyTavernToPreset(
-  Map<String, dynamic> json, {
-  required String name,
-}) {
-  if (json['prompts'] is! List) {
+String sillyTavernToPrompt(Object? json) {
+  if (json is! Map<String, dynamic> || json['prompts'] is! List) {
     throw const FormatException('没有 prompts,不是 SillyTavern 预设');
   }
-  final systemPrompt = _systemPrompt(json);
-  if (systemPrompt.isEmpty) {
+  final prompt = _systemPrompt(json);
+  if (prompt.isEmpty) {
     throw const FormatException('预设里没有启用的提示词');
   }
-  final temperature = (json['temperature'] as num?) ?? 0.7;
-  final topP = (json['top_p'] as num?) ?? 1;
-  return AgentPreset(
-    id: 'custom-${DateTime.now().microsecondsSinceEpoch}',
-    name: name,
-    systemPrompt: systemPrompt,
-    tools: {for (final o in builtinTools) o.id},
-    temperature: temperature.clamp(0, 2).toDouble(),
-    topP: topP.clamp(0.1, 1).toDouble(),
-  );
+  return prompt;
 }
 
 /// 启用的条目按顺序拼成一段系统提示。

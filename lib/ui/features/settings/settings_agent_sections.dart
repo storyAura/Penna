@@ -67,32 +67,6 @@ class _PresetSectionState extends State<PresetSection> {
     );
   }
 
-  /// 选一个 SillyTavern 预设(JSON),转成新的 Preset 并切过去。
-  Future<void> _importSillyTavern() async {
-    final picked = await openFile(
-      acceptedTypeGroups: [
-        XTypeGroup(label: tr('SillyTavern 预设'), extensions: ['json']),
-      ],
-    );
-    if (picked == null) return;
-    try {
-      final json = jsonDecode(await File(picked.path).readAsString());
-      if (json is! Map<String, dynamic>) throw const FormatException();
-      // 名字用文件名(不带路径和 .json)。
-      final name = picked.path
-          .split(RegExp(r'[\\/]'))
-          .last
-          .replaceFirst(RegExp(r'\.json$', caseSensitive: false), '');
-      final preset = sillyTavernToPreset(json, name: name);
-      _service.update(_service.config.addPreset(preset));
-      if (mounted) showToast(context, tr('已导入「{0}」', [preset.name]));
-    } on FormatException {
-      if (mounted) showToast(context, tr('这不是 SillyTavern 预设'), warn: true);
-    } on FileSystemException {
-      if (mounted) showToast(context, tr('读不了这个文件'), warn: true);
-    }
-  }
-
   Future<void> _delete(AgentPreset preset) async {
     final ok = await confirmDelete(
       context,
@@ -119,24 +93,12 @@ class _PresetSectionState extends State<PresetSection> {
         gap,
         Align(
           alignment: Alignment.centerLeft,
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              PennaButton(
-                label: tr('新建 Preset(复制当前)'),
-                icon: Icons.add,
-                background: PennaColors.primary,
-                foreground: Colors.white,
-                onPressed: () => _addFrom(preset),
-              ),
-              PennaButton(
-                label: tr('导入 SillyTavern 预设'),
-                icon: Icons.file_open_outlined,
-                background: PennaColors.slate100,
-                onPressed: _importSillyTavern,
-              ),
-            ],
+          child: PennaButton(
+            label: tr('新建 Preset(复制当前)'),
+            icon: Icons.add,
+            background: PennaColors.primary,
+            foreground: Colors.white,
+            onPressed: () => _addFrom(preset),
           ),
         ),
         gap,
@@ -184,37 +146,7 @@ class _PresetSectionState extends State<PresetSection> {
                     scale: 0.8,
                     child: Switch(
                       value: preset.replyTool,
-                      onChanged: (on) =>
-                          _put(preset.copyWith(replyTool: on)),
-                    ),
-                  ),
-                ],
-              ),
-              gap,
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(tr('对话标记'), style: titleStyle),
-                        Text(
-                          tr(
-                            '系统提示里各占一行的 <<user>>、<<assistant>> 当成事先说好的几轮对话发给模型,'
-                            '<<history>> 是聊天记录的位置 · 所有 Preset 共用',
-                          ),
-                          style: hintStyle,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Transform.scale(
-                    scale: 0.8,
-                    child: Switch(
-                      value: _service.config.presetDialogue,
-                      onChanged: (on) => _service.update(
-                        _service.config.copyWith(presetDialogue: on),
-                      ),
+                      onChanged: (on) => _put(preset.copyWith(replyTool: on)),
                     ),
                   ),
                 ],
@@ -292,17 +224,26 @@ class _PiercingCardState extends State<_PiercingCard> {
   Future<void> _import() async {
     final picked = await openFile(
       acceptedTypeGroups: [
-        XTypeGroup(label: tr('文本'), extensions: ['txt', 'md']),
+        XTypeGroup(
+          label: tr('文本或 SillyTavern 预设'),
+          extensions: ['txt', 'md', 'json'],
+        ),
       ],
     );
     if (picked == null) return;
     try {
-      final text = await File(picked.path).readAsString();
+      final raw = await File(picked.path).readAsString();
+      // JSON 当成 SillyTavern 预设:条目拼成一段话,谁说的、聊天记录在哪写成对话标记。
+      final text = picked.path.toLowerCase().endsWith('.json')
+          ? sillyTavernToPrompt(jsonDecode(raw))
+          : raw;
       if (!mounted) return;
       setState(() {
         _draft = text;
         _imports++;
       });
+    } on FormatException {
+      if (mounted) showToast(context, tr('这不是 SillyTavern 预设'), warn: true);
     } on Exception {
       if (mounted) showToast(context, tr('读不了这个文件'), warn: true);
     }
@@ -383,6 +324,14 @@ class _PiercingCardState extends State<_PiercingCard> {
             ],
           ),
           if (!cfg.piercingDocument) ...[
+            gap,
+            Text(
+              tr(
+                '各占一行的 <<user>>、<<assistant>> 把后面的话当成事先说好的一轮对话,'
+                '<<history>> 是聊天记录的位置',
+              ),
+              style: hintStyle,
+            ),
             gap,
             PennaField(
               key: ValueKey('piercing-$_imports'),
