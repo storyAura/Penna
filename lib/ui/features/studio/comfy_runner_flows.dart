@@ -46,6 +46,34 @@ extension ComfyFlows on ComfyRunner {
   /// 眼前用的工作流的 id(内置文生图是 [builtinWorkflowId])。
   String get flowId => _settings.flow?.id ?? builtinWorkflowId;
 
+  /// 眼前工作流存的 LoRA 语法;工作流里写着 `{{lora}}` 的框出图时换成它。
+  String get loraText => _settings.loraTextOf(flowId);
+
+  /// 改存起来的 LoRA 语法(空串表示清掉)。
+  void setLoraText(String text) {
+    if (text == loraText) return;
+    _put(_settings.putLoraText(flowId, text));
+    _changed();
+  }
+
+  /// 眼前工作流里被开关关掉的 LoRA(不在语法里，但记着权重)。
+  List<LoraSetting> get loraOff => _settings.loraOffOf(flowId);
+
+  /// 记下关掉的 LoRA。
+  void setLoraOff(List<LoraSetting> loras) {
+    _put(_settings.putLoraOff(flowId, loras));
+    _changed();
+  }
+
+  /// 眼前工作流里 LoRA 的展示顺序(比较键)。关掉的行也按这个排，留在原位。
+  List<String> get loraOrder => _settings.loraOrderOf(flowId);
+
+  void setLoraOrder(List<String> keys) {
+    if (listEquals(keys, loraOrder)) return;
+    _put(_settings.putLoraOrder(flowId, keys));
+    _changed();
+  }
+
   /// 换工作流。
   void selectFlow(String id) {
     if (id == flowId) return;
@@ -178,6 +206,39 @@ extension ComfyFlows on ComfyRunner {
   /// ponytail: 去掉的若是工作流自带的 LoraLoader(也接 CLIP),再加回来只作用于模型;
   /// 要原样还原就得把整份工作流存进配置。
   String? applyLoraPreset(LoraPreset preset) {
+    final wf = workflow;
+    if (wf == null) return tr('还没连上 ComfyUI');
+    // 文本模式:整套配置就是一段语法，换掉文本就行。
+    // 绝不能走 addLora 插节点——那边是裸名字，插成 LoraLoaderModelOnly
+    // 会被 ComfyUI 判成「Value not in list」直接 400。
+    // 带目录/后缀的那些(比如 dmd2)是工作流里节点加载的，不进文本，免得重复加载。
+    final text = [
+      for (final l in preset.loras)
+        if (l.on && !l.name.contains(r'\') && !l.name.contains('/'))
+          loraTag(l.name, l.strength),
+    ].join(' ');
+    // 配置里关着的那几条记下来，侧栏开关还能把它们打开。
+    final offItems = <LoraSetting>[
+      for (final l in preset.loras)
+        if (!l.on && !l.name.contains(r'\') && !l.name.contains('/'))
+          (name: l.name, strength: l.strength, on: false),
+    ];
+    if (usesLoraMark(wf)) {
+      setLoraText(text);
+      setLoraOff(offItems);
+      _put(_settings.copyWith(loraPreset: preset.name));
+      _changed();
+      return null;
+    }
+    final slot = loraTextSlot(wf);
+    if (slot != null) {
+      final problem = edit((w) => setNodeText(w, slot.node, slot.key, text));
+      if (problem != null) return problem;
+      setLoraOff(offItems);
+      _put(_settings.copyWith(loraPreset: preset.name));
+      _changed();
+      return null;
+    }
     final problem = edit((wf) {
       var next = wf;
       final wanted = {for (final l in preset.loras) l.name: l};
@@ -185,20 +246,27 @@ extension ComfyFlows on ComfyRunner {
       for (final slot in loraSlots(wf)) {
         final want = wanted.remove(slot.name);
         next = want == null
-            ? removeLora(next, slot.node, slot.key)
+            ? removeLora(next, slot.node, slot.key, name: slot.name)
             : setLora(
                 next,
                 slot.node,
                 slot.key,
                 strength: want.strength,
                 on: want.on,
+                name: slot.name,
               );
       }
       for (final l in wanted.values) {
         next = addLora(next, l.name, l.strength);
         if (!l.on) {
           final added = loraSlots(next).last;
-          next = setLora(next, added.node, added.key, on: false);
+          next = setLora(
+            next,
+            added.node,
+            added.key,
+            on: false,
+            name: added.name,
+          );
         }
       }
       return next;

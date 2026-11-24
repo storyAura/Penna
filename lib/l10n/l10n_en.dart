@@ -2,6 +2,19 @@
 // 键是简体中文原文(代码里 tr() 的那句),值是译文。新加 tr() 时三个表都要补,test/l10n_test.dart 会查。
 
 const en = <String, String>{
+  '应用': 'Apply',
+  '共 {0} 条 · 关 {1}': '{0} total · {1} off',
+  '共 {0} 条': '{0} total',
+  'LoRA 语法': 'LoRA syntax',
+  '全部 LoRA': 'All LoRA',
+  '只看收藏': 'Favorites only',
+  '搜名字、触发词': 'Search name, trigger words',
+  '加载更多（{0}/{1}）': 'Load more ({0}/{1})',
+  '加载中…': 'Loading…',
+  '没有匹配的 LoRA': 'No matching LoRA',
+  '没连上 Lora Manager 插件，或它没在运行。装好后这里会列出库里的 LoRA。': 'Lora Manager plugin is not connected or not running. Once it is installed, your library LoRA will show up here.',
+  '读不到 Lora Manager:{0}': 'Cannot read Lora Manager: {0}',
+  'Lora Manager 库': 'Lora Manager library',
   '工作台': 'Workbench',
   '档案库': 'Archive',
   '角色库': 'Characters',

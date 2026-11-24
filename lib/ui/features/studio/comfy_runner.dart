@@ -205,6 +205,10 @@ class ComfyRunner extends ChangeNotifier {
         // 空的是内置文生图。
         config.config.comfy.flow?.text ?? '',
         prompt,
+        // 工作流里写着 {{lora}} 的框换成这里存的语法;没存过就是空串。
+        loraSyntax: config.config.comfy.loraTextOf(
+          config.config.comfy.flowId,
+        ),
         canceled: () => run != _run,
         onProgress: (p) {
           if (run != _run) return;
