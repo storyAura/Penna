@@ -96,6 +96,9 @@ class ComfySettings {
     this.orientation = orientationKeep,
     this.outputDirs = const {},
     this.sizes = comfyDefaultSizes,
+    this.loraTexts = const {},
+    this.loraOff = const {},
+    this.loraOrder = const {},
   });
 
   /// 读设置。旧版只有一个地址(`url`)和一个工作流(`workflow`、`workflowName`),照样读成列表;
@@ -213,6 +216,31 @@ class ComfySettings {
                   (width: v[0] as int, height: v[1] as int),
             ])
           : comfyDefaultSizes,
+      loraTexts: Map.unmodifiable({
+        if (m['loraTexts'] case final Map texts)
+          for (final MapEntry(:key, :value) in texts.entries)
+            if (key is String && value is String) key: value,
+      }),
+      loraOff: Map.unmodifiable({
+        if (m['loraOff'] case final Map off)
+          for (final MapEntry(:key, :value) in off.entries)
+            if (key is String && value is List)
+              key: List<LoraSetting>.unmodifiable([
+                for (final l in value)
+                  if (l is Map && l['name'] is String)
+                    (
+                      name: l['name'] as String,
+                      strength: (l['strength'] as num? ?? 1).toDouble(),
+                      on: false,
+                    ),
+              ]),
+      }),
+      loraOrder: Map.unmodifiable({
+        if (m['loraOrder'] case final Map orderMap)
+          for (final MapEntry(:key, :value) in orderMap.entries)
+            if (key is String && value is List)
+              key: List<String>.unmodifiable([for (final n in value) '$n']),
+      }),
     );
   }
 
@@ -254,6 +282,26 @@ class ComfySettings {
 
   /// 最多存几个常用尺寸。
   static const maxSizes = 12;
+
+  /// 每个工作流的 LoRA 语法(按工作流 id)。
+  /// 工作流里那个写着 `{{lora}}` 的框，出图时会被替换成这段文字。
+  final Map<String, String> loraTexts;
+
+  /// 每个工作流里「关掉」的 LoRA(按工作流 id)。关掉的不在语法里，但记着名字和权重，
+  /// 下次点开关能原样加回去。
+  final Map<String, List<LoraSetting>> loraOff;
+
+  /// 每个工作流的展示顺序(按工作流 id，存比较键)。关掉的行也留在原来的位置。
+  final Map<String, List<String>> loraOrder;
+
+  /// 工作流 [id] 存的 LoRA 语法;没存过是空串。
+  String loraTextOf(String id) => loraTexts[id] ?? '';
+
+  /// 工作流 [id] 里关掉的 LoRA。
+  List<LoraSetting> loraOffOf(String id) => loraOff[id] ?? const [];
+
+  /// 工作流 [id] 的展示顺序。
+  List<String> loraOrderOf(String id) => loraOrder[id] ?? const [];
 
   /// 眼前那一台(id 对不上时用第一台)。
   ComfyServer get server =>
@@ -299,6 +347,15 @@ class ComfySettings {
     'sizes': [
       for (final s in sizes) [s.width, s.height],
     ],
+    if (loraTexts.isNotEmpty) 'loraTexts': loraTexts,
+    if (loraOff.isNotEmpty)
+      'loraOff': {
+        for (final MapEntry(:key, :value) in loraOff.entries)
+          key: [
+            for (final l in value) {'name': l.name, 'strength': l.strength},
+          ],
+      },
+    if (loraOrder.isNotEmpty) 'loraOrder': loraOrder,
   };
 
   ComfySettings copyWith({
@@ -314,6 +371,9 @@ class ComfySettings {
     String? orientation,
     Map<String, String>? outputDirs,
     List<({int width, int height})>? sizes,
+    Map<String, String>? loraTexts,
+    Map<String, List<LoraSetting>>? loraOff,
+    Map<String, List<String>>? loraOrder,
   }) => ComfySettings(
     servers: servers == null ? this.servers : List.unmodifiable(servers),
     serverId: serverId ?? this.serverId,
@@ -333,7 +393,43 @@ class ComfySettings {
         ? this.outputDirs
         : Map.unmodifiable(outputDirs),
     sizes: sizes == null ? this.sizes : List.unmodifiable(sizes),
+    loraTexts: loraTexts == null ? this.loraTexts : Map.unmodifiable(loraTexts),
+    loraOff: loraOff == null ? this.loraOff : Map.unmodifiable(loraOff),
+    loraOrder: loraOrder == null ? this.loraOrder : Map.unmodifiable(loraOrder),
   );
+
+  /// 记下工作流 [flowId] 里关掉的 LoRA。
+  ComfySettings putLoraOff(String flowId, List<LoraSetting> loras) {
+    final next = {...loraOff};
+    if (loras.isEmpty) {
+      next.remove(flowId);
+    } else {
+      next[flowId] = List.unmodifiable(loras);
+    }
+    return copyWith(loraOff: next);
+  }
+
+  /// 记下工作流 [flowId] 的展示顺序。
+  ComfySettings putLoraOrder(String flowId, List<String> keys) {
+    final next = {...loraOrder};
+    if (keys.isEmpty) {
+      next.remove(flowId);
+    } else {
+      next[flowId] = List.unmodifiable(keys);
+    }
+    return copyWith(loraOrder: next);
+  }
+
+  /// 存一个工作流的 LoRA 语法;空串表示不存(回到没设置的样子)。
+  ComfySettings putLoraText(String flowId, String text) {
+    final next = {...loraTexts};
+    if (text.trim().isEmpty) {
+      next.remove(flowId);
+    } else {
+      next[flowId] = text.trim();
+    }
+    return copyWith(loraTexts: next);
+  }
 
   /// 新增或替换一台(按 id)。
   ComfySettings putServer(ComfyServer server) => copyWith(

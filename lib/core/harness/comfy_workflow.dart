@@ -72,6 +72,39 @@ Iterable<(String, String, Map<String, Object?>)> _nodes(
 /// 输入名最后的数字(lora_name_1 → 1,lora_01 → 01),没有是空串。
 String _tail(String key) => RegExp(r'\d+$').stringMatch(key) ?? '';
 
+/// 文本里的一条 LoRA 标签,例如 `<lora:moss/tool/lora_dmd2:0.75>`;
+/// 不写权重时按 1 算(Lora Manager 这类节点用一整串文本装好几个 LoRA)。
+final _loraTag = RegExp(r'<lora:([^:>]+)(?::([-+]?\d*\.?\d+))?>');
+
+/// 写回文本时用的权重写法:0.75 还是 0.75,0.5 写成 0.5(不带尾零),1 写成 1。
+String _strengthText(double v) {
+  var text = v.toStringAsFixed(2);
+  if (text.contains('.')) {
+    text = text.replaceFirst(RegExp(r'0+$'), '');
+    if (text.endsWith('.')) text = text.substring(0, text.length - 1);
+  }
+  return text;
+}
+
+/// 把一个文本里名为 [name] 的那条 LoRA 标签改成 [strength];[off] 为真时删掉它。
+/// 别的标签、别的文字原样留着。
+String _rewriteLoraTags(
+  String text,
+  String name, {
+  double? strength,
+  bool off = false,
+}) {
+  final out = text.replaceAllMapped(_loraTag, (m) {
+    if (m.group(1)!.trim() != name.trim()) return m.group(0)!;
+    if (off) return '';
+    final s =
+        strength ?? double.tryParse(m.group(2) ?? '') ?? 1;
+    return '<lora:${m.group(1)}:${_strengthText(s)}>';
+  });
+  // 删掉一条之后别留下两个空格。
+  return out.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+}
+
 /// 模型加载器(ckpt_name、unet_name)。
 List<ModelSlot> modelSlots(ComfyWorkflow wf) => [
   for (final (id, type, inputs) in _nodes(wf))
@@ -180,6 +213,21 @@ List<LoraSlot> loraSlots(ComfyWorkflow wf) => [
               null => true,
             },
             canToggle: _switchKeyFor(key, inputs) != null,
+          ),
+  // 用一整串文本装 LoRA 的节点(Lora Manager 的「LoRA Text Loader」等):
+  // 不按节点名认,只要输入里有 <lora:名字:权重> 就算,一条标签一个 LoRA。
+  for (final (id, type, inputs) in _nodes(wf))
+    for (final key in inputs.keys)
+      if (inputs[key] case final String text when _loraTag.hasMatch(text))
+        for (final m in _loraTag.allMatches(text))
+          (
+            node: id,
+            type: type,
+            key: key,
+            name: m.group(1)!.trim(),
+            strength: double.tryParse(m.group(2) ?? '') ?? 1,
+            on: true,
+            canToggle: false,
           ),
 ];
 
@@ -330,16 +378,24 @@ ComfySize? _sizeOf(String v, ComfySize? now) {
 }
 
 /// 改一个 LoRA 的权重、开关(给了哪个改哪个)。几个权重(模型、CLIP)一起改。
+/// 文本标签形式的要用 [name] 指出改哪一条(一个文本里可能装着好几个 LoRA)。
 ComfyWorkflow setLora(
   ComfyWorkflow wf,
   String node,
   String key, {
   double? strength,
   bool? on,
+  String? name,
 }) {
   final out = _copy(wf);
   final inputs = _inputsOf(out, node);
   final v = inputs[key];
+  // 文本标签:<lora:名字:权重> 那一串
+  if (v is String && _loraTag.hasMatch(v)) {
+    if (name == null) return out;
+    inputs[key] = _rewriteLoraTags(v, name, strength: strength, off: on == false);
+    return out;
+  }
   if (v is Map) {
     if (strength != null) {
       v['strength'] = strength;
@@ -411,10 +467,170 @@ void _rewire(
   }
 }
 
-/// 加一个 LoRA。工作流里有 Power Lora Loader 就加在它里面;
+/// 一段文字里的 LoRA 标签(名字、权重);没有标签就是空的。
+List<({String name, double strength})> parseLoraTags(String text) => [
+  for (final m in _loraTag.allMatches(text))
+    (
+      name: m.group(1)!.trim(),
+      strength: double.tryParse(m.group(2) ?? '') ?? 1,
+    ),
+];
+
+/// 工作流里有没有写着 `{{lora}}` 的框。
+/// 有的话，LoRA 就由「设置里存的那段语法」决定，工作流别的节点一概不动。
+bool usesLoraMark(ComfyWorkflow wf) => _nodes(wf).any(
+  (n) => n.$3.values.any((v) => v is String && v.contains(comfyLoraMark)),
+);
+
+/// 工作流里「装 LoRA 语法」的那个文本框。
+///
+/// 依次找:
+/// 1. 内容写着 `{{lora}}` 的(约定写法，出图时按设置里的语法替换);
+/// 2. 接在某个名字带 lora 的输入(比如 LoraManager 的 `lora_syntax`)上的文本节点;
+/// 3. 内容里已经有 `<lora:…>` 标签的文本框。
+///
+/// 找不到就没法在侧栏里编辑(返回 null)。
+({String node, String key})? loraTextSlot(ComfyWorkflow wf) {
+  for (final (id, _, inputs) in _nodes(wf)) {
+    for (final key in inputs.keys) {
+      final v = inputs[key];
+      if (v is String && v.contains(comfyLoraMark)) return (node: id, key: key);
+    }
+  }
+  for (final (_, _, inputs) in _nodes(wf)) {
+    for (final key in inputs.keys) {
+      if (!key.toLowerCase().contains('lora')) continue;
+      final link = inputs[key];
+      if (link is! List || link.length != 2) continue;
+      final target = wf['${link[0]}'];
+      if (target is! Map) continue;
+      final targetInputs = target['inputs'];
+      if (targetInputs is! Map) continue;
+      for (final k in const ['text', 'value', 'string']) {
+        if (targetInputs[k] is String) {
+          return (node: '${link[0]}', key: k);
+        }
+      }
+    }
+  }
+  for (final (id, _, inputs) in _nodes(wf)) {
+    for (final key in inputs.keys) {
+      final v = inputs[key];
+      if (v is String && _loraTag.hasMatch(v)) return (node: id, key: key);
+    }
+  }
+  return null;
+}
+
+/// 读一个节点某个输入的文字(没有就是空串)。
+String nodeText(ComfyWorkflow wf, String node, String key) {
+  final n = wf[node];
+  if (n is! Map) return '';
+  final inputs = n['inputs'];
+  if (inputs is! Map) return '';
+  final v = inputs[key];
+  return v is String ? v : '';
+}
+
+/// 改一个节点的文字输入(不动别的东西)。
+ComfyWorkflow setNodeText(
+  ComfyWorkflow wf,
+  String node,
+  String key,
+  String value,
+) {
+  final out = _copy(wf);
+  _inputsOf(out, node)[key] = value;
+  return out;
+}
+
+/// 名字的比较用键:去掉目录、后缀，小写。
+String _bareName(String s) {
+  final base = s.split(RegExp(r'[\\/]')).last;
+  return base.replaceFirst(RegExp(r'\.[A-Za-z0-9]+$'), '').toLowerCase();
+}
+
+/// 往一段语法里加一条;已经有同名的就只改权重。
+String loraSyntaxAdd(String text, String name, double strength) {
+  final has = parseLoraTags(text).any((e) => _bareName(e.name) == _bareName(name));
+  if (has) return loraSyntaxSet(text, name, strength);
+  final body = text.trim();
+  final tag = '<lora:$name:${_strengthText(strength)}>';
+  return body.isEmpty ? tag : '$body $tag';
+}
+
+/// 改一段语法里某一条的权重。
+String loraSyntaxSet(String text, String name, double strength) {
+  final parsed = parseLoraTags(text);
+  // 名字写法可能不一样(带不带目录)，按比较键找出真正那一条的名字。
+  final target = parsed
+      .where((e) => _bareName(e.name) == _bareName(name))
+      .map((e) => e.name)
+      .firstOrNull;
+  return _rewriteLoraTags(text, target ?? name, strength: strength);
+}
+
+/// 从一段语法里删掉一条。
+String loraSyntaxRemove(String text, String name) {
+  final parsed = parseLoraTags(text);
+  final target = parsed
+      .where((e) => _bareName(e.name) == _bareName(name))
+      .map((e) => e.name)
+      .firstOrNull;
+  return _rewriteLoraTags(text, target ?? name, off: true);
+}
+
+/// 一条标准的 LoRA 标签:`<lora:名字:权重>`。
+String loraTag(String name, double strength) =>
+    '<lora:$name:${_strengthText(strength)}>';
+
+/// 把一段语法收拢成标准写法(`<lora:名字:权重>` 用空格隔开)。
+/// 认不出任何标签时原样返回(可能用户正在输入)。
+String loraSyntaxNormalize(String text) {
+  final parsed = parseLoraTags(text);
+  if (parsed.isEmpty) return text.trim();
+  return [
+    for (final e in parsed) '<lora:${e.name}:${_strengthText(e.strength)}>',
+  ].join(' ');
+}
+
+/// 工作流用文本标签(`<lora:名字:权重>`)装 LoRA 吗。
+/// 是的话，加 LoRA 只写文件名(和 Lora Manager 自己写的一致)。
+bool usesLoraTags(ComfyWorkflow wf) => _nodes(wf).any(
+  (n) => n.$3.values.any((v) => v is String && _loraTag.hasMatch(v)),
+);
+
+/// 加一个 LoRA。工作流用文本装 LoRA 时追加一条 `<lora:名字:权重>`;
+/// 有 Power Lora Loader 就加在它里面;
 /// 没有就在模型加载器后面插一个 LoraLoaderModelOnly,原来接模型的线都改接到它上面。
 ComfyWorkflow addLora(ComfyWorkflow wf, String name, double strength) {
   final out = _copy(wf);
+  // 有「装 LoRA 语法的文本节点」时一律写进那段文本，绝不新增 LoraLoaderModelOnly：
+  // 那边要的是带目录和后缀的完整文件名，裸名字插进去 ComfyUI 会直接拒收。
+  final slot = loraTextSlot(wf);
+  if (slot != null) {
+    final current = nodeText(out, slot.node, slot.key);
+    if (!current.contains(comfyLoraMark)) {
+      _inputsOf(out, slot.node)[slot.key] = loraSyntaxAdd(
+        current,
+        name,
+        strength,
+      );
+      return out;
+    }
+  }
+  // 文本标签形式的:直接追加在那串文本后面,别混进一个新节点,
+  // 否则同一个工作流里两种写法并存,面板上会多出一份。
+  for (final (_, _, inputs) in _nodes(out)) {
+    for (final key in inputs.keys) {
+      final v = inputs[key];
+      if (v is String && _loraTag.hasMatch(v)) {
+        inputs[key] =
+            '${v.trimRight()} <lora:$name:${_strengthText(strength)}>'.trim();
+        return out;
+      }
+    }
+  }
   for (final (_, type, inputs) in _nodes(out)) {
     final nested = inputs.entries.where((e) => _isNested(e.value)).toList();
     if (nested.isEmpty && !type.toLowerCase().contains('power lora')) continue;
@@ -447,12 +663,24 @@ ComfyWorkflow addLora(ComfyWorkflow wf, String name, double strength) {
   return out;
 }
 
-/// 去掉一个 LoRA:Power Lora Loader 里的删掉那一项;只有这一个 LoRA 的节点整个拿掉,
-/// 接在它输出上的线改接回它的输入(模型、CLIP);Stack 类的槽位改成 None。
-ComfyWorkflow removeLora(ComfyWorkflow wf, String node, String key) {
+/// 去掉一个 LoRA:文本标签形式删掉那一条标签;Power Lora Loader 里的删掉那一项;
+/// 只有这一个 LoRA 的节点整个拿掉,接在它输出上的线改接回它的输入(模型、CLIP);
+/// Stack 类的槽位改成 None。
+ComfyWorkflow removeLora(
+  ComfyWorkflow wf,
+  String node,
+  String key, {
+  String? name,
+}) {
   final out = _copy(wf);
   final inputs = _inputsOf(out, node);
-  if (inputs[key] is Map) {
+  final v = inputs[key];
+  if (v is String && _loraTag.hasMatch(v)) {
+    if (name == null) return out;
+    inputs[key] = _rewriteLoraTags(v, name, off: true);
+    return out;
+  }
+  if (v is Map) {
     inputs.remove(key);
     return out;
   }

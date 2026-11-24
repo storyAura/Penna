@@ -26,6 +26,10 @@ part 'comfy_upload.dart';
 /// 工作流里写着这个记号的地方会换成提示词。
 const comfyPromptMark = '{{prompt}}';
 
+/// 工作流里写着这个的框,出图时换成这个工作流的 LoRA 语法(`<lora:名字:权重>`)。
+/// 和 [comfyPromptMark] 一样:只认写着记号的框,别的节点一概不动。
+const comfyLoraMark = '{{lora}}';
+
 /// 冷启动要先把几个 GB 的模型读进显存,出视频更慢,等久一点。
 const comfyMaxWait = Duration(minutes: 30);
 
@@ -310,6 +314,7 @@ Map<String, Object?> prepareWorkflow(
   String prompt, {
   Random? random,
   ComfySize? size,
+  String loraSyntax = '',
 }) {
   final wf = jsonDecode(jsonEncode(workflow)) as Map<String, Object?>;
   final dice = random ?? Random();
@@ -326,12 +331,17 @@ Map<String, Object?> prepareWorkflow(
     final inputs = _inputs(node);
     for (final key in inputs.keys.toList()) {
       final value = inputs[key];
-      if (key == 'filename_prefix' && value is String) {
-        inputs[key] = expandComfyText(value, workflow, now);
-      } else if (value is String && value.contains(comfyPromptMark)) {
-        inputs[key] = value.replaceAll(comfyPromptMark, prompt);
+      // LoRA 语法先换:写着 {{lora}} 的框只由这里改,别的节点一概不碰。
+      if (value is String && value.contains(comfyLoraMark)) {
+        inputs[key] = value.replaceAll(comfyLoraMark, loraSyntax);
+      }
+      final after = inputs[key];
+      if (key == 'filename_prefix' && after is String) {
+        inputs[key] = expandComfyText(after, workflow, now);
+      } else if (after is String && after.contains(comfyPromptMark)) {
+        inputs[key] = after.replaceAll(comfyPromptMark, prompt);
         marked = true;
-      } else if ((key == 'seed' || key == 'noise_seed') && value is num) {
+      } else if ((key == 'seed' || key == 'noise_seed') && after is num) {
         inputs[key] = dice.nextInt(1 << 32);
       }
     }
@@ -605,6 +615,30 @@ class ComfyClient {
     }
   }
 
+  /// Lora Manager 插件(装了才有)的 LoRA 列表;没装这个插件时抛 [ComfyException]。
+  /// [sortBy] 支持 name / date / usage / recent;[folder] 是它的文件夹路径(空是根)。
+  Future<Object?> loraLibrary({
+    int page = 1,
+    int pageSize = 24,
+    String search = '',
+    String sortBy = 'name',
+    String folder = '',
+    bool favoritesOnly = false,
+  }) => _json(
+    'GET',
+    '/api/lm/loras/list?${Uri(queryParameters: {'page': '$page', 'page_size': '$pageSize', 'sort_by': sortBy, if (search.trim().isNotEmpty) 'search': search.trim(), if (folder.isNotEmpty) 'folder': folder, if (favoritesOnly) 'favorites_only': 'true'}).query}',
+  );
+
+  /// Lora Manager 的文件夹列表(第一项一般是空串,表示根)。
+  Future<Object?> loraFolders() => _json('GET', '/api/lm/loras/folders');
+
+  /// 把 Lora Manager 给的相对地址(预览图)拼成完整地址。
+  String absolute(String path) {
+    if (path.isEmpty) return '';
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    return path.startsWith('/') ? '$_root$path' : '$_root/$path';
+  }
+
   /// 用 [workflow](导入的工作流全文;空的用内置文生图)出图,返回出的每一张。
   /// [size] 给了就按它的宽高出(见 [prepareWorkflow])。
   /// [canceled] 返回 true 时把单子从队列里撤掉(正在跑的就打断),抛 canceled 的 [ComfyException]。
@@ -622,6 +656,7 @@ class ComfyClient {
     Map<String, String> uploads = const {},
     ComfyNodeInfo info = const {},
     void Function(ComfyTransfer)? onDownload,
+    String loraSyntax = '',
   }) async {
     Map<String, Object?> base;
     if (workflow.trim().isEmpty) {
@@ -632,7 +667,12 @@ class ComfyClient {
       base = parseApiWorkflow(workflow);
     }
     base = adaptToServer(await _withUploads(base, uploads), info);
-    final prepared = prepareWorkflow(base, prompt, size: size);
+    final prepared = prepareWorkflow(
+      base,
+      prompt,
+      size: size,
+      loraSyntax: loraSyntax,
+    );
     // 进度按 client_id 发到对应的 WebSocket 上:先连上再排队。
     final clientId = 'penna-${Random().nextInt(1 << 32)}';
     String? id;

@@ -237,6 +237,8 @@ class ComfyRunner extends ChangeNotifier {
         size: size,
         uploads: comfy.inputs[comfy.flow?.id ?? builtinWorkflowId] ?? const {},
         info: _optionsOf == comfy.server.url ? _info : const {},
+        // 工作流里写着 {{lora}} 的框换成这里存的语法;没存过就是空串。
+        loraSyntax: config.config.comfy.loraTextOf(config.config.comfy.flowId),
         canceled: () => run != _run,
         onDownload: (t) {
           if (run != _run) return;
