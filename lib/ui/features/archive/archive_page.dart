@@ -873,11 +873,15 @@ class _EntryTile extends StatelessWidget {
                   : PennaColors.text,
             ),
           ),
-          const SizedBox(height: 2),
+          // 分类单独一行:和四个按钮挤在一行时格子窄了药丸会被压成空的。
+          const SizedBox(height: 3),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _CategoryPill(entry.category),
+          ),
           Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Flexible(child: _CategoryPill(entry.category)),
-              const Spacer(),
               _iconButton(
                 Icons.add_photo_alternate_outlined,
                 tr('上传预览图'),

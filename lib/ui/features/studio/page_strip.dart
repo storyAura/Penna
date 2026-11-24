@@ -119,10 +119,12 @@ class _PageStripState extends State<PageStrip> {
       tr('批量改名'),
       if (widget.generate) generate,
       tr('建立系列'),
+      if (vm.seriesCount > 1) tr('移到别的系列…'),
       tr('删除选中的页'),
       tr('取消选择'),
     ]);
     if (!context.mounted || picked == null) return;
+    if (picked == tr('移到别的系列…')) return _moveTo(context, which);
     if (picked == tr('批量改名')) {
       final name = await askName(context, tr('这几页的名字'), '');
       if (name != null) vm.renamePages(which, name);
@@ -154,11 +156,13 @@ class _PageStripState extends State<PageStrip> {
       if (widget.generate) tr('出图'),
       tr('脱离系列'),
       tr('建立系列'),
+      if (vm.seriesCount > 1) tr('移到别的系列…'),
       tr('删除这一页'),
       tr('删除整个系列'),
     ]);
     if (!context.mounted || picked == null) return;
     if (picked == tr('出图')) return _generate(context, [i]);
+    if (picked == tr('移到别的系列…')) return _moveTo(context, [i]);
     final page = vm.pages[i];
     if (picked == tr('脱离系列')) return _do(context, vm.detachPage(i));
     if (picked == tr('建立系列')) return _do(context, vm.addPage(newSeries: true));
@@ -225,27 +229,76 @@ class _PageStripState extends State<PageStrip> {
     if (context.mounted) _do(context, vm.removeSeries(series));
   }
 
-  /// 全部系列的清单:打字找,点一下换过去。
-  Future<void> _findSeries(BuildContext context, List<List<int>> groups) async {
+  /// 同系列的页挨在一起,顺着数就能分出组来。
+  List<List<int>> get _groups {
     final pages = vm.pages;
-    final first = await showDialog<int>(
+    final groups = <List<int>>[];
+    for (final (i, p) in pages.indexed) {
+      if (i > 0 && pages[i - 1].series == p.series) {
+        groups.last.add(i);
+      } else {
+        groups.add([i]);
+      }
+    }
+    return groups;
+  }
+
+  /// 全部系列的清单,能打字找;返回挑中的那一组页。[title] 是窗口上写的字,
+  /// [others] 为真时不列眼前这个系列(给页挑个去处)。
+  Future<List<int>?> _pickSeries(
+    BuildContext context,
+    List<List<int>> groups, {
+    required String title,
+    bool others = false,
+  }) async {
+    final pages = vm.pages;
+    final picked = await showDialog<int>(
       context: context,
       builder: (_) => _SeriesFinder(
+        title: title,
         items: [
           for (final (g, group) in groups.indexed)
-            (
-              first: group.first,
-              name: vm.seriesName(pages[group.first].series),
-              count: group.length,
-              pinned: vm.seriesPinned(pages[group.first].series),
-              current: pages[group.first].series == vm.series,
-              used: vm.seriesUsedAt(pages[group.first].series),
-              tint: _seriesTints[g % _seriesTints.length],
-            ),
+            if (!others || pages[group.first].series != vm.series)
+              (
+                first: group.first,
+                name: vm.seriesName(pages[group.first].series),
+                count: group.length,
+                pinned: vm.seriesPinned(pages[group.first].series),
+                current: pages[group.first].series == vm.series,
+                used: vm.seriesUsedAt(pages[group.first].series),
+                tint: _seriesTints[g % _seriesTints.length],
+              ),
         ],
       ),
     );
-    if (first != null && context.mounted) _do(context, vm.openPage(first));
+    return picked == null
+        ? null
+        : groups.firstWhere((group) => group.first == picked);
+  }
+
+  /// 点系列的名字:打开全部系列的清单,点一个换过去。
+  Future<void> _findSeries(BuildContext context, List<List<int>> groups) async {
+    final group = await _pickSeries(
+      context,
+      groups,
+      title: tr('全部系列 {0}', [groups.length]),
+    );
+    if (group != null && context.mounted) {
+      _do(context, vm.openPage(group.first));
+    }
+  }
+
+  /// 把几页移到别的系列:挑一个系列,排到它的最后。
+  Future<void> _moveTo(BuildContext context, Iterable<int> which) async {
+    final group = await _pickSeries(
+      context,
+      _groups,
+      title: tr('移到哪个系列'),
+      others: true,
+    );
+    if (group != null && context.mounted) {
+      _do(context, vm.movePages(which, group.last));
+    }
   }
 
   /// 上次看有没有该归档的系列时,眼前是哪个系列。
@@ -271,52 +324,22 @@ class _PageStripState extends State<PageStrip> {
     if (_picked.any((i) => i >= pages.length)) _picked = const {};
     // 系列满了不能再另起;往已有的系列里加页不限。
     final full = vm.seriesFull;
-    // 同系列的页挨在一起,所以顺着数就能分出组来。
-    final groups = <List<int>>[];
-    for (final (i, p) in pages.indexed) {
-      if (i > 0 && pages[i - 1].series == p.series) {
-        groups.last.add(i);
-      } else {
-        groups.add([i]);
-      }
-    }
-    // 别的系列按最近用过的先后排:刚用过的排前面,最可能要换回去的就在手边。
-    final others =
-        [
-          for (final (g, group) in groups.indexed)
-            if (pages[group.first].series != vm.series) (g, group),
-        ]..sort(
-          (a, b) => vm
-              .seriesUsedAt(pages[b.$2.first].series)
-              .compareTo(vm.seriesUsedAt(pages[a.$2.first].series)),
-        );
-    Widget tagOf(int g, List<int> group) => _SeriesTag(
-      // 标签按最近用过的先后排,位置会互换:各认各的,连着点两个不同的标签才不会被当成双击。
-      key: ValueKey('series-${pages[group.first].series}'),
-      name: vm.seriesName(pages[group.first].series),
-      count: group.length,
-      pinned: vm.seriesPinned(pages[group.first].series),
-      waiting: group.any((i) => pages[i].pending != null),
-      tint: _seriesTints[g % _seriesTints.length],
-      onTap: () => _do(context, vm.openPage(group.first)),
-      onMenu: (at) => _seriesMenu(context, at, pages[group.first].series),
-      onRename: () => _renameSeries(context, pages[group.first].series),
-      // 拖过来的页排到这个系列的最后。
-      onDrop: (from) => _do(
-        context,
-        vm.movePages(_picked.contains(from) ? _picked : [from], group.last),
-      ),
-    );
+    final groups = _groups;
     Widget frameOf(int g, List<int> group) => _SeriesFrame(
       tint: _seriesTints[g % _seriesTints.length],
       current: true,
       children: [
-        _SeriesLabel(
+        _SeriesSwitch(
           name: vm.seriesName(pages[group.first].series),
           pinned: vm.seriesPinned(pages[group.first].series),
           tint: _seriesTints[g % _seriesTints.length],
-          onMenu: (at) => _seriesMenu(context, at, pages[group.first].series),
+          index: g,
+          total: groups.length,
+          onStep: (by) =>
+              _do(context, vm.openPage(groups[(g + by) % groups.length].first)),
+          onOpen: () => _findSeries(context, groups),
           onRename: () => _renameSeries(context, pages[group.first].series),
+          onMenu: (at) => _seriesMenu(context, at, pages[group.first].series),
         ),
         for (final i in group)
           _PageChip(
@@ -397,9 +420,8 @@ class _PageStripState extends State<PageStrip> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 第一行永远是眼前这个系列(各页展开)和「新系列」;第二行是别的系列:
-              // 一个小标签一个,排成一行,放不下就横着滚,不往下折。行首的按钮打开全部系列的
-              // 清单,能打字找。
+              // 只画眼前这个系列:最前面是系列切换器(名字、第几个、左右箭头),后面是它的各页。
+              // 换系列:点箭头或在切换器上滚滚轮一个个翻,点名字打开全部系列的清单(能打字找)。
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
@@ -411,30 +433,6 @@ class _PageStripState extends State<PageStrip> {
                   newSeries,
                 ],
               ),
-              if (others.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Tooltip(
-                      message: tr('全部系列:打字找,点一下换过去'),
-                      child: PennaButton(
-                        label: tr('全部系列 {0}', [groups.length]),
-                        icon: Icons.search,
-                        borderColor: PennaColors.border,
-                        onPressed: () => _findSeries(context, groups),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _TagLine(
-                        children: [
-                          for (final (g, group) in others) tagOf(g, group),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
               if (vm.seriesAlert case final alert?)
                 _SeriesAlert(text: alert, onClose: vm.dismissSeriesAlert),
             ],
@@ -488,50 +486,6 @@ class _SeriesAlert extends StatelessWidget {
   );
 }
 
-/// 别的系列排成的那一行:放不下时横着滚(鼠标滚轮直接滚,不用按 Shift)。
-class _TagLine extends StatefulWidget {
-  const _TagLine({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  State<_TagLine> createState() => _TagLineState();
-}
-
-class _TagLineState extends State<_TagLine> {
-  final _scroll = ScrollController();
-
-  @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Listener(
-    onPointerSignal: (signal) {
-      if (signal is! PointerScrollEvent || !_scroll.hasClients) return;
-      final to = (_scroll.offset + signal.scrollDelta.dy).clamp(
-        0.0,
-        _scroll.position.maxScrollExtent,
-      );
-      _scroll.jumpTo(to);
-    },
-    child: SingleChildScrollView(
-      controller: _scroll,
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final (i, child) in widget.children.indexed) ...[
-            if (i > 0) const SizedBox(width: 6),
-            child,
-          ],
-        ],
-      ),
-    ),
-  );
-}
-
 typedef _SeriesItem = ({
   int first,
   String name,
@@ -545,8 +499,9 @@ typedef _SeriesItem = ({
 /// 全部系列的清单:上面一个搜索框,下面一行一个系列(名字、页数、上次用的时间),
 /// 最近用过的排前面。点一行(或搜到只剩一个时按回车)就换过去,返回那个系列第一页的下标。
 class _SeriesFinder extends StatefulWidget {
-  const _SeriesFinder({required this.items});
+  const _SeriesFinder({required this.title, required this.items});
 
+  final String title;
   final List<_SeriesItem> items;
 
   @override
@@ -568,10 +523,7 @@ class _SeriesFinderState extends State<_SeriesFinder> {
       title: Row(
         children: [
           Expanded(
-            child: Text(
-              tr('全部系列 {0}', [widget.items.length]),
-              style: const TextStyle(fontSize: 16),
-            ),
+            child: Text(widget.title, style: const TextStyle(fontSize: 16)),
           ),
           IconButton(
             tooltip: tr('关闭'),
@@ -677,102 +629,6 @@ class _SeriesFinderState extends State<_SeriesFinder> {
   }
 }
 
-/// 没展开的系列:一个小标签,写着名字和页数。点一下换到这个系列,双击改名,右键更多,
-/// 页拖到它上面就归进这个系列。[waiting] 是里面有页带着待确认的改动。
-class _SeriesTag extends StatelessWidget {
-  const _SeriesTag({
-    super.key,
-    required this.name,
-    required this.count,
-    required this.pinned,
-    required this.waiting,
-    required this.tint,
-    required this.onTap,
-    required this.onMenu,
-    required this.onRename,
-    required this.onDrop,
-  });
-
-  final String name;
-  final int count;
-  final bool pinned;
-  final bool waiting;
-  final _Tint tint;
-  final VoidCallback onTap;
-  final ValueChanged<Offset> onMenu;
-  final VoidCallback onRename;
-  final ValueChanged<int> onDrop;
-
-  @override
-  Widget build(BuildContext context) => DragTarget<int>(
-    onWillAcceptWithDetails: (_) => true,
-    onAcceptWithDetails: (d) => onDrop(d.data),
-    builder: (context, incoming, _) => Tooltip(
-      message: [
-        tr('{0} · {1} 页', [name, count]),
-        if (pinned) tr('已固定'),
-        if (waiting) tr('有待确认的改动'),
-        _gestureTip,
-      ].join(' · '),
-      waitDuration: _tipWait,
-      child: _QuickTap(
-        onTap: onTap,
-        onDoubleTap: onRename,
-        onMenu: onMenu,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: AnimatedContainer(
-            duration: Motion.base,
-            height: 30,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: tint.bg,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: incoming.isNotEmpty ? tint.text : tint.border,
-                width: incoming.isNotEmpty ? 2 : 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (pinned) ...[
-                  Icon(Icons.push_pin, size: 11, color: tint.text),
-                  const SizedBox(width: 3),
-                ],
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 120),
-                  child: Text(
-                    name,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: tint.text,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: tint.text.withValues(alpha: 0.7),
-                  ),
-                ),
-                if (waiting) ...[
-                  const SizedBox(width: 4),
-                  CircleAvatar(radius: 3, backgroundColor: PennaColors.amber),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
 /// 把同一个系列的页框在一起的彩色框。
 class _SeriesFrame extends StatelessWidget {
   const _SeriesFrame({
@@ -806,14 +662,20 @@ class _SeriesFrame extends StatelessWidget {
   }
 }
 
-/// 框里最前面的系列名;双击改名,右键改名或删掉整个系列。
-class _SeriesLabel extends StatelessWidget {
-  const _SeriesLabel({
+/// 框里最前面的系列切换器:左右箭头一个个翻(在它上面滚滚轮也行),中间是系列的名字和
+/// 「第几个/共几个」,点一下打开全部系列的清单;双击改名,右键改名、固定、归档、删除。
+/// 只有一个系列时没有箭头和数字。
+class _SeriesSwitch extends StatelessWidget {
+  const _SeriesSwitch({
     required this.name,
+    required this.pinned,
     required this.tint,
+    required this.index,
+    required this.total,
+    required this.onStep,
+    required this.onOpen,
     required this.onMenu,
     required this.onRename,
-    this.pinned = false,
   });
 
   final String name;
@@ -821,42 +683,96 @@ class _SeriesLabel extends StatelessWidget {
   /// 固定的系列(不自动归档),名字前面画个图钉。
   final bool pinned;
   final _Tint tint;
+
+  /// 这是第几个系列(从 0 数)、一共几个。
+  final int index;
+  final int total;
+
+  /// 往前(-1)或往后(+1)翻一个系列,到头了绕回去。
+  final ValueChanged<int> onStep;
+  final VoidCallback onOpen;
   final ValueChanged<Offset> onMenu;
   final VoidCallback onRename;
 
+  Widget _arrow(IconData icon, String tip, int by) => Tooltip(
+    message: tip,
+    waitDuration: _tipWait,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(4),
+      onTap: () => onStep(by),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 3),
+        child: Icon(icon, size: 16, color: tint.text),
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: _gestureTip,
-      waitDuration: _tipWait,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onDoubleTap: onRename,
-        onSecondaryTapDown: (d) => onMenu(d.globalPosition),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 5),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (pinned) ...[
-                Icon(Icons.push_pin, size: 11, color: tint.text),
-                const SizedBox(width: 3),
-              ],
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 160),
-                child: Text(
-                  name,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: tint.text,
+    final many = total > 1;
+    return Listener(
+      onPointerSignal: (signal) {
+        if (!many || signal is! PointerScrollEvent) return;
+        if (signal.scrollDelta.dy != 0) {
+          onStep(signal.scrollDelta.dy > 0 ? 1 : -1);
+        }
+      },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (many) _arrow(Icons.chevron_left, tr('上一个系列'), total - 1),
+          Tooltip(
+            message: many ? '${tr('点一下看全部系列')} · $_gestureTip' : _gestureTip,
+            waitDuration: _tipWait,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: many ? onOpen : null,
+              onDoubleTap: onRename,
+              onSecondaryTapDown: (d) => onMenu(d.globalPosition),
+              child: MouseRegion(
+                cursor: many
+                    ? SystemMouseCursors.click
+                    : SystemMouseCursors.basic,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (pinned) ...[
+                        Icon(Icons.push_pin, size: 11, color: tint.text),
+                        const SizedBox(width: 3),
+                      ],
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 180),
+                        child: Text(
+                          name,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: tint.text,
+                          ),
+                        ),
+                      ),
+                      if (many) ...[
+                        Icon(Icons.arrow_drop_down, size: 16, color: tint.text),
+                        Text(
+                          '${index + 1}/$total',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: tint.text.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+          if (many) _arrow(Icons.chevron_right, tr('下一个系列'), 1),
+          const SizedBox(width: 2),
+        ],
       ),
     );
   }

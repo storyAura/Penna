@@ -610,21 +610,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(vm.pages.map((p) => p.series), [0, 0, 1]);
     expect(_inStudio(find.text('系列 2')), findsOneWidget);
-    // 只有眼前的系列展开着各页(页码从 1 数),别的系列收成一个小标签。
+    // 只画眼前这个系列的各页(页码从 1 数),前面写着它是第几个。
     expect(_tab(1), findsOneWidget);
-    expect(_inStudio(find.text('系列 1')), findsOneWidget);
+    expect(_inStudio(find.text('系列 1')), findsNothing);
+    expect(_inStudio(find.text('2/2')), findsOneWidget);
 
-    // 点标签换到那个系列的第一页。
-    await tester.tap(_inStudio(find.text('系列 1')));
+    // 点箭头翻到上一个系列,停在它的第一页。
+    await tester.tap(_inStudio(find.byTooltip('上一个系列')));
     await tester.pumpAndSettle();
     expect(vm.pageIndex, 0);
     expect(find.text('a fox'), findsWidgets);
     expect(_tab(2), findsOneWidget);
+    expect(_inStudio(find.text('1/2')), findsOneWidget);
 
-    // 右键页签:空白页直接删,不用确认。
-    await tester.tap(_inStudio(find.text('系列 2')));
+    // 点系列的名字:打开全部系列的清单,打字找到再点,换过去。
+    await tester.tap(_inStudio(find.text('系列 1')));
+    // 名字上还认双击(改名),单击要等一小会儿确认不是双击。
+    await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
+    expect(find.text('全部系列 2'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, '2');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('系列 2'));
+    await tester.pumpAndSettle();
+    expect(vm.pageIndex, 2);
+
+    // 右键页签:把这一页移到别的系列,再移回来单独成页不在这测;这里删掉空白页,不用确认。
     await tester.tap(_tab(1), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(find.text('移到别的系列…'), findsOneWidget);
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除这一页'));
     await tester.pumpAndSettle();
