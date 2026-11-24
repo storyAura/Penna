@@ -12,7 +12,7 @@ const zhHant = <String, String>{
   '加载更多（{0}/{1}）': '載入更多（{0}/{1}）',
   '加载中…': '載入中…',
   '没有匹配的 LoRA': '沒有符合的 LoRA',
-  '没连上 Lora Manager 插件，或它没在运行。装好后这里会列出库里的 LoRA。': '沒連上 Lora Manager 插件，或它沒在執行。裝好後這裡會列出庫裡的 LoRA。',
+  '没连上 Lora Manager 插件': '沒連上 Lora Manager 插件',
   '读不到 Lora Manager:{0}': '讀不到 Lora Manager:{0}',
   'Lora Manager 库': 'Lora Manager 庫',
   '工作台': '工作臺',

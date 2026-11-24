@@ -680,6 +680,40 @@ void main() {
       expect(vm.comfy.latestFor('a cat'), reply.images.single);
     });
 
+    test('小修改只写了改的那段:自动出图出并进去之后的整条,不照标签里抄的半截', () async {
+      final service = tempConfig();
+      service.update(
+        service.config
+            .putLlm(
+              const LlmProfile(
+                id: 'a',
+                name: 'A',
+                baseUrl: 'http://a',
+                model: 'm',
+              ),
+            )
+            .copyWith(comfy: _at(server.port)),
+      );
+      final vm = StudioViewModel(
+        config: service,
+        blocks: const [(text: '【主体】a cat\n【背景】a park', pinned: false)],
+        streamChat: (_) => Stream.value(
+          '<draft>\n【背景】a beach\n</draft>'
+          '<generate-image>a beach</generate-image>',
+        ),
+      );
+      expect(vm.send('背景换成海边'), isNull);
+      for (var i = 0; i < 100 && vm.messages.last.images.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      // 改动还在等确认,出的已经是改之后的整条。
+      expect(vm.pending, isNotNull);
+      expect(
+        ((queued['prompt'] as Map)['6'] as Map)['inputs']['text'],
+        'a cat\na beach',
+      );
+    });
+
     test('一条回复写了好几页:默认不自动出图;开了系列连续出图就按页的先后都出', () async {
       final service = tempConfig();
       service.update(

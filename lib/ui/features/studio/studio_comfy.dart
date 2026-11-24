@@ -15,15 +15,17 @@ extension StudioComfy on StudioViewModel {
         '<$generateImageTag></$generateImageTag>,程序把提示词交给 ComfyUI,'
         '图会贴在这条回复下面(要几十秒,不用等,也不用说「请稍候」)。'
         '${layoutOnly ? '标签里不写字:程序用画板上眼前这张布局交出去的 JSON 出图'
-                  '(这条回复写的 <layout> 已经放上去了)。' : '标签里不写字就用眼前这页的最终提示词;这条回复同时写了新的 <draft> 时,'
-                  '把要出图的整条提示词(不带【】标注和〔译〕行)写进标签里。'}'
+                  '(这条回复写的 <layout> 已经放上去了)。' : '标签里不写字:程序用这页成稿的整条提示词出图'
+                  '(这条回复写了 <draft> 时,用并进去之后的整条)。'}'
         '一条回复最多写一个。'
         '不要说你不能出图,也不要描述画出来的样子:你看不到图。',
     _comfyFlowNote,
   ].where((s) => s.isNotEmpty).join('\n');
 
-  /// 出图用的提示词:区域控制那边是画板交出去的 MOSS JSON,工作台是最终提示词。
-  String get comfyPrompt => layoutOnly ? (layout?.json ?? '') : finalPrompt;
+  /// 出图用的提示词:区域控制那边是画板交出去的 MOSS JSON,工作台是眼前这页
+  /// 待确认改动都采纳之后的整条。
+  String get comfyPrompt =>
+      layoutOnly ? (layout?.json ?? '') : proposedPromptOf(_page);
 
   /// 出图的宽高:区域控制那边是画板尺寸,工作台照工作流里写的(null)。
   /// 设置里定了只出横图或只出竖图时,工作流里的大小方向不对就对调宽高。
@@ -157,12 +159,9 @@ extension StudioComfy on StudioViewModel {
         return _noteOn(update, tr('写了 {0} 页,没有自动出图', [written.length]));
       }
       // _pages 的下标就是页的先后。
-      // ponytail: 有待确认改动的页出的是改之前的。
       for (final i in written.toList()..sort()) {
         if (i >= _pages.length) continue;
-        final text = i == _page
-            ? finalPrompt
-            : _joined(labels: false, blocks: _pages[i].blocks);
+        final text = proposedPromptOf(i);
         if (text.trim().isNotEmpty) {
           generateFor(reply, at, update, prompt: text, refs: refs);
         }
@@ -170,13 +169,23 @@ extension StudioComfy on StudioViewModel {
       return;
     }
     if (!config.config.comfy.autoGenerate) return;
-    generateFor(reply, at, update, refs: refs);
+    // 这条回复写了成稿:出那页并进去之后的整条,标签里写的不算
+    // (模型常照着 <draft> 只抄改了的几段)。
+    final page = written.singleOrNull;
+    generateFor(
+      reply,
+      at,
+      update,
+      prompt: page != null && page < _pages.length
+          ? proposedPromptOf(page)
+          : null,
+      refs: refs,
+    );
   }
 
   /// 出图,不等它(要几十秒),出完贴回 [at] 那条回复,出错记在它上面。
   /// [prompt] 不给就用回复里出图标签写的,标签里没写就用眼前这页的最终提示词
   /// (这条回复的成稿已经放上去了)。[refs] 是对话里附的图,先填进工作流的参考图格子。
-  // ponytail: 成稿成了待确认改动时用的还是改之前的;要求模型这时把提示词写进标签。
   void generateFor(
     String reply,
     DateTime at,

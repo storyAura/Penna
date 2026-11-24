@@ -41,6 +41,27 @@ extension StudioDraft on StudioViewModel {
   /// 行首的分段标注(【主体】这类)只给人看,不带出去。
   String get finalPrompt => _joined(labels: false);
 
+  /// 第 [page] 页的待确认改动都采纳之后交付的提示词(没有待确认改动就是它的最终提示词)。
+  /// Agent 出图用它:只改了几段的成稿还在等确认时,出的也是并进去之后的整条
+  /// (2026-11-24 用户反馈:提小修改时自动出图有时只出了改的那几段)。
+  String proposedPromptOf(int page) {
+    final here = page == _page;
+    final blocks = here ? _blocks : _pages[page].blocks;
+    final added = {
+      for (final d in here
+          ? [?_pending, ..._queued]
+          : [?_pages[page].pending, ..._pages[page].queued])
+        d.segmentIndex: d.added,
+    };
+    return _joined(
+      labels: false,
+      blocks: [
+        for (final (i, b) in blocks.indexed)
+          if (added[i] case final text?) (text: text, pinned: false) else b,
+      ],
+    );
+  }
+
   /// 把一页的块拼起来;[blocks] 不给是眼前这页。
   String _joined({required bool labels, List<Block>? blocks}) {
     final all = blocks ?? _blocks;

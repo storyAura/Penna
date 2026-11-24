@@ -147,7 +147,7 @@ class _LoraGalleryState extends State<LoraGallery> {
         const SizedBox(height: 6),
         _filters(),
         if (_missing)
-          _hint(tr('没连上 Lora Manager 插件，或它没在运行。装好后这里会列出库里的 LoRA。'))
+          _hint(tr('没连上 Lora Manager 插件'))
         else if (_error != null)
           _hint(_error!)
         else if (!_loading && _entries.isEmpty)

@@ -6,6 +6,7 @@ import '../../../data/models/app_config.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
+import 'lora_strength.dart';
 
 /// 侧栏里的「LoRA 语法」框。
 ///
@@ -333,78 +334,60 @@ class _LoraSyntaxEditorState extends State<LoraSyntaxEditor> {
     required double strength,
     required bool on,
   }) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 1),
-    child: Row(
+    padding: const EdgeInsets.only(bottom: 4),
+    child: Column(
       children: [
-        _toggle(on: on, onTap: () => widget.onToggle(name, !on)),
-        const SizedBox(width: 5),
-        Expanded(
-          child: MouseRegion(
-            onEnter: (_) => _enter(name),
-            onExit: (_) => _leave(name),
-            child: Text(
-              loraDisplayName(name),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11.5,
-                color: on ? PennaColors.text : PennaColors.slate400,
+        Row(
+          children: [
+            _toggle(on: on, onTap: () => widget.onToggle(name, !on)),
+            const SizedBox(width: 5),
+            Expanded(
+              child: MouseRegion(
+                onEnter: (_) => _enter(name),
+                onExit: (_) => _leave(name),
+                child: Text(
+                  loraDisplayName(name),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: on ? PennaColors.text : PennaColors.slate400,
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-        _step(
-          icon: Icons.remove,
-          onTap: () => _strength(name, strength - 0.05, on),
-        ),
-        SizedBox(
-          width: 34,
-          child: Text(
-            strength.toStringAsFixed(2),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 11,
-              color: on ? PennaColors.slate700 : PennaColors.slate400,
+            _iconButton(
+              icon: Icons.close,
+              tip: tr(on ? '删除' : '移除记录'),
+              onTap: () {
+                if (on) {
+                  _write(loraSyntaxRemove(_text.text, name));
+                } else {
+                  widget.onForget(name);
+                }
+              },
             ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 20),
+          child: LoraStrength(
+            value: strength,
+            muted: !on,
+            onChanged: (v) => _strength(name, v, on),
           ),
-        ),
-        _step(
-          icon: Icons.add,
-          onTap: () => _strength(name, strength + 0.05, on),
-        ),
-        _iconButton(
-          icon: Icons.close,
-          tip: tr(on ? '删除' : '移除记录'),
-          onTap: () {
-            if (on) {
-              _write(loraSyntaxRemove(_text.text, name));
-            } else {
-              widget.onForget(name);
-            }
-          },
         ),
       ],
     ),
   );
 
-  void _strength(String name, double value, bool on) {
-    final v = value.clamp(0, 2).toDouble();
+  void _strength(String name, double v, bool on) {
     if (on) {
       _write(loraSyntaxSet(_text.text, name, v));
     } else {
       widget.onOffStrength(name, v);
     }
   }
-
-  Widget _step({required IconData icon, required VoidCallback onTap}) =>
-      InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(4),
-        child: Padding(
-          padding: const EdgeInsets.all(2),
-          child: Icon(icon, size: 13, color: PennaColors.slate500),
-        ),
-      );
 }
 
 /// 列表里显示的名字:去掉目录和后缀。

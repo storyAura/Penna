@@ -16,15 +16,13 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'comfy_runner.dart';
 import 'lora_gallery.dart';
+import 'lora_strength.dart';
 import 'lora_syntax_editor.dart';
 
 import 'image_viewer.dart';
 
 part 'comfy_panel_lists.dart';
 part 'comfy_panel_params.dart';
-
-/// 权重按这么多一格加减。
-const _strengthStep = 0.05;
 
 /// 状态圆点的颜色:连上绿、连不上红、还没测灰。
 Color comfyDot(ComfyStatus? status) => switch (status) {
@@ -549,106 +547,79 @@ class _LoraRow extends StatelessWidget {
   final ValueChanged<double> onStrength;
   final VoidCallback onRemove;
 
-  double _round(double v) => (v * 100).round() / 100;
-
   @override
   Widget build(BuildContext context) {
     final muted = !slot.on;
-    final step = IconButton.styleFrom(
-      minimumSize: const Size(22, 22),
-      padding: EdgeInsets.zero,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(
         children: [
-          ReorderableDragStartListener(
-            index: index,
-            child: MouseRegion(
-              cursor: SystemMouseCursors.grab,
-              child: Icon(
-                Icons.drag_indicator,
-                size: 14,
+          Row(
+            children: [
+              ReorderableDragStartListener(
+                index: index,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.grab,
+                  child: Icon(
+                    Icons.drag_indicator,
+                    size: 14,
+                    color: PennaColors.slate400,
+                  ),
+                ),
+              ),
+              if (slot.canToggle)
+                SizedBox.square(
+                  dimension: 22,
+                  child: Checkbox(
+                    value: slot.on,
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    onChanged: (v) => onOn(v ?? false),
+                  ),
+                ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Tooltip(
+                  message: [
+                    slot.name,
+                    slot.type,
+                    if (missing) tr('这台 ComfyUI 里没有这个文件'),
+                  ].join('\n'),
+                  child: Text(
+                    _short(slot.name),
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: missing
+                          ? PennaColors.diffDelText
+                          : muted
+                          ? PennaColors.slate400
+                          : PennaColors.text,
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                style: IconButton.styleFrom(
+                  minimumSize: const Size(22, 22),
+                  padding: EdgeInsets.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                iconSize: 14,
+                tooltip: tr('去掉'),
                 color: PennaColors.slate400,
+                icon: const Icon(Icons.close),
+                onPressed: onRemove,
               ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 14),
+            child: LoraStrength(
+              value: slot.strength,
+              muted: muted,
+              onChanged: onStrength,
             ),
-          ),
-          if (slot.canToggle)
-            SizedBox.square(
-              dimension: 22,
-              child: Checkbox(
-                value: slot.on,
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                onChanged: (v) => onOn(v ?? false),
-              ),
-            ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Tooltip(
-              message: [
-                slot.name,
-                slot.type,
-                if (missing) tr('这台 ComfyUI 里没有这个文件'),
-              ].join('\n'),
-              child: Text(
-                _short(slot.name),
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: missing
-                      ? PennaColors.diffDelText
-                      : muted
-                      ? PennaColors.slate400
-                      : PennaColors.text,
-                ),
-              ),
-            ),
-          ),
-          IconButton(
-            style: step,
-            iconSize: 14,
-            tooltip: '−$_strengthStep',
-            icon: const Icon(Icons.remove),
-            onPressed: () => onStrength(_round(slot.strength - _strengthStep)),
-          ),
-          InkWell(
-            onTap: () async {
-              final v = await _askText(
-                context,
-                tr('权重'),
-                initial: slot.strength.toStringAsFixed(2),
-              );
-              final n = double.tryParse(v?.trim() ?? '');
-              if (n != null) onStrength(_round(n));
-            },
-            child: SizedBox(
-              width: 36,
-              child: Text(
-                slot.strength.toStringAsFixed(2),
-                textAlign: TextAlign.center,
-                style: monoStyle.copyWith(
-                  fontSize: 11.5,
-                  color: muted ? PennaColors.slate400 : PennaColors.text,
-                ),
-              ),
-            ),
-          ),
-          IconButton(
-            style: step,
-            iconSize: 14,
-            tooltip: '+$_strengthStep',
-            icon: const Icon(Icons.add),
-            onPressed: () => onStrength(_round(slot.strength + _strengthStep)),
-          ),
-          IconButton(
-            style: step,
-            iconSize: 14,
-            tooltip: tr('去掉'),
-            color: PennaColors.slate400,
-            icon: const Icon(Icons.close),
-            onPressed: onRemove,
           ),
         ],
       ),
