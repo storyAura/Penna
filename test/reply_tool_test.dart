@@ -209,8 +209,9 @@ void main() {
         },
       });
       final safety = body['safetySettings'] as List;
-      expect(safety, hasLength(4));
-      expect((safety.first as Map)['threshold'], 'BLOCK_NONE');
+      expect(safety, hasLength(5));
+      // 整类关掉要用 OFF;BLOCK_NONE 仍会被 PROHIBITED_CONTENT 打回来。
+      expect((safety.first as Map)['threshold'], 'OFF');
     });
 
     test('关着时不带工具和放宽的安全设定', () {

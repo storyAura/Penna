@@ -10,12 +10,17 @@ import '../../../l10n/l10n.dart';
 
 const _normalFinish = {'STOP', 'MAX_TOKENS', 'FINISH_REASON_UNSPECIFIED'};
 
-/// 放宽安全筛选时给的四类(1.5 起的模型都认这些;更新的一类没有把握就不给)。
+/// 放宽安全筛选时关掉的五类。
+///
+/// 阈值要用 `OFF`,不是 `BLOCK_NONE`:后者只是不按阈值拦,Google 仍会用
+/// `PROHIBITED_CONTENT` 把整段请求打回来(用户 2026-11-24 实测);`OFF` 才是整类关掉,
+/// 和 SillyTavern 送出去的一样。
 const _harmCategories = [
   'HARM_CATEGORY_HARASSMENT',
   'HARM_CATEGORY_HATE_SPEECH',
   'HARM_CATEGORY_SEXUALLY_EXPLICIT',
   'HARM_CATEGORY_DANGEROUS_CONTENT',
+  'HARM_CATEGORY_CIVIC_INTEGRITY',
 ];
 const _defaultBase = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -111,7 +116,7 @@ Map<String, Object?> geminiBody(LlmRequest req) {
     // 这个开关打开时一起放宽:内容要不要写由用户和模型决定,不是接口替用户决定。
     if (reply)
       'safetySettings': [
-        for (final c in _harmCategories) {'category': c, 'threshold': 'BLOCK_NONE'},
+        for (final c in _harmCategories) {'category': c, 'threshold': 'OFF'},
       ],
     // 用量档位:Developer API 放在请求体最外层;Vertex 走请求头(见 [geminiHeaders])。
     if (req.serviceTier.isNotEmpty &&
