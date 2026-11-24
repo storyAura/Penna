@@ -169,6 +169,34 @@ class _PresetSectionState extends State<PresetSection> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Text(tr('回复写在工具调用里'), style: titleStyle),
+                        Text(
+                          tr(
+                            '模型把这一轮要说的话写在 reply 工具的 text 参数里,正文留空 · '
+                            '只对 OpenAI 相容接口有效',
+                          ),
+                          style: hintStyle,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Transform.scale(
+                    scale: 0.8,
+                    child: Switch(
+                      value: preset.replyTool,
+                      onChanged: (on) =>
+                          _put(preset.copyWith(replyTool: on)),
+                    ),
+                  ),
+                ],
+              ),
+              gap,
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(tr('对话标记'), style: titleStyle),
                         Text(
                           tr(

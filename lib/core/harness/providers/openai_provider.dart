@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'llm_http.dart';
+import 'reply_tool.dart';
 import '../attachment.dart';
+import '../llm_log.dart';
 import '../mcp/mcp_tools.dart';
 import '../web_search.dart';
 import '../../../l10n/l10n.dart';
@@ -121,12 +123,25 @@ Stream<String> _chat(HttpClient client, LlmRequest req) async* {
       yield delta;
     }
   } on LlmException catch (e) {
-    // 有的中转站不认这个字段、整条请求报错:不要用量也得能用。
     final rejected =
         e.status == HttpStatus.badRequest ||
         e.status == HttpStatus.unprocessableEntity;
-    if (!rejected || !e.message.contains('stream_options')) rethrow;
-    yield* _send(client, req, usage: false);
+    // 有的中转站不认这个字段、整条请求报错:不要用量也得能用。
+    if (rejected && e.message.contains('stream_options')) {
+      yield* _send(client, req, usage: false);
+      return;
+    }
+    // 接口不收 tool_choice 或工具表:退回普通请求,回复照旧能出来。
+    if (rejected && req.replyTool) {
+      llmLog.add(
+        LlmEventKind.retry,
+        req.model,
+        tr('接口不支持把回复写在工具调用里,改用普通回复'),
+      );
+      yield* _send(client, req.withReplyTool(false), usage: true);
+      return;
+    }
+    rethrow;
   }
 }
 
@@ -149,7 +164,17 @@ Stream<String> _send(
       if (usage) 'stream_options': {'include_usage': true},
       'reasoning_effort': ?openAiEffort(req),
       if (req.webSearch) ...?chatSearchBody(req.baseUrl),
-      if (req.tools.isNotEmpty) 'tools': openAiTools(req.tools),
+      if (req.tools.isNotEmpty || req.replyTool)
+        'tools': [
+          ...openAiTools(req.tools),
+          if (req.replyTool) openAiReplyTool(),
+        ],
+      // 钉死在 reply 上:模型只能用它回话,正文留空。
+      if (req.replyTool)
+        'tool_choice': {
+          'type': 'function',
+          'function': {'name': replyToolName},
+        },
     },
     stall: llmStallFor(req),
   );
@@ -159,6 +184,8 @@ Stream<String> _send(
   String? finish;
   final plain = StringBuffer();
   final calls = OpenAiToolCalls();
+  // 回复写在工具调用里时,参数一段段解成文字,当普通回复吐出去。
+  final reply = req.replyTool ? ReplyTextReader() : null;
   await for (final line in lines) {
     // 排队时发的 `: keep-alive`,不是内容。
     if (line.startsWith(':')) continue;
@@ -170,17 +197,36 @@ Stream<String> _send(
       done = true;
       break;
     }
-    reportUsage(req, sseJson(line));
-    finish = _finishReason(sseJson(line)) ?? finish;
-    calls.add(sseJson(line));
+    final json = sseJson(line);
+    reportUsage(req, json);
+    finish = _finishReason(json) ?? finish;
+    calls.add(json);
+    if (reply != null) {
+      for (final args in _toolArgDeltas(json)) {
+        final text = reply.add(args);
+        if (text.isNotEmpty) {
+          yielded = true;
+          yield text;
+        }
+      }
+    }
     final delta = parseSseLine(line);
     if (delta != null && delta.isNotEmpty) {
       yielded = true;
       yield delta;
     }
   }
+  if (reply != null) {
+    final tail = reply.flush();
+    if (tail.isNotEmpty) {
+      yielded = true;
+      yield tail;
+    }
+  }
   // 模型发的函数调用:换成 <mcp-call> 标签接在回复后面,后面的工具循环只认标签。
-  if (calls.text case final tags when tags.isNotEmpty) {
+  // reply 是这个开关自己的工具,不当成外接工具。
+  final tags = calls.text(skip: req.replyTool ? replyToolName : null);
+  if (tags.isNotEmpty) {
     yielded = true;
     yield tags;
   }
@@ -194,6 +240,31 @@ Stream<String> _send(
   final whole = _wholeReply(plain.toString(), req);
   if (whole == null) throw LlmException(tr('模型没有返回可识别的内容'));
   yield whole;
+}
+
+/// 流式回来的这一行里,工具参数的文字片段(reply 那个工具的)。
+Iterable<String> _toolArgDeltas(Object? json) sync* {
+  final choices = json is Map ? json['choices'] : null;
+  final first = choices is List && choices.isNotEmpty ? choices.first : null;
+  final delta = first is Map ? first['delta'] : null;
+  final list = delta is Map ? delta['tool_calls'] : null;
+  if (list is! List) return;
+  for (final c in list) {
+    final fn = c is Map ? c['function'] : null;
+    if (fn is! Map) continue;
+    // 名字只在第一段有;还没给名字时先当成 reply(钉死了 tool_choice,只会有它)。
+    final name = fn['name'] is String ? fn['name'] as String : '';
+    if (name.isNotEmpty && name != replyToolName) continue;
+    final args = fn['arguments'];
+    if (args is String && args.isNotEmpty) yield args;
+  }
+}
+
+/// 一整段参数(`{"text":"..."}`)解出来的话;解不出来是空串。
+String _replyArgsText(String? args) {
+  if (args == null || args.isEmpty) return '';
+  final reader = ReplyTextReader();
+  return reader.add(args) + reader.flush();
 }
 
 String? _finishReason(Object? json) {
@@ -231,7 +302,13 @@ String? _wholeReply(String body, LlmRequest req) {
         {'delta': message},
       ],
     });
-  final content = '${said is String ? said : ''}${calls.text}';
+  final reply = req.replyTool
+      ? _replyArgsText(calls.argumentsOf(replyToolName))
+      : '';
+  final content = reply.isNotEmpty
+      ? reply
+      : '${said is String ? said : ''}'
+            '${calls.text(skip: req.replyTool ? replyToolName : null)}';
   if (content.isEmpty) return null;
   if (openAiCut(_finishReason(json)) case final cut?) req.onCut?.call(cut);
   return content;
@@ -279,9 +356,19 @@ class OpenAiToolCalls {
     }
   }
 
-  /// 攒好的调用写成 `<mcp-call>` 标签;没有是空串。
-  String get text => [
+  /// 攒好的调用写成 `<mcp-call>` 标签;没有是空串。[skip] 是不写进标签的调用名
+  /// (回复写在工具调用里时,reply 不是外接工具)。
+  String text({String? skip}) => [
     for (final c in _calls.values)
-      if (c.name.isNotEmpty) mcpCallText(c.name, c.args.toString()),
+      if (c.name.isNotEmpty && c.name != skip)
+        mcpCallText(c.name, c.args.toString()),
   ].join();
+
+  /// 某个调用攒好的参数;没有是 null。
+  String? argumentsOf(String name) {
+    for (final c in _calls.values) {
+      if (c.name == name) return c.args.toString();
+    }
+    return null;
+  }
 }

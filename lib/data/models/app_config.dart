@@ -267,6 +267,7 @@ class AgentPreset {
     required this.tools,
     this.temperature = 0.7,
     this.topP = 1,
+    this.replyTool = false,
   });
 
   factory AgentPreset.fromJson(Map<String, dynamic> j) => AgentPreset(
@@ -276,6 +277,7 @@ class AgentPreset {
     tools: {...(j['tools'] as List).cast<String>()},
     temperature: ((j['temperature'] as num?) ?? 0.7).clamp(0, 2).toDouble(),
     topP: ((j['topP'] as num?) ?? 1).clamp(0.1, 1).toDouble(),
+    replyTool: j['replyTool'] as bool? ?? false,
   );
 
   final String id;
@@ -286,6 +288,10 @@ class AgentPreset {
 
   /// 只在累计概率排在前这么多的词里选;1 是不限制(不发给模型)。
   final double topP;
+
+  /// 回复写在工具调用里(OpenAI 兼容接口):模型把这一轮要说的话写在 reply 工具的
+  /// text 参数里,正文留空。有的接口只审查正文;也让模型先把话想完整再交出来。
+  final bool replyTool;
 
   /// 界面上显示的名字;名字被清空时给个占位,免得出现点不到的空白项。
   /// 界面上显示的名字:内置 Preset 的名字按界面语言翻译,自己起的原样。
@@ -298,6 +304,7 @@ class AgentPreset {
     'tools': tools.toList(),
     'temperature': temperature,
     'topP': topP,
+    if (replyTool) 'replyTool': true,
   };
 
   AgentPreset copyWith({
@@ -307,6 +314,7 @@ class AgentPreset {
     Set<String>? tools,
     double? temperature,
     double? topP,
+    bool? replyTool,
   }) => AgentPreset(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -314,6 +322,7 @@ class AgentPreset {
     tools: tools ?? this.tools,
     temperature: temperature ?? this.temperature,
     topP: topP ?? this.topP,
+    replyTool: replyTool ?? this.replyTool,
   );
 }
 

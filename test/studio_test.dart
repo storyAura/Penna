@@ -152,6 +152,35 @@ void main() {
       expect(seen.messages.last, {'role': 'user', 'content': '再来'});
     });
 
+    test('Preset 打开「回复写在工具调用里」时请求带上它,关着时不带', () async {
+      final config = tempConfig();
+      final base = const AppConfig()
+          .putLlm(_llm)
+          .setSecret(llmSecretKey('a'), 'sk-x');
+      config.update(
+        base.addPreset(
+          base.activePreset.copyWith(id: 'custom-reply-tool', replyTool: true),
+        ),
+      );
+      late LlmRequest seen;
+      final vm = sampleStudio(
+        config: config,
+        streamChat: (req) {
+          seen = req;
+          return const Stream.empty();
+        },
+      );
+
+      expect(vm.send('你好'), isNull);
+      await pumpEventQueue();
+      expect(seen.replyTool, isTrue);
+
+      config.update(config.config.copyWith(activePresetId: base.activePreset.id));
+      expect(vm.send('再来'), isNull);
+      await pumpEventQueue();
+      expect(seen.replyTool, isFalse);
+    });
+
     test('每段的对照译文跟着界面语言:日文界面要日文,英文界面不要〔译〕', () async {
       expect(const AppConfig().glossLanguage, 'zh');
       expect(const AppConfig(language: 'zh-Hant').glossLanguage, 'zh-Hant');
