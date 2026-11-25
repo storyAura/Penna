@@ -38,6 +38,41 @@ void main() {
       expect(_inputs(api, '16')['latent_image'], ['104', 0]);
     });
 
+    test('连线穿过 KJNodes 的 GetNode → 同名 SetNode,两个都不写', () {
+      final wf = _canvas();
+      final nodes = wf['nodes'] as List;
+      final ks = nodes.cast<Map>().firstWhere((n) => n['id'] == 16);
+      final model = (ks['inputs'] as List).cast<Map>().firstWhere(
+        (i) => i['name'] == 'model',
+      );
+      nodes.addAll([
+        {
+          'id': 900,
+          'type': 'SetNode',
+          'mode': 0,
+          'inputs': [
+            {'name': 'MODEL', 'type': 'MODEL', 'link': model['link']},
+          ],
+          'widgets_values': ['Model'],
+        },
+        {
+          'id': 901,
+          'type': 'GetNode',
+          'mode': 0,
+          'outputs': [
+            {'name': 'MODEL', 'type': 'MODEL'},
+          ],
+          'widgets_values': ['Model'],
+        },
+      ]);
+      (wf['links'] as List).add([9001, 901, 0, 16, 0, 'MODEL']);
+      model['link'] = 9001;
+      final api = canvasToApi(wf);
+      expect(_inputs(api, '16')['model'], ['108', 0]);
+      expect(api.keys, isNot(contains('900')));
+      expect(api.keys, isNot(contains('901')));
+    });
+
     test('控件按名字取,control_after_generate 不进 API', () {
       final ks = _inputs(canvasToApi(_canvas()), '16');
       expect(ks['steps'], 8);

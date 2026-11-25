@@ -5,7 +5,8 @@ import 'comfyui.dart';
 // 照官方前端 graphToPrompt 的规则:
 // - 只要从存图节点(SaveImage、PreviewImage)往回接得上的节点;没接上的残留节点、
 //   静音(mode 2)、绕过(mode 4)的节点、Reroute、说明卡片都不写进去;
-// - 连线穿过 Reroute 和被绕过的节点(按类型找能递过去的输入),接到静音节点上的输入去掉;
+// - 连线穿过 Reroute、被绕过的节点(按类型找能递过去的输入)和 KJNodes 的 GetNode → 同名
+//   SetNode,接到静音节点上的输入去掉;
 // - 控件按名字取(widgets_values_named),control_after_generate 这类不进 API;
 //   没有按名字存的旧文件,按输入表里控件的先后对上(跳过紧跟在数字后面的 randomize 这类);
 // - rgthree 的 Power Lora Loader 只写出带 lora 的那几项(lora_1、lora_2…)。
@@ -30,6 +31,8 @@ const _virtualTypes = {
   'MarkdownNote',
   'PrimitiveNode',
   'PrimitiveString',
+  'SetNode',
+  'GetNode',
 };
 
 /// 官方前端节点标题栏的高度:节点的 pos 是内容区左上角,框要往上加这么多。
@@ -67,6 +70,11 @@ Map<String, Object?> canvasToApi(Map<String, Object?> json) {
         l['id']: ('${l['origin_id']}', (l['origin_slot'] as num).toInt()),
   };
   final groups = _groupsOf(json, nodes);
+  // KJNodes 的 SetNode / GetNode:按名字隔空接线,GetNode 取同名 SetNode 的输入。
+  final setters = <String, _Json>{
+    for (final n in nodes.values)
+      if (n['type'] == 'SetNode') _firstWidget(n): n,
+  };
 
   List<Object?>? resolve(Object? linkId, [int depth = 0]) {
     final link = links[linkId];
@@ -75,8 +83,14 @@ Map<String, Object?> canvasToApi(Map<String, Object?> json) {
     final node = nodes[id];
     if (node == null) return null;
     final type = '${node['type']}';
-    if (type == 'Reroute') {
+    if (type == 'Reroute' || type == 'SetNode') {
       return resolve(_inputsOf(node).firstOrNull?['link'], depth + 1);
+    }
+    if (type == 'GetNode') {
+      final set = setters[_firstWidget(node)];
+      return set == null
+          ? null
+          : resolve(_inputsOf(set).firstOrNull?['link'], depth + 1);
     }
     if (_virtualTypes.contains(type) || node['mode'] == 2) return null;
     if (node['mode'] == 4) return resolve(_bypassInput(node, slot), depth + 1);
@@ -118,6 +132,11 @@ int _byId(String a, String b) {
 
 bool _runs(_Json n) =>
     !_virtualTypes.contains('${n['type']}') && n['mode'] != 2 && n['mode'] != 4;
+
+String _firstWidget(_Json node) => switch (node['widgets_values']) {
+  [final v, ...] => '$v',
+  _ => '',
+};
 
 List<_Json> _inputsOf(_Json node) => [
   for (final i in node['inputs'] as List? ?? const [])
