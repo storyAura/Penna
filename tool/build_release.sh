@@ -45,6 +45,40 @@ if [ ! -f "$icon" ]; then
 fi
 
 echo "打包 Penna v$version($channel)..."
+
+# onnxruntime:flutter_onnxruntime 插件从 github.com/microsoft/onnxruntime 下 Linux 的压缩包,
+# 那个仓库 2026-11 起 404(v1.0.4-261123-1-dev、261125-6-dev 两次 Linux 打包都卡在这)。
+# 插件看到解压目录里已有头文件就不下载,所以先从 NuGet 的 Microsoft.ML.OnnxRuntime 取头文件和 .so,
+# 按插件要的样子摆好。NuGet 上没有 1.28.3,用 1.28.0:头文件和 Windows 用的 1.28.3 一字不差。
+# ponytail: 目录名跟着插件写死的默认版本(flutter_onnxruntime 1.9.0 是 1.28.3),升插件时这里一起改。
+ort_dir="$root/build/linux/x64/release/plugins/flutter_onnxruntime/onnxruntime/onnxruntime-linux-x64-1.28.3"
+ort_pkg="$dist/cache/microsoft.ml.onnxruntime.1.28.0.nupkg"
+ort_sha256=769d1d3ea8ab6cd69f737c9dd4d4462aa4ad0ccfa106eaf506efc40d7bead5db
+if [ ! -f "$ort_dir/include/onnxruntime_cxx_api.h" ]; then
+  if [ ! -f "$ort_pkg" ]; then
+    mkdir -p "$dist/cache"
+    echo "下载 onnxruntime 1.28.0(NuGet,只下这一次)"
+    if ! curl -fL --retry 3 -o "$ort_pkg.part" \
+      "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/1.28.0/microsoft.ml.onnxruntime.1.28.0.nupkg"; then
+      rm -f "$ort_pkg.part"
+      echo "下载 onnxruntime 失败" >&2
+      exit 1
+    fi
+    if ! echo "$ort_sha256  $ort_pkg.part" | sha256sum -c --quiet; then
+      rm -f "$ort_pkg.part"
+      echo "onnxruntime 的 SHA256 对不上" >&2
+      exit 1
+    fi
+    mv "$ort_pkg.part" "$ort_pkg"
+  fi
+  rm -rf "$ort_dir"
+  mkdir -p "$ort_dir/include" "$ort_dir/lib"
+  unzip -q -j -o "$ort_pkg" 'build/native/include/*' -d "$ort_dir/include"
+  unzip -q -j -o "$ort_pkg" 'runtimes/linux-x64/native/libonnxruntime.so' -d "$ort_dir/lib"
+  # 库的 SONAME 是 libonnxruntime.so.1,下面补进 AppDir 时按这个名字找。
+  cp "$ort_dir/lib/libonnxruntime.so" "$ort_dir/lib/libonnxruntime.so.1"
+fi
+
 flutter build linux --release
 
 # appimagetool:缓存一份在 dist/cache,之后直接用。
