@@ -58,7 +58,8 @@ class _Stat extends StatelessWidget {
 }
 
 /// 左栏:上半成稿工作区,下半提示词汇总。
-class PromptPane extends StatefulWidget {
+/// 点了「出图」不自动换到下半区的「出图」页签(2026-11-26 用户要求),进度看页签上的百分比。
+class PromptPane extends StatelessWidget {
   const PromptPane({
     super.key,
     required this.vm,
@@ -73,16 +74,7 @@ class PromptPane extends StatefulWidget {
   final ValueChanged<String>? onDiscuss;
 
   @override
-  State<PromptPane> createState() => _PromptPaneState();
-}
-
-class _PromptPaneState extends State<PromptPane> {
-  /// 顶栏的「出图」点了之后,下半区换到「出图」页签。
-  final _summary = GlobalKey<_SummarySectionState>();
-
-  @override
   Widget build(BuildContext context) {
-    final vm = widget.vm;
     return ColoredBox(
       color: PennaColors.card,
       child: Column(
@@ -93,18 +85,14 @@ class _PromptPaneState extends State<PromptPane> {
               'studio.draft',
               child: _DraftSection(
                 vm: vm,
-                archive: widget.archive,
-                onDiscuss: widget.onDiscuss,
-                onGenerate: () => _summary.currentState?._showImages(),
+                archive: archive,
+                onDiscuss: onDiscuss,
               ),
             ),
           ),
           Expanded(
             flex: 10,
-            child: TourSpot(
-              'studio.summary',
-              child: _SummarySection(key: _summary, vm: vm),
-            ),
+            child: TourSpot('studio.summary', child: _SummarySection(vm: vm)),
           ),
         ],
       ),
@@ -117,11 +105,7 @@ class _DraftSection extends StatefulWidget {
     required this.vm,
     required this.archive,
     required this.onDiscuss,
-    required this.onGenerate,
   });
-
-  /// 顶栏的「出图」点了(换到下半区的「出图」页签)。
-  final VoidCallback onGenerate;
 
   final StudioViewModel vm;
   final ArchiveStore archive;
@@ -416,10 +400,7 @@ class _DraftSectionState extends State<_DraftSection> {
           foreground: Colors.white,
           onPressed: prompt.isEmpty
               ? null
-              : () {
-                  widget.onGenerate();
-                  unawaited(vm.comfy.generate(prompt));
-                },
+              : () => unawaited(vm.comfy.generate(prompt)),
         ),
       ],
     );

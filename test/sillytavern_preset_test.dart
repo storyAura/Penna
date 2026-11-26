@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:penna/ui/features/settings/settings_piercing.dart';
 import 'package:penna/core/harness/preset_import/sillytavern_preset.dart';
+import 'package:penna/data/models/app_config.dart';
 import 'package:penna/data/services/config_service.dart';
 import 'package:penna/ui/core/theme.dart';
 import 'package:penna/ui/features/settings/settings_agent_sections.dart';
@@ -231,5 +232,37 @@ void widgetTests() {
     expect(find.text('这不是 SillyTavern 预设'), findsOneWidget);
     expect(service.config.piercingPrompt, isEmpty);
     await tester.pump(const Duration(seconds: 5));
+  });
+
+  test('副聊天的穿甲弹各挑各的段:提示词默认第一段,工具调用默认不用预设,文档不带字', () {
+    const two = [(name: 'A', text: '甲'), (name: 'B', text: '乙')];
+    const base = AppConfig(
+      piercingSaved: two,
+      piercingName: 'B',
+      piercingPrompt: '乙',
+      sidePiercing: true,
+    );
+    expect(base.sidePiercingText, '甲');
+    expect(base.copyWith(sidePiercingName: 'B').sidePiercingText, '乙');
+    expect(
+      base.copyWith(sidePiercingMode: piercingModeTool).sidePiercingText,
+      '',
+    );
+    expect(
+      base
+          .copyWith(sidePiercingMode: piercingModeTool, sidePiercingName: 'B')
+          .sidePiercingText,
+      '乙',
+    );
+    expect(
+      base
+          .copyWith(
+            sidePiercingMode: piercingModeDocument,
+            sidePiercingName: 'B',
+          )
+          .sidePiercingText,
+      '',
+    );
+    expect(base.copyWith(sidePiercing: false).sidePiercingText, '');
   });
 }

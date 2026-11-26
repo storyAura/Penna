@@ -9,12 +9,9 @@ const _seriesConfirmAt = 60;
 
 /// 「出图」按钮:把最终提示词交给 ComfyUI。正在出图时也能点,排进队列。
 class _GenerateButton extends StatelessWidget {
-  const _GenerateButton({required this.vm, required this.onStart});
+  const _GenerateButton({required this.vm});
 
   final StudioViewModel vm;
-
-  /// 点了之后顺带做的事(换到「出图」页签)。
-  final VoidCallback onStart;
 
   @override
   Widget build(BuildContext context) => PennaButton(
@@ -24,19 +21,15 @@ class _GenerateButton extends StatelessWidget {
     // 和旁边的「一键复制」分开:实心主题色,深色模式下也看得清。
     background: PennaColors.primary,
     foreground: Colors.white,
-    onPressed: () {
-      onStart();
-      unawaited(vm.comfy.generate(vm.finalPrompt));
-    },
+    onPressed: () => unawaited(vm.comfy.generate(vm.finalPrompt)),
   );
 }
 
 /// 「系列出图」:眼前这个系列从第 1 页起一页一张排进队列;超过 [_seriesConfirmAt] 张先确认。
 class _SeriesGenerateButton extends StatelessWidget {
-  const _SeriesGenerateButton({required this.vm, required this.onStart});
+  const _SeriesGenerateButton({required this.vm});
 
   final StudioViewModel vm;
-  final VoidCallback onStart;
 
   Future<void> _run(BuildContext context) async {
     final prompts = vm.finalPromptsOf(vm.series);
@@ -52,7 +45,6 @@ class _SeriesGenerateButton extends StatelessWidget {
         )) {
       return;
     }
-    onStart();
     // 按页的先后排:队列先进先出,第 1 页最先出。
     for (final p in prompts) {
       unawaited(vm.comfy.generate(p));
@@ -75,15 +67,10 @@ class _SeriesGenerateButton extends StatelessWidget {
 
 /// 「出选中的图」:页签上多选的几页按页的先后排进队列,做完清掉选择。
 class _PickedGenerateButton extends StatelessWidget {
-  const _PickedGenerateButton({
-    required this.vm,
-    required this.pages,
-    required this.onStart,
-  });
+  const _PickedGenerateButton({required this.vm, required this.pages});
 
   final StudioViewModel vm;
   final Set<int> pages;
-  final VoidCallback onStart;
 
   @override
   Widget build(BuildContext context) => PennaButton(
@@ -98,7 +85,6 @@ class _PickedGenerateButton extends StatelessWidget {
       if (count == 0) {
         return showToast(context, tr('这些页还是空的'), warn: true);
       }
-      onStart();
       showToast(context, tr('已排进出图队列 {0} 张', [count]));
     },
   );

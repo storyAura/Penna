@@ -3,7 +3,7 @@ part of 'prompt_pane.dart';
 // 工作区下半区:成稿汇总、最终提示词和历史提示词。
 
 class _SummarySection extends StatefulWidget {
-  const _SummarySection({super.key, required this.vm});
+  const _SummarySection({required this.vm});
 
   final StudioViewModel vm;
 
@@ -119,18 +119,14 @@ class _SummarySectionState extends State<_SummarySection> {
                                           child: _PickedGenerateButton(
                                             vm: vm,
                                             pages: picked,
-                                            onStart: _showImages,
                                           ),
                                         ),
                                 ),
                                 if (vm.seriesLength > 1) ...[
-                                  _SeriesGenerateButton(
-                                    vm: vm,
-                                    onStart: _showImages,
-                                  ),
+                                  _SeriesGenerateButton(vm: vm),
                                   const SizedBox(width: 6),
                                 ],
-                                _GenerateButton(vm: vm, onStart: _showImages),
+                                _GenerateButton(vm: vm),
                               ],
                             ),
                           ),

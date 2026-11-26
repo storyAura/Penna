@@ -18,6 +18,43 @@ List<(String, String)> get _piercingModes => [
   (piercingModeTool, tr('工具调用')),
 ];
 
+/// 副聊天的穿甲弹菜单:值 '' 是关,`m:模式` 换模式,`n:名字` 挑用哪一段。
+/// 提示词、工具调用两种模式下面列出存下的各段;工具调用多一个「不用预设」(空名字)。
+List<PopupMenuEntry<String>> _piercingMenu(AppConfig cfg) {
+  final on = cfg.sidePiercing;
+  final mode = cfg.sidePiercingMode;
+  // 提示词模式没挑、或挑的删了时用的是第一段。
+  final names = [for (final p in cfg.piercingSaved) p.name];
+  final picked = names.contains(cfg.sidePiercingName)
+      ? cfg.sidePiercingName
+      : mode == piercingModePrompt
+      ? names.firstOrNull ?? ''
+      : '';
+  return [
+    for (final (value, label) in _piercingModes)
+      CheckedPopupMenuItem(
+        value: value.isEmpty ? '' : 'm:$value',
+        checked: value.isEmpty ? !on : on && mode == value,
+        child: Text(label),
+      ),
+    if (on && mode != piercingModeDocument && (names.isNotEmpty))
+      const PopupMenuDivider(),
+    if (on && mode == piercingModeTool && names.isNotEmpty)
+      CheckedPopupMenuItem(
+        value: 'n:',
+        checked: picked.isEmpty,
+        child: Text(tr('不用预设')),
+      ),
+    if (on && mode != piercingModeDocument)
+      for (final name in names)
+        CheckedPopupMenuItem(
+          value: 'n:$name',
+          checked: name == picked,
+          child: Text(name, overflow: TextOverflow.ellipsis),
+        ),
+  ];
+}
+
 /// 快捷操作那一排最右边的开关。
 class _SideToggle extends StatelessWidget {
   const _SideToggle({required this.open, required this.onTap});
@@ -221,26 +258,25 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
             ),
           ),
           const Spacer(),
-          // 副聊天自己的穿甲弹:关,或挑一种模式(2026-11-26 用户要求和主聊天分开设)。
+          // 副聊天自己的穿甲弹:关,或挑一种模式,再挑用哪一段(2026-11-26 用户要求
+          // 和主聊天分开设;提示词、工具调用用的段各挑各的)。
           PopupMenuButton<String>(
             popUpAnimationStyle: Motion.menu(context),
             tooltip: tr('副聊天单独的穿甲弹'),
             position: PopupMenuPosition.under,
-            onSelected: (v) => config.update(
-              v.isEmpty
-                  ? cfg.copyWith(sidePiercing: false)
-                  : cfg.copyWith(sidePiercing: true, sidePiercingMode: v),
-            ),
-            itemBuilder: (_) => [
-              for (final (mode, label) in _piercingModes)
-                CheckedPopupMenuItem(
-                  value: mode,
-                  checked: mode.isEmpty
-                      ? !cfg.sidePiercing
-                      : cfg.sidePiercing && cfg.sidePiercingMode == mode,
-                  child: Text(label),
-                ),
-            ],
+            onSelected: (v) => config.update(switch (v) {
+              '' => cfg.copyWith(sidePiercing: false),
+              // 换到工具调用默认不用预设(同设置页);提示词模式没挑时用第一段。
+              _ when v.startsWith('m:') => cfg.copyWith(
+                sidePiercing: true,
+                sidePiercingMode: v.substring(2),
+                sidePiercingName: v.substring(2) == piercingModeTool
+                    ? ''
+                    : null,
+              ),
+              _ => cfg.copyWith(sidePiercingName: v.substring(2)),
+            }),
+            itemBuilder: (_) => _piercingMenu(cfg),
             child: PennaChip(
               label: cfg.sidePiercing
                   ? tr('穿甲弹 · {0}', [

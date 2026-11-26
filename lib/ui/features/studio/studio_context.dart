@@ -687,9 +687,7 @@ extension StudioContext on StudioViewModel {
           },
       ],
       images: _imagesOf(sent),
-      piercing: cfg.sidePiercing && cfg.sidePiercingMode != piercingModeDocument
-          ? cfg.piercingPrompt.trim()
-          : '',
+      piercing: cfg.sidePiercingText,
       document: cfg.sidePiercing,
       // 关着时三样都不带:当成提示词模式、文字又是空的。
       piercingMode: cfg.sidePiercing

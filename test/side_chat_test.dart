@@ -39,6 +39,8 @@ import 'fixtures.dart';
           sideLlmId: () => 'b',
           sidePiercing: sidePiercing,
           piercingPrompt: 'PIERCE',
+          piercingSaved: const [(name: '1', text: 'PIERCE')],
+          piercingName: '1',
         ),
   );
   final vm = StudioViewModel(

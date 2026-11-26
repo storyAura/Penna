@@ -505,6 +505,7 @@ class AppConfig {
     this.sideModel,
     this.sidePiercing = false,
     this.sidePiercingMode = piercingModePrompt,
+    this.sidePiercingName = '',
     this.webSearch = true,
     this.webSearchLlmIds = const [],
     this.mtOrder = defaultMtOrder,
@@ -583,6 +584,7 @@ class AppConfig {
           : m['piercingTool'] == true
           ? piercingModeTool
           : piercingModePrompt,
+      sidePiercingName: m['sidePiercingName'] as String? ?? '',
       webSearch: m['webSearch'] as bool? ?? true,
       // 旧版的 webSearchLlmId 是「指定的排第一、其余后备」,不搬:回到自动。
       webSearchLlmIds: List.unmodifiable(
@@ -711,6 +713,21 @@ class AppConfig {
 
   /// 副聊天的穿甲弹模式,和主聊天的分开设(2026-11-26 用户要求),见 [piercingModes]。
   final String sidePiercingMode;
+
+  /// 副聊天用 [piercingSaved] 里的哪一段,和主聊天各挑各的(提示词、工具调用两种模式
+  /// 用的段本来就分开设;2026-11-26 用户纠正)。空串:工具调用是「不用预设」,
+  /// 提示词模式是用第一段。
+  final String sidePiercingName;
+
+  /// 副聊天要带的穿甲弹文字:关着、文档模式是空串;挑的那段删了时同上面的空串规则。
+  String get sidePiercingText {
+    if (!sidePiercing || sidePiercingMode == piercingModeDocument) return '';
+    final hit = piercingSaved.where((p) => p.name == sidePiercingName);
+    if (hit.isNotEmpty) return hit.first.text.trim();
+    return sidePiercingMode == piercingModePrompt
+        ? piercingSaved.firstOrNull?.text.trim() ?? ''
+        : '';
+  }
 
   /// 指定的接口里先用哪个模型(对话顶栏的下拉里选的);null 或对不上时照接口里填的先后。
   final String? activeModel;
@@ -925,6 +942,7 @@ class AppConfig {
     'sideModel': sideModel,
     'sidePiercing': sidePiercing,
     'sidePiercingMode': sidePiercingMode,
+    'sidePiercingName': sidePiercingName,
     'webSearch': webSearch,
     'webSearchLlmIds': webSearchLlmIds,
     'mtOrder': mtOrder,
@@ -1034,6 +1052,7 @@ class AppConfig {
     String? Function()? sideModel,
     bool? sidePiercing,
     String? sidePiercingMode,
+    String? sidePiercingName,
     bool? webSearch,
     List<String>? webSearchLlmIds,
     Set<String>? mtEnabled,
@@ -1094,6 +1113,7 @@ class AppConfig {
     sideModel: sideModel == null ? this.sideModel : sideModel(),
     sidePiercing: sidePiercing ?? this.sidePiercing,
     sidePiercingMode: sidePiercingMode ?? this.sidePiercingMode,
+    sidePiercingName: sidePiercingName ?? this.sidePiercingName,
     webSearch: webSearch ?? this.webSearch,
     webSearchLlmIds: webSearchLlmIds == null
         ? this.webSearchLlmIds
