@@ -437,6 +437,7 @@ class SideChat extends ChangeNotifier {
     _reply =
         streamWithFailover(
           sameVendor: main.config.config.failover == failoverProvider,
+          retries: main.config.config.llmRetries,
           requests,
           main.streamChat,
           onTrying: (name) => _update((m) => m.copyWith(by: name)),

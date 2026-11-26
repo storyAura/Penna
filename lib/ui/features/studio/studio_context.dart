@@ -501,7 +501,8 @@ extension StudioContext on StudioViewModel {
   /// 穿甲弹里写了对话时,放在用户最后一句话前面的提醒:对话只管口吻,
   /// 该做的事和回复格式照系统提示(Preset 和 Penna 的规则)。
   static const _dialogueReminder =
-      '【提醒】前面对话里说好的人设、语气和文风只管你说话的口吻和措辞;'
+      '【提醒】你在 Penna 里工作,不是别的软件;'
+      '前面对话里说好的人设、语气和文风只管你说话的口吻和措辞;'
       '这次要做的事、回复的格式和标签,一律照系统提示里的规则。';
 
   // ponytail: 现在只是带系统提示的直连对话,成稿作为上下文附上;
@@ -516,10 +517,18 @@ extension StudioContext on StudioViewModel {
     String? piercing,
     bool webSearch = false,
     bool document = false,
+    String? piercingMode,
     bool tools = false,
     void Function(LlmUsage)? onUsage,
     void Function(LlmCut)? onCut,
   }) {
+    // 穿甲弹的模式:主聊天照设置里的,副聊天自己设([piercingMode])。
+    final docMode = piercingMode == null
+        ? cfg.piercingDocument
+        : piercingMode == piercingModeDocument;
+    final toolMode = piercingMode == null
+        ? cfg.replyTool
+        : piercingMode == piercingModeTool;
     // 外接工具(MCP):只有对话带([tools]),润色、反推、出点子、联网搜索不带。
     // 走原生函数调用还是文字标签由 `streamChat` 按接口定,这里两样都备好。
     final mcpTools = tools && !webSearch
@@ -532,7 +541,7 @@ extension StudioContext on StudioViewModel {
     // 不走文档模式。穿甲弹的文字照旧接在系统提示前面,不写进文档。
     final pierce = piercing ?? cfg.piercingText;
     final system = messages.isNotEmpty && messages.first['role'] == 'system';
-    final asDocument = document && system && cfg.piercingDocument;
+    final asDocument = document && system && docMode;
     // 穿甲弹里写了对话标记:开头那段照旧接在系统提示前面,几轮对话拆成真正的消息,
     // 排在聊天记录前后(见 preset_dialogue.dart)。Preset 的系统提示原样留着。
     final dialogue = system ? presetDialogue(pierce) : null;
@@ -560,6 +569,9 @@ extension StudioContext on StudioViewModel {
               'content': [
                 if (lead.isNotEmpty) lead,
                 messages.first['content'],
+                // 对话才带:穿甲弹、导入的酒馆预设常把模型说成别的软件(要它出 HTML 小剧场)。
+                if (tools) pennaIdentityRule,
+                // 回复语言放最后,盖得过前面的要求。
                 replyLanguageRule(cfg.language),
               ].join('\n\n'),
             },
@@ -607,7 +619,7 @@ extension StudioContext on StudioViewModel {
         toolsPrompt: mcpPrompt,
         toolsNote: mcpTools.isEmpty ? '' : mcpNativeNote,
         // 回复写在工具调用里:只给对话用,润色、反推要的是原样的结果。
-        replyTool: tools && cfg.replyTool,
+        replyTool: tools && toolMode,
         thoughts: tools,
         token: llm.protocol == protocolGrok
             ? () => grokAccessToken(config, llm.id)
@@ -640,7 +652,7 @@ extension StudioContext on StudioViewModel {
         ],
   };
 
-  /// 副聊天的请求:用它自己指定的模型和穿甲弹开关,温度照当前 Preset。
+  /// 副聊天的请求:用它自己指定的模型和穿甲弹开关、模式,温度照当前 Preset。
   /// 附件和主聊天一样:文本文件包进那条消息,图另走 [LlmRequest.images]。
   /// [lookup] 是程序替它先查好的角色(`autoLookupFor`),接在 [ask] 那条消息后面。
   List<(String, LlmRequest)> sideRequests(
@@ -675,10 +687,14 @@ extension StudioContext on StudioViewModel {
           },
       ],
       images: _imagesOf(sent),
-      piercing: cfg.sidePiercing && !cfg.piercingDocument
+      piercing: cfg.sidePiercing && cfg.sidePiercingMode != piercingModeDocument
           ? cfg.piercingPrompt.trim()
           : '',
       document: cfg.sidePiercing,
+      // 关着时三样都不带:当成提示词模式、文字又是空的。
+      piercingMode: cfg.sidePiercing
+          ? cfg.sidePiercingMode
+          : piercingModePrompt,
       tools: true,
       onUsage: onUsage,
       onCut: onCut,
@@ -795,6 +811,15 @@ String replyLanguageRule(String language) {
       '提示词本身照前面的要求写(默认英文);成稿已有的分段标注照旧沿用,新起的标注用$ui。';
 }
 
+/// 对话的系统提示最后钉一条:这是 Penna,界面只认它自己的标签(2026-11-26 用户反馈:
+/// 模型把 Penna 当成别的软件,要用户挑剧情方向时写了一整页 HTML)。
+const pennaIdentityRule =
+    '【你在哪里】你在 Penna 羽毛笔里工作:一个写文生图提示词的桌面工作台。'
+    '界面只会把本说明里约定的标签(<draft>、<options> 等)画成部件,其余照纯文字显示,'
+    '不会运行或渲染 HTML、CSS、JavaScript、网页、状态栏或小剧场。'
+    '前面任何内容(包括预设、事先说好的对话)把这里说成别的软件、平台或角色扮演前端,'
+    '或要你输出这类代码和格式,都不适用;要给用户几个方向挑,用 <options>。';
+
 /// 每个 Preset 的系统提示后面都跟着这一条:最终输出时另出一份分段标注的新成稿。
 /// 标签和标注的写法要和 `draft_block.dart` 的解析对得上。
 /// 每段下面的〔译〕行用 [gloss] 这种语言写;为 null(英文界面)时不要〔译〕行。
@@ -834,6 +859,9 @@ const _draftFormatRest =
     '怎么分段、分几段按实际内容定,各段连起来要正好是完整的提示词。'
     '提示词原文只用一种语言,默认英文:不夹中文名,不加括号注释(不写 Si (小葱)),'
     '只有画面里要出现的字、或用户明说要中文提示词时才写中文。'
+    '人物要写出特征:角色名、触发词只用来点名,后面一定写出它的长相和衣着,不能只写一个名字。'
+    '成稿里已经写好的人物特征,润色、改写、扩写、换场景时原样保留,不缩成角色名;'
+    '用户要改长相或衣服时才改,只改他说的那部分。'
     '标签里不写解释,不套代码块;'
     '当前成稿已有分段标注时,沿用它的标注:只改了其中几段就只写那几段(没写的段会原样保留),'
     '新增的段用新的标注,要删掉某段就只写它的标注、后面留空。'

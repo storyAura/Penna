@@ -1397,6 +1397,25 @@ void main() {
       ],
       [minimaxH3PresetId, 'story'],
     );
+    // 第 3 版升上来:没改过的「动漫风格」换成新写法(温度照旧),改过的不动。
+    final anime = AppConfig.fromJson({
+      'presets': [
+        {...preset('anime', animePromptV1), 'temperature': 0.5},
+        preset('story', '故事'),
+      ],
+      'presetsVersion': 3,
+    }).presets;
+    expect(anime.first.systemPrompt, animePreset.systemPrompt);
+    expect(anime.first.temperature, 0.5);
+    expect(anime.first.systemPrompt, contains('不缩成角色名'));
+    expect(
+      AppConfig.fromJson({
+        'presets': [preset('anime', '我改过的')],
+        'presetsVersion': 3,
+      }).presets.single.systemPrompt,
+      '我改过的',
+    );
+
     // 用的那个被删了:落到第一个。
     expect(old.activePreset.id, mossPresetId);
 

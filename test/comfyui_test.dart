@@ -1184,6 +1184,22 @@ void main() {
     expect(await moveComfyImages(to, to), 0);
   });
 
+  test('云端的原图另存进 下载\\Penna\\<时刻>,同一单同一个文件夹', () async {
+    final root = await Directory.systemTemp.createTemp('penna-dl');
+    addTearDown(() => root.delete(recursive: true));
+    final at = DateTime(2026, 11, 26, 9, 5, 3);
+    final bytes = Uint8List.fromList([1, 2, 3]);
+    final a = saveCloudCopy(root.path, 'Penna_00001_.png', bytes, at);
+    final b = saveCloudCopy(root.path, 'sub/Penna_00001_.png', bytes, at);
+    final sep = Platform.pathSeparator;
+    expect(a.parent.path, '${root.path}${sep}Penna${sep}2026-11-26_09-05-03');
+    expect(b.path, endsWith('${sep}Penna_00001_ (1).png'));
+    expect(a.readAsBytesSync(), bytes);
+    expect(isLocalComfy('http://127.0.0.1:8188'), isTrue);
+    expect(isLocalComfy('http://[::1]:8188'), isTrue);
+    expect(isLocalComfy('https://u.example.com'), isFalse);
+  });
+
   test('输出文件夹:只留图片,去掉 [output],历史里有的不重复', () {
     final files = parseOutputFiles([
       'b.png [output]',

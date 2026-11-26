@@ -272,6 +272,10 @@ class ComfyRunner extends ChangeNotifier {
       if (run != _run) return (images: none, error: null);
       final now = DateTime.now();
       saved = [];
+      // 云端出的原图另存进「下载\Penna\<时刻>」;本机的 ComfyUI 自己的 output 里就有。
+      final downloads = comfy.cloudDownload && !isLocalComfy(comfy.server.url)
+          ? (await downloadsDir()).path
+          : null;
       for (final image in out) {
         final small = await _forDisk(image);
         final path = saveComfyImage(
@@ -289,6 +293,14 @@ class ComfyRunner extends ChangeNotifier {
           );
         }
         saved.add((path: path, prompt: prompt, time: now));
+        if (downloads != null) {
+          try {
+            saveCloudCopy(downloads, image.name, image.bytes, now);
+          } on FileSystemException catch (e) {
+            // 图已经存进 Penna 的文件夹了,这份没存上不算出图失败。
+            debugPrint('云端的图没存进「下载」:${e.message}');
+          }
+        }
       }
       if (run != _run) return (images: none, error: null);
       _images = List.unmodifiable(

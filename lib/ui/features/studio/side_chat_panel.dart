@@ -10,6 +10,14 @@ const _sideWidth = 440.0;
 /// 浮窗里的快捷操作最多露出几个,多的用两头的箭头翻。
 const _maxSideQuickActions = 4;
 
+/// 副聊天穿甲弹菜单的几项:空串是关。
+List<(String, String)> get _piercingModes => [
+  ('', tr('关闭')),
+  (piercingModePrompt, tr('提示词')),
+  (piercingModeDocument, tr('文档')),
+  (piercingModeTool, tr('工具调用')),
+];
+
 /// 快捷操作那一排最右边的开关。
 class _SideToggle extends StatelessWidget {
   const _SideToggle({required this.open, required this.onTap});
@@ -213,13 +221,36 @@ class _SidePanelState extends State<_SidePanel> with _Attachments<_SidePanel> {
             ),
           ),
           const Spacer(),
-          Tooltip(
-            message: tr('副聊天单独的穿甲弹开关'),
+          // 副聊天自己的穿甲弹:关,或挑一种模式(2026-11-26 用户要求和主聊天分开设)。
+          PopupMenuButton<String>(
+            popUpAnimationStyle: Motion.menu(context),
+            tooltip: tr('副聊天单独的穿甲弹'),
+            position: PopupMenuPosition.under,
+            onSelected: (v) => config.update(
+              v.isEmpty
+                  ? cfg.copyWith(sidePiercing: false)
+                  : cfg.copyWith(sidePiercing: true, sidePiercingMode: v),
+            ),
+            itemBuilder: (_) => [
+              for (final (mode, label) in _piercingModes)
+                CheckedPopupMenuItem(
+                  value: mode,
+                  checked: mode.isEmpty
+                      ? !cfg.sidePiercing
+                      : cfg.sidePiercing && cfg.sidePiercingMode == mode,
+                  child: Text(label),
+                ),
+            ],
             child: PennaChip(
-              label: tr('穿甲弹'),
+              label: cfg.sidePiercing
+                  ? tr('穿甲弹 · {0}', [
+                      _piercingModes
+                          .firstWhere((p) => p.$1 == cfg.sidePiercingMode)
+                          .$2,
+                    ])
+                  : tr('穿甲弹'),
               selected: cfg.sidePiercing,
-              onTap: () =>
-                  config.update(cfg.copyWith(sidePiercing: !cfg.sidePiercing)),
+              onTap: null,
             ),
           ),
           IconButton(

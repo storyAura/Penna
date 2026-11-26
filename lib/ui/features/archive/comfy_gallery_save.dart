@@ -1,14 +1,5 @@
 part of 'comfy_gallery.dart';
 
-/// 用户的「下载」文件夹(Windows 认系统设置里挪过的位置);取不到时用 主目录\Downloads。
-Future<Directory> _downloadsDir() async {
-  final got = await getDownloadsDirectory();
-  if (got != null) return got;
-  final home =
-      Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
-  return Directory('$home${Platform.pathSeparator}Downloads');
-}
-
 /// [dir] 里不重名的路径:撞了在名字后面加 (1)、(2)…
 String _freePath(Directory dir, String name) {
   final dot = name.lastIndexOf('.');
@@ -29,7 +20,7 @@ Future<String> saveShots(
   Future<Uint8List> Function(ComfyShot) read, {
   void Function(int done)? onStep,
 }) async {
-  final dir = await _downloadsDir();
+  final dir = await downloadsDir();
   await dir.create(recursive: true);
   if (shots.length == 1) {
     final path = _freePath(dir, '${shots.single.file['filename']}');

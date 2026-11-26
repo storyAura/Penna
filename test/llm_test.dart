@@ -316,6 +316,25 @@ void main() {
       expect(asked, ['a', 'd']);
     });
 
+    test('设了重试次数:同一个模型先重试,还不行才换下一个', () async {
+      final asked = <String>[];
+      var a = 0;
+      final out = await streamWithFailover(
+        [('A', _req('a')), ('B', _req('b'))],
+        (r) {
+          asked.add(r.model);
+          // A 第二次就好了。
+          return r.model == 'a' && a++ == 0
+              ? Stream.error(const LlmException('握手失败'))
+              : Stream.value(r.model);
+        },
+        retries: 2,
+      ).join();
+
+      expect(out, 'a');
+      expect(asked, ['a', 'a']);
+    });
+
     test('已经开始回答后出错,不换模型,直接报错', () async {
       var calledB = false;
       Stream<String> half() async* {

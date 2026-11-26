@@ -5,10 +5,11 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../../core/harness/attachment.dart';
 import '../../../core/harness/comfyui.dart';
+import '../../../data/models/app_config.dart' show isLocalComfy;
+import '../../../data/services/comfy_images.dart' show downloadsDir;
 import '../../../l10n/l10n.dart';
 import '../../core/gallery.dart';
 import '../../core/motion.dart';
@@ -34,9 +35,6 @@ const _page = 300;
 
 /// 文件夹下拉里「全部」的值(文件夹名不会是它)。
 const _allFolders = '\u0000';
-
-/// 本机地址:这些地址的 ComfyUI 能直接读硬盘上的输出文件夹。
-const _localHosts = {'127.0.0.1', 'localhost', '::1'};
 
 /// 档案库的「图片」分区:读 ComfyUI 的输出文件夹,再用出图历史(`/history`)补上提示词和时刻,
 /// 在 ComfyUI 里跑的也算。本机的 ComfyUI 直接读硬盘(连子文件夹,照启动参数找文件夹,
@@ -121,8 +119,8 @@ class _ComfyGalleryState extends State<ComfyGallery> {
     final comfy = runner.config.config.comfy;
     final picked = comfy.outputDirs[comfy.server.id];
     if (picked != null) return picked;
-    final host = Uri.tryParse(comfy.server.url)?.host ?? '';
-    if (!_localHosts.contains(host)) return null;
+    // 本机的 ComfyUI 才能直接读硬盘上的输出文件夹。
+    if (!isLocalComfy(comfy.server.url)) return null;
     try {
       final dir = await runner.client.outputDir();
       return dir != null && Directory(dir).existsSync() ? dir : null;

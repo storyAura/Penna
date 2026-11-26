@@ -208,6 +208,27 @@ class _ComfySectionState extends State<ComfySection> {
         ),
         gap,
         PennaCard(
+          padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(tr('云端出图存到本地'), style: titleStyle),
+                    Text(tr('原图存进「下载\\Penna」,每单一个文件夹'), style: hintStyle),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _comfy.cloudDownload,
+                onChanged: (v) => _put(_comfy.copyWith(cloudDownload: v)),
+              ),
+            ],
+          ),
+        ),
+        gap,
+        PennaCard(
           padding: const EdgeInsets.all(14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

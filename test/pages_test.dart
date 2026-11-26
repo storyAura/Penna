@@ -603,10 +603,10 @@ void main() {
 
     await tester.tap(find.text('出选中的图(2)'));
     await tester.pump();
-    expect([for (final j in vm.comfy.jobs.reversed) j.prompt], [
-      'a fox',
-      'an owl',
-    ]);
+    expect(
+      [for (final j in vm.comfy.jobs.reversed) j.prompt],
+      ['a fox', 'an owl'],
+    );
     // 出完清掉选择,按钮收起来。
     expect(vm.pickedPages.value, isEmpty);
     expect(find.textContaining('出选中的图'), findsNothing);

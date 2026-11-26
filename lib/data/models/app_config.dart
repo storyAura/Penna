@@ -276,6 +276,20 @@ const failoverProvider = 'provider';
 const failoverOff = 'off';
 const failoverModes = [failoverAll, failoverProvider, failoverOff];
 
+/// 穿甲弹的三种模式:提示词、文档、工具调用(主聊天用 `piercingDocument` /
+/// `piercingTool` 两个开关记,副聊天用 [AppConfig.sidePiercingMode])。
+const piercingModePrompt = 'prompt';
+const piercingModeDocument = 'document';
+const piercingModeTool = 'tool';
+const piercingModes = [
+  piercingModePrompt,
+  piercingModeDocument,
+  piercingModeTool,
+];
+
+/// 同一个模型最多重试几次。
+const maxLlmRetries = 5;
+
 /// Preset = 系统提示 + 工具白名单。Skills 对所有 Preset 生效,见 [AppConfig.disabledSkills]。
 /// 一段存下的穿甲弹提示词。
 typedef PiercingPrompt = ({String name, String text});
@@ -373,39 +387,75 @@ const _writerTools = {
   'view_reference',
 };
 
+/// 第 4 版以前的「动漫风格」:只说了"指定了已有角色时直接写出外观特征",
+/// 润色、改稿时模型常把写好的人物特征缩成一个角色名(2026-11-26 用户反馈)。
+@visibleForTesting
+const animePromptV1 =
+    '你是动漫插画提示词的写手。根据用户给的创作需求(一句话、关键词、角色设定或场景想法),'
+    '主动构思并写出一段完整、具体、可直接用于出图的英文提示词。\n\n'
+    '提示词写成一个连贯的英文段落,一般不超过 600 词,以 anime illustration of 开头,'
+    '把需求扩写成画面清晰、细节完整的日系动漫插画。\n\n'
+    '1. 确定性陈述:用肯定、精确的陈述句描写画面里有什么,如同在描述一张已经存在的图。'
+    '不用 seems、appears、might、possibly、suggests 这类模糊词。'
+    '用户没指定的细节由你补全,保持合理、统一,不与用户的需求冲突。\n\n'
+    '2. 忠实需求:用户明确给出的元素(角色、服装、动作、场景、构图、光线等)完整保留,'
+    '不删改、不替换。补充的细节只用来丰富画面,不改变用户的核心意图。\n\n'
+    '3. 要写到的细节:\n'
+    '- 人物与实体:外貌、发型发色、瞳色、五官、神态、衣着、姿势、动作和表情。'
+    '用户指定了已有角色时,直接写出外观特征。\n'
+    '- 物体与环境:场景(室内、室外、城市、自然等)、所有物体,以及它们彼此之间、与角色之间的空间关系。\n'
+    '- 画面属性:视角(低角度、平视、俯视等)、景别、构图、景深、对焦、光线的方向与质感、'
+    '镜头效果(如鱼眼畸变、镜头光晕)。\n'
+    '- 画面中的文字:写明内容、位置、颜色、字体风格和大小。\n\n'
+    '4. 不写的内容:\n'
+    '- 主观评价与叙事:画面背后的含义、象征、故事或情绪评论,以及 beautiful、masterpiece、stunning 这类赞美词。\n'
+    '- 额外的风格标签:除开头点明的动漫插画外,不再叠加艺术流派、渲染方式或绘画媒介,用户明确要求时除外。\n\n'
+    '$_positiveOnly';
+
+/// 「动漫风格」第 2 版(2026-11-26 用户要求适配 Penna、保住人物特征):
+/// 人物特征单独一条、写明改稿时不丢,和角色库的写法(点名后接特征)对上。
+const animePreset = AgentPreset(
+  id: 'anime',
+  name: '动漫风格',
+  systemPrompt:
+      '你是动漫插画提示词的写手。根据用户给的创作需求(一句话、关键词、角色设定、场景想法或参考图),'
+      '主动构思并写出一段完整、具体、可直接用于出图的英文提示词。\n\n'
+      '提示词写成一个连贯的英文段落,一般不超过 600 词,以 anime illustration of 开头,'
+      '把需求扩写成画面清晰、细节完整的日系动漫插画。\n\n'
+      '1. 人物特征(最要紧):\n'
+      '- 每个人物都写出外观:发型发色、瞳色、五官、体型、衣着和配饰,再写神态、姿势、动作和表情。'
+      '画好几个人时一人一组特征,写清谁是谁,不互相串。\n'
+      '- 已有的角色(动漫、游戏、VTuber 里的,或用户角色库里的):先查角色库,'
+      '在开头那句里用英文名或触发词点名,紧接着写全查到的外观特征。'
+      '只写名字不算写了这个角色,出图模型认不全名字。\n'
+      '- 成稿里已经写好的人物特征是定下来的设定:润色、扩写、换场景、换动作、换构图时,'
+      '这些特征一个不丢、不改、不缩成角色名。用户要改长相或换衣服时才改,只改他说的那部分。\n\n'
+      '2. 忠实需求:用户明确给出的元素(角色、服装、动作、场景、构图、光线等)完整保留,'
+      '不删改、不替换。补充的细节只用来丰富画面,不改变用户的核心意图。'
+      '改已有的成稿时,用户没让动的地方照原样留着。\n\n'
+      '3. 确定性陈述:用肯定、精确的陈述句描写画面里有什么,如同在描述一张已经存在的图。'
+      '不用 seems、appears、might、possibly、suggests 这类模糊词。'
+      '用户没指定的细节由你补全,保持合理、统一,不与用户的需求冲突。\n\n'
+      '4. 其他要写到的细节:\n'
+      '- 物体与环境:场景(室内、室外、城市、自然等)、所有物体,以及它们彼此之间、与角色之间的空间关系。\n'
+      '- 画面属性:视角(低角度、平视、俯视等)、景别、构图、景深、对焦、光线的方向与质感、'
+      '镜头效果(如鱼眼畸变、镜头光晕)。\n'
+      '- 画面中的文字和水印:写明内容、在画面的哪个位置、颜色、字体风格和大小。\n\n'
+      '5. 不写的内容:\n'
+      '- 主观评价与叙事:画面背后的含义、象征、故事或情绪评论,以及 beautiful、masterpiece、stunning 这类赞美词。\n'
+      '- 额外的风格标签:除开头点明的动漫插画外,不再叠加艺术流派、渲染方式或绘画媒介,用户明确要求时除外。\n\n'
+      '$_positiveOnly',
+  tools: _writerTools,
+  temperature: 0.9,
+);
+
 /// 出厂默认用的 Preset,见 [AppConfig.activePresetId]。
 const defaultPresetId = mossPresetId;
 
 const factoryPresets = [
   mossPreset,
   minimaxH3Preset,
-  AgentPreset(
-    id: 'anime',
-    name: '动漫风格',
-    systemPrompt:
-        '你是动漫插画提示词的写手。根据用户给的创作需求(一句话、关键词、角色设定或场景想法),'
-        '主动构思并写出一段完整、具体、可直接用于出图的英文提示词。\n\n'
-        '提示词写成一个连贯的英文段落,一般不超过 600 词,以 anime illustration of 开头,'
-        '把需求扩写成画面清晰、细节完整的日系动漫插画。\n\n'
-        '1. 确定性陈述:用肯定、精确的陈述句描写画面里有什么,如同在描述一张已经存在的图。'
-        '不用 seems、appears、might、possibly、suggests 这类模糊词。'
-        '用户没指定的细节由你补全,保持合理、统一,不与用户的需求冲突。\n\n'
-        '2. 忠实需求:用户明确给出的元素(角色、服装、动作、场景、构图、光线等)完整保留,'
-        '不删改、不替换。补充的细节只用来丰富画面,不改变用户的核心意图。\n\n'
-        '3. 要写到的细节:\n'
-        '- 人物与实体:外貌、发型发色、瞳色、五官、神态、衣着、姿势、动作和表情。'
-        '用户指定了已有角色时,直接写出外观特征。\n'
-        '- 物体与环境:场景(室内、室外、城市、自然等)、所有物体,以及它们彼此之间、与角色之间的空间关系。\n'
-        '- 画面属性:视角(低角度、平视、俯视等)、景别、构图、景深、对焦、光线的方向与质感、'
-        '镜头效果(如鱼眼畸变、镜头光晕)。\n'
-        '- 画面中的文字:写明内容、位置、颜色、字体风格和大小。\n\n'
-        '4. 不写的内容:\n'
-        '- 主观评价与叙事:画面背后的含义、象征、故事或情绪评论,以及 beautiful、masterpiece、stunning 这类赞美词。\n'
-        '- 额外的风格标签:除开头点明的动漫插画外,不再叠加艺术流派、渲染方式或绘画媒介,用户明确要求时除外。\n\n'
-        '$_positiveOnly',
-    tools: _writerTools,
-    temperature: 0.9,
-  ),
+  animePreset,
   AgentPreset(
     id: 'realistic',
     name: '真实风格',
@@ -454,6 +504,7 @@ class AppConfig {
     this.activeModel,
     this.sideModel,
     this.sidePiercing = false,
+    this.sidePiercingMode = piercingModePrompt,
     this.webSearch = true,
     this.webSearchLlmIds = const [],
     this.mtOrder = defaultMtOrder,
@@ -488,6 +539,7 @@ class AppConfig {
     this.chatIdeas = true,
     this.soulOn = false,
     this.failover = failoverAll,
+    this.llmRetries = 0,
     this.autoArchiveDays = 0,
     this.seriesColors = const {},
     this.seriesSort = seriesSortRecent,
@@ -523,6 +575,14 @@ class AppConfig {
       activeModel: m['activeModel'] as String?,
       sideModel: m['sideModel'] as String?,
       sidePiercing: m['sidePiercing'] as bool? ?? false,
+      // 旧设置没有:照主聊天当时的模式。
+      sidePiercingMode: piercingModes.contains(m['sidePiercingMode'])
+          ? m['sidePiercingMode'] as String
+          : m['piercingDocument'] == true
+          ? piercingModeDocument
+          : m['piercingTool'] == true
+          ? piercingModeTool
+          : piercingModePrompt,
       webSearch: m['webSearch'] as bool? ?? true,
       // 旧版的 webSearchLlmId 是「指定的排第一、其余后备」,不搬:回到自动。
       webSearchLlmIds: List.unmodifiable(
@@ -593,6 +653,7 @@ class AppConfig {
       failover: failoverModes.contains(m['failover'])
           ? m['failover'] as String
           : failoverAll,
+      llmRetries: ((m['llmRetries'] as int?) ?? 0).clamp(0, maxLlmRetries),
       autoArchiveDays: ((m['autoArchiveDays'] as int?) ?? 0).clamp(0, 365),
       seriesColors: Map.unmodifiable({
         if (m['seriesColors'] case final Map colors)
@@ -647,6 +708,9 @@ class AppConfig {
   /// 副聊天优先用的模型(同上);[sidePiercing] 是副聊天单独的穿甲弹开关。
   final String? sideLlmId;
   final bool sidePiercing;
+
+  /// 副聊天的穿甲弹模式,和主聊天的分开设(2026-11-26 用户要求),见 [piercingModes]。
+  final String sidePiercingMode;
 
   /// 指定的接口里先用哪个模型(对话顶栏的下拉里选的);null 或对不上时照接口里填的先后。
   final String? activeModel;
@@ -803,6 +867,9 @@ class AppConfig {
   /// 选中的模型没出字就失败时换不换别的模型,见 [failoverModes]。
   final String failover;
 
+  /// 没出字就失败时同一个模型再试几次(0 到 [maxLlmRetries]),都不行才按 [failover] 换。
+  final int llmRetries;
+
   /// 系列这么多天没用就自动归档进档案库(固定的不归档);0 是不自动归档。
   final int autoArchiveDays;
 
@@ -857,6 +924,7 @@ class AppConfig {
     'activeModel': activeModel,
     'sideModel': sideModel,
     'sidePiercing': sidePiercing,
+    'sidePiercingMode': sidePiercingMode,
     'webSearch': webSearch,
     'webSearchLlmIds': webSearchLlmIds,
     'mtOrder': mtOrder,
@@ -895,6 +963,7 @@ class AppConfig {
     'chatIdeas': chatIdeas,
     'soulOn': soulOn,
     'failover': failover,
+    'llmRetries': llmRetries,
     'autoArchiveDays': autoArchiveDays,
     'seriesColors': seriesColors,
     'seriesSort': seriesSort,
@@ -964,6 +1033,7 @@ class AppConfig {
     String? Function()? activeModel,
     String? Function()? sideModel,
     bool? sidePiercing,
+    String? sidePiercingMode,
     bool? webSearch,
     List<String>? webSearchLlmIds,
     Set<String>? mtEnabled,
@@ -998,6 +1068,7 @@ class AppConfig {
     bool? chatIdeas,
     bool? soulOn,
     String? failover,
+    int? llmRetries,
     int? autoArchiveDays,
     Map<String, int>? seriesColors,
     String? seriesSort,
@@ -1022,6 +1093,7 @@ class AppConfig {
     activeModel: activeModel == null ? this.activeModel : activeModel(),
     sideModel: sideModel == null ? this.sideModel : sideModel(),
     sidePiercing: sidePiercing ?? this.sidePiercing,
+    sidePiercingMode: sidePiercingMode ?? this.sidePiercingMode,
     webSearch: webSearch ?? this.webSearch,
     webSearchLlmIds: webSearchLlmIds == null
         ? this.webSearchLlmIds
@@ -1060,6 +1132,7 @@ class AppConfig {
     chatIdeas: chatIdeas ?? this.chatIdeas,
     soulOn: soulOn ?? this.soulOn,
     failover: failover ?? this.failover,
+    llmRetries: llmRetries ?? this.llmRetries,
     autoArchiveDays: autoArchiveDays ?? this.autoArchiveDays,
     seriesColors: seriesColors ?? this.seriesColors,
     seriesSort: seriesSort ?? this.seriesSort,
@@ -1129,7 +1202,8 @@ bool isFactoryPreset(String id) => factoryPresets.any((p) => p.id == id);
 /// 内置 Preset 的第几版。第 2 版(2026-11-05):去掉和 Skill 重了的四个
 /// (协同写词、反推润色、意译合稿、自由改稿,活由「写提示词」「照图写」管),加上「MOSS 视觉」。
 /// 第 3 版(2026-11-16):加上「MiniMax H3 视频」。
-const _presetsVersion = 3;
+/// 第 4 版(2026-11-26):「动漫风格」一字没改过的换成新写法([animePreset])。
+const _presetsVersion = 4;
 
 /// 退役的内置 Preset 当时的系统提示:旧设置里一字没改的才删,改过的是用户的东西,留着。
 const _retiredPresetPrompts = <String, String>{
@@ -1151,7 +1225,11 @@ List<AgentPreset> _upgradePresets(List<AgentPreset> saved, num from) => [
   if (from < 2 && !saved.any((p) => p.id == mossPresetId)) mossPreset,
   if (from < 3 && !saved.any((p) => p.id == minimaxH3PresetId)) minimaxH3Preset,
   for (final p in saved)
-    if (_retiredPresetPrompts[p.id] != p.systemPrompt) p,
+    if (_retiredPresetPrompts[p.id] != p.systemPrompt)
+      // 改过的是用户的东西,留着;温度这些照用户调过的。
+      from < 4 && p.id == animePreset.id && p.systemPrompt == animePromptV1
+          ? p.copyWith(systemPrompt: animePreset.systemPrompt)
+          : p,
 ];
 
 extension McpEditing on AppConfig {

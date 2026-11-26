@@ -111,6 +111,7 @@ extension StudioRewrite on StudioViewModel {
     try {
       final raw = await streamWithFailover(
         sameVendor: cfg.failover == failoverProvider,
+        retries: cfg.llmRetries,
         _requests(cfg, chain, cfg.activePreset, [
           {'role': 'system', 'content': _polishSystemPrompt},
           {

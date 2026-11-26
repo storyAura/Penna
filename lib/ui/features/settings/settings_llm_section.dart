@@ -232,6 +232,24 @@ class _LlmSectionState extends State<LlmSection> {
                       ),
                   ],
                 ),
+                gap,
+                // 没出字就失败时,同一个模型先再试几次。
+                Text(tr('重试次数'), style: titleStyle),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (var n = 0; n <= maxLlmRetries; n++)
+                      PennaChip(
+                        label: n == 0 ? tr('不重试') : tr('{0} 次', [n]),
+                        selected: cfg.llmRetries == n,
+                        onTap: () => service.update(
+                          service.config.copyWith(llmRetries: n),
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),

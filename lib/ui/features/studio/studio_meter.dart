@@ -82,7 +82,9 @@ extension StudioMeter on StudioViewModel {
     );
     final prompt =
         estimateTokens(system) +
-        (cfg.sidePiercing ? estimateTokens(cfg.piercingPrompt) : 0);
+        (cfg.sidePiercing && cfg.sidePiercingMode != piercingModeDocument
+            ? estimateTokens(cfg.piercingPrompt)
+            : 0);
     var chat = 0, tools = 0, files = 0;
     for (final m in messages) {
       if (!m.fromUser && (m.failed || m.text.isEmpty)) continue;

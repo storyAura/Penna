@@ -16,6 +16,10 @@ String comfyKeyName(String serverId) =>
 /// 一台 ComfyUI:本机的或云端的。
 typedef ComfyServer = ({String id, String name, String url});
 
+/// [url] 指向这台电脑上的 ComfyUI(本机地址);别的都算云端。
+bool isLocalComfy(String url) =>
+    const {'127.0.0.1', 'localhost', '::1'}.contains(Uri.tryParse(url)?.host);
+
 /// 导入的一个「导出 (API)」工作流。
 typedef ComfyFlow = ({String id, String name, String text});
 
@@ -93,6 +97,7 @@ class ComfySettings {
     this.inputs = const {},
     this.imageDir = '',
     this.autoGenerate = true,
+    this.cloudDownload = false,
     this.orientation = orientationKeep,
     this.outputDirs = const {},
     this.sizes = comfyDefaultSizes,
@@ -201,6 +206,7 @@ class ComfySettings {
       }),
       imageDir: m['imageDir'] as String? ?? '',
       autoGenerate: m['autoGenerate'] as bool? ?? true,
+      cloudDownload: m['cloudDownload'] as bool? ?? false,
       orientation: orientations.contains(m['orientation'])
           ? m['orientation'] as String
           : orientationKeep,
@@ -271,6 +277,9 @@ class ComfySettings {
 
   /// Agent 写了出图标签就直接出;关掉时回复下面出一个「出图」按钮,用户点了才出。
   final bool autoGenerate;
+
+  /// 云端(不是本机地址)出的原图另存进「下载\Penna\<出图时刻>」(2026-11-26 用户要求)。
+  final bool cloudDownload;
 
   /// Agent 出图时画面是横是竖,见 [orientations]。
   final String orientation;
@@ -347,6 +356,7 @@ class ComfySettings {
     if (inputs.isNotEmpty) 'inputs': inputs,
     'imageDir': imageDir,
     'autoGenerate': autoGenerate,
+    'cloudDownload': cloudDownload,
     'orientation': orientation,
     if (outputDirs.isNotEmpty) 'outputDirs': outputDirs,
     'standardSeen': standardSeen,
@@ -374,6 +384,7 @@ class ComfySettings {
     Map<String, Map<String, String>>? inputs,
     String? imageDir,
     bool? autoGenerate,
+    bool? cloudDownload,
     String? orientation,
     Map<String, String>? outputDirs,
     List<({int width, int height})>? sizes,
@@ -395,6 +406,7 @@ class ComfySettings {
     inputs: inputs == null ? this.inputs : Map.unmodifiable(inputs),
     imageDir: imageDir ?? this.imageDir,
     autoGenerate: autoGenerate ?? this.autoGenerate,
+    cloudDownload: cloudDownload ?? this.cloudDownload,
     orientation: orientation ?? this.orientation,
     outputDirs: outputDirs == null
         ? this.outputDirs

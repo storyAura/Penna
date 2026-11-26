@@ -127,6 +127,7 @@ String _brief(Object error) =>
 /// [onTrying] 在开始问某个模型时调用,[onAnswering] 在它开始回复时调用,都告知名字。
 ///
 /// [sameVendor] 为真时同一家剩下的模型也挨个试(用户选了只在这个接口里换模型)。
+/// [retries] 是没出字就失败时同一个模型再试几次,都不行才换(「API 管理」里设)。
 ///
 /// 取消订阅会立刻停掉正在请求的模型,也不会再去问后面的模型。
 Stream<String> streamWithFailover(
@@ -135,6 +136,7 @@ Stream<String> streamWithFailover(
   void Function(String name)? onTrying,
   void Function(String name)? onAnswering,
   bool sameVendor = false,
+  int retries = 0,
 }) {
   StreamSubscription<String>? inner;
   Completer<Object?>? waiting;
@@ -190,7 +192,22 @@ Stream<String> streamWithFailover(
       if (cancelled) return;
       if (!sameVendor && failed.contains(vendor(request))) continue;
       onTrying?.call(name);
-      final (started, error) = await runOne(name, request);
+      var (started, error) = await runOne(name, request);
+      // 握手断了这类偶发的错:同一个模型隔一秒再试(2026-11-26 用户要求能设次数)。
+      for (var n = 1; !started && n <= retries; n++) {
+        if (cancelled) return;
+        llmLog.add(
+          LlmEventKind.retry,
+          name,
+          tr('第 {0} 次重试:{1}', [
+            n,
+            error == null ? tr('模型没有返回内容') : _brief(error),
+          ]),
+        );
+        await Future<void>.delayed(const Duration(seconds: 1));
+        if (cancelled) return;
+        (started, error) = await runOne(name, request);
+      }
       if (cancelled) return;
       if (started) {
         if (error != null) {

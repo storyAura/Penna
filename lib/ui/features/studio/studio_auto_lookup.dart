@@ -137,6 +137,7 @@ extension StudioAutoLookup on StudioViewModel {
       webSearchChain(cfg),
       (llm) => streamWithFailover(
         sameVendor: cfg.failover == failoverProvider,
+        retries: cfg.llmRetries,
         _requests(
           cfg,
           [llm],

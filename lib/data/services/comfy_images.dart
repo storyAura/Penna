@@ -1,6 +1,17 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:path_provider/path_provider.dart';
+
+/// 用户的「下载」文件夹(Windows 认系统设置里挪过的位置);取不到时用 主目录\Downloads。
+Future<Directory> downloadsDir() async {
+  final got = await getDownloadsDirectory();
+  if (got != null) return got;
+  final home =
+      Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
+  return Directory('$home${Platform.pathSeparator}Downloads');
+}
+
 /// ComfyUI 出的图的文件名都以它开头;换位置时只搬这些,文件夹里别的东西不碰。
 const comfyImagePrefix = 'Penna-';
 
@@ -24,6 +35,32 @@ File saveComfyImage(String dir, String name, Uint8List bytes, DateTime time) {
     file.writeAsBytesSync(bytes, flush: true);
     return file;
   }
+}
+
+/// 云端出的原图另存一份到 [downloads]\Penna\<出图时刻>\,文件名照 ComfyUI 的
+/// (2026-11-26 用户要求)。同一单的几张时刻一样,进同一个文件夹;重名加 (1)、(2)…
+File saveCloudCopy(
+  String downloads,
+  String name,
+  Uint8List bytes,
+  DateTime time,
+) {
+  String two(int n) => n.toString().padLeft(2, '0');
+  final sep = Platform.pathSeparator;
+  final dir =
+      '$downloads${sep}Penna$sep${time.year}-${two(time.month)}-${two(time.day)}_'
+      '${two(time.hour)}-${two(time.minute)}-${two(time.second)}';
+  Directory(dir).createSync(recursive: true);
+  name = name.split(RegExp(r'[\/]')).last;
+  final dot = name.lastIndexOf('.');
+  final stem = dot > 0 ? name.substring(0, dot) : name;
+  final ext = dot > 0 ? name.substring(dot) : '';
+  var file = File('$dir$sep$name');
+  for (var n = 1; file.existsSync(); n++) {
+    file = File('$dir$sep$stem ($n)$ext');
+  }
+  file.writeAsBytesSync(bytes, flush: true);
+  return file;
 }
 
 /// 换存图的位置:把 [from] 里 Penna 出的图搬到 [to],返回搬了几张。

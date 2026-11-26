@@ -95,6 +95,7 @@ extension StudioIdeas on StudioViewModel {
     try {
       final reply = await streamWithFailover(
         sameVendor: cfg.failover == failoverProvider,
+        retries: cfg.llmRetries,
         _requests(cfg, _usable(cfg.agentChain), preset, [
           {
             'role': 'system',
