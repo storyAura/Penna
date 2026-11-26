@@ -208,7 +208,9 @@ void widgetTests() {
     await tester.tap(find.text('工具调用'));
     await tester.pump();
     expect(service.config.piercingTool, isTrue);
-    expect(service.config.piercingName, isEmpty);
+    // 工具调用用自己那张表,提示词模式挑的那段留着不动。
+    expect(service.config.piercingName, '旧的');
+    expect(service.config.piercingToolName, isEmpty);
     expect(service.config.piercingText, isEmpty);
     expect(find.text('不用预设'), findsOneWidget);
     expect(find.text('导入文本'), findsNothing);
@@ -217,8 +219,10 @@ void widgetTests() {
       'prompts': [_prompt('main', '你是主持人')],
     });
     await _importFrom(tester, file);
-    expect(service.config.piercingName, '主持');
-    expect(service.config.piercingPrompt, '你是主持人');
+    expect(service.config.piercingToolName, '主持');
+    expect([for (final p in service.config.piercingSaved) p.name], ['旧的']);
+    service.update(service.config.copyWith(piercing: true));
+    expect(service.config.piercingText, '你是主持人');
     await tester.pump(const Duration(seconds: 5));
   });
 
@@ -240,6 +244,7 @@ void widgetTests() {
       piercingSaved: two,
       piercingName: 'B',
       piercingPrompt: '乙',
+      piercingToolSaved: [(name: 'T', text: '酒馆')],
       sidePiercing: true,
     );
     expect(base.sidePiercingText, '甲');
@@ -248,11 +253,18 @@ void widgetTests() {
       base.copyWith(sidePiercingMode: piercingModeTool).sidePiercingText,
       '',
     );
+    // 工具调用只认它自己那张表:提示词模式的 B 在这里对不上。
     expect(
       base
           .copyWith(sidePiercingMode: piercingModeTool, sidePiercingName: 'B')
           .sidePiercingText,
-      '乙',
+      '',
+    );
+    expect(
+      base
+          .copyWith(sidePiercingMode: piercingModeTool, sidePiercingName: 'T')
+          .sidePiercingText,
+      '酒馆',
     );
     expect(
       base
@@ -264,5 +276,45 @@ void widgetTests() {
       '',
     );
     expect(base.copyWith(sidePiercing: false).sidePiercingText, '');
+  });
+
+  test('提示词和工具调用各一张表:旧设置抄一份过去,各挑各的;按模型的规则存得住', () {
+    // 旧设置:两边共用一张,工具调用模式挑着「酒馆」。
+    final old = AppConfig.fromJson({
+      'piercing': true,
+      'piercingTool': true,
+      'piercingSaved': [
+        {'name': '默认', 'text': '甲'},
+        {'name': '酒馆', 'text': '乙'},
+      ],
+      'piercingName': '酒馆',
+      'piercingPrompt': '乙',
+    });
+    expect([for (final p in old.piercingToolSaved) p.name], ['默认', '酒馆']);
+    expect(old.piercingToolName, '酒馆');
+    expect(old.piercingText, '乙');
+
+    // 换到提示词模式不动工具调用挑的那段,文字用提示词那段。
+    final prompt = old.copyWith(
+      piercingTool: false,
+      piercingName: '默认',
+      piercingPrompt: '甲',
+    );
+    expect(prompt.piercingText, '甲');
+    expect(prompt.piercingToolName, '酒馆');
+
+    final ruled = AppConfig.fromJson(
+      prompt
+          .copyWith(
+            piercingRules: const [
+              (model: 'g', mode: piercingModeTool, name: '酒馆'),
+            ],
+          )
+          .toJson(),
+    );
+    expect(ruled.piercingRuleFor('g')?.name, '酒馆');
+    expect(ruled.piercingRuleFor('x'), isNull);
+    expect(ruled.piercingSegment(piercingModeTool, '酒馆'), '乙');
+    expect(ruled.piercingSegment(piercingModeDocument, '酒馆'), '');
   });
 }

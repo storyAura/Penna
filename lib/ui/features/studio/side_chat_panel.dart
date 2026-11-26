@@ -23,8 +23,12 @@ List<(String, String)> get _piercingModes => [
 List<PopupMenuEntry<String>> _piercingMenu(AppConfig cfg) {
   final on = cfg.sidePiercing;
   final mode = cfg.sidePiercingMode;
-  // 提示词模式没挑、或挑的删了时用的是第一段。
-  final names = [for (final p in cfg.piercingSaved) p.name];
+  // 两种模式各是各的表;提示词模式没挑、或挑的删了时用的是第一段。
+  final names = [
+    for (final p
+        in mode == piercingModeTool ? cfg.piercingToolSaved : cfg.piercingSaved)
+      p.name,
+  ];
   final picked = names.contains(cfg.sidePiercingName)
       ? cfg.sidePiercingName
       : mode == piercingModePrompt

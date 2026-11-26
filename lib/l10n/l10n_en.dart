@@ -1851,4 +1851,10 @@ const en = <String, String>{
   '不重试': 'No retry',
   '副聊天单独的穿甲弹': 'Side chat Armor-Piercing',
   '穿甲弹 · {0}': 'Armor-Piercing · {0}',
+  '按模型': 'By model',
+  '这些模型单独设,盖过上面的': 'Set per model, overriding the above',
+  '+ 添加模型': '+ Add model',
+  '模式': 'Mode',
+  '用哪一段': 'Which prompt',
+  '没有存下的段': 'No saved prompts',
 };

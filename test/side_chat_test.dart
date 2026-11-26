@@ -68,6 +68,32 @@ void main() {
     expect(splitPeek('a < b', readSideChat).prose, 'a < b');
   });
 
+  test('按模型单独设的穿甲弹盖过这场对话的设置;没设的模型照旧', () async {
+    final seen = <LlmRequest>[];
+    final (vm, side) = _chats(['副', '主'], seen, sidePiercing: true);
+    vm.config.update(
+      vm.config.config.copyWith(
+        piercing: true,
+        piercingToolSaved: const [(name: '酒馆', text: 'TAVERN')],
+        piercingRules: const [(model: 'n', mode: piercingModeTool, name: '酒馆')],
+      ),
+    );
+
+    // 副聊天用的是模型 n:换成工具调用模式、用工具调用那张表里的「酒馆」。
+    side.send('这段怎么样');
+    await pumpEventQueue();
+    expect(seen.single.model, 'n');
+    expect(seen.single.messages.first['content'], startsWith('TAVERN'));
+    expect(seen.single.replyTool, isTrue);
+
+    // 主聊天用的是模型 m:照它自己的提示词模式。
+    vm.send('写一张图');
+    await pumpEventQueue();
+    expect(seen.last.model, 'm');
+    expect(seen.last.messages.first['content'], startsWith('PIERCE'));
+    expect(seen.last.replyTool, isFalse);
+  });
+
   test('副聊天记下接口报的用量,上下文圆环用它;没报过时按文字估', () async {
     final seen = <LlmRequest>[];
     final (vm, side) = _chats(['好的'], seen);

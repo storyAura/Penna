@@ -294,16 +294,27 @@ const maxLlmRetries = 5;
 /// 一段存下的穿甲弹提示词。
 typedef PiercingPrompt = ({String name, String text});
 
+/// 按模型单独设的穿甲弹:[model] 是模型名,用 [mode] 模式的 [name] 那段
+/// (文档模式不用段;工具调用的 name 空着是「不用预设」)。2026-11-26 用户要求。
+typedef PiercingRule = ({String model, String mode, String name});
+
+/// 读一张存下的段落表;不是表时返回 null。
+List<PiercingPrompt>? _piercingList(Object? raw) => raw is! List
+    ? null
+    : List.unmodifiable([
+        for (final p in raw)
+          if (p is Map && p['name'] is String && p['text'] is String)
+            (name: p['name'] as String, text: p['text'] as String),
+      ]);
+
+List<Map<String, String>> _piercingJson(List<PiercingPrompt> list) => [
+  for (final p in list) {'name': p.name, 'text': p.text},
+];
+
 /// 读存下的穿甲弹;旧设置只有一段 `piercingPrompt`,有字就算第一段。
 List<PiercingPrompt> _piercingSaved(Map<String, dynamic> m) {
-  final saved = m['piercingSaved'];
-  if (saved is List) {
-    return List.unmodifiable([
-      for (final p in saved)
-        if (p is Map && p['name'] is String && p['text'] is String)
-          (name: p['name'] as String, text: p['text'] as String),
-    ]);
-  }
+  final saved = _piercingList(m['piercingSaved']);
+  if (saved != null) return saved;
   final old = (m['piercingPrompt'] as String? ?? '').trim();
   return old.isEmpty
       ? const []
@@ -575,6 +586,9 @@ class AppConfig {
     this.piercingTool = false,
     this.piercingSaved = const [],
     this.piercingName = '',
+    this.piercingToolSaved = const [],
+    this.piercingToolName = '',
+    this.piercingRules = const [],
     this.layoutQuality = defaultLayoutQuality,
     this.layoutSnap = defaultLayoutSnap,
     this.compressImages = true,
@@ -686,6 +700,25 @@ class AppConfig {
           m['piercingName'] as String? ??
           _piercingSaved(m).firstOrNull?.name ??
           '',
+      // 工具调用的段和提示词的分开存(2026-11-26 用户要求);旧设置两边共用一张,
+      // 照抄一份过来,用户删掉不要的。旧的工具调用模式挑的那段还是它。
+      piercingToolSaved:
+          _piercingList(m['piercingToolSaved']) ?? _piercingSaved(m),
+      piercingToolName:
+          m['piercingToolName'] as String? ??
+          (m['piercingTool'] == true ? m['piercingName'] as String? : null) ??
+          '',
+      piercingRules: List.unmodifiable([
+        for (final r in m['piercingRules'] as List? ?? const [])
+          if (r is Map &&
+              r['model'] is String &&
+              piercingModes.contains(r['mode']))
+            (
+              model: r['model'] as String,
+              mode: r['mode'] as String,
+              name: r['name'] as String? ?? '',
+            ),
+      ]),
       layoutQuality: m['layoutQuality'] as String? ?? defaultLayoutQuality,
       layoutSnap: ((m['layoutSnap'] as num?) ?? defaultLayoutSnap)
           .clamp(minLayoutSnap, maxLayoutSnap)
@@ -763,11 +796,9 @@ class AppConfig {
   /// 副聊天要带的穿甲弹文字:关着、文档模式是空串;挑的那段删了时同上面的空串规则。
   String get sidePiercingText {
     if (!sidePiercing || sidePiercingMode == piercingModeDocument) return '';
-    final hit = piercingSaved.where((p) => p.name == sidePiercingName);
-    if (hit.isNotEmpty) return hit.first.text.trim();
-    return sidePiercingMode == piercingModePrompt
-        ? piercingSaved.firstOrNull?.text.trim() ?? ''
-        : '';
+    final text = piercingSegment(sidePiercingMode, sidePiercingName);
+    if (text.isNotEmpty || sidePiercingMode == piercingModeTool) return text;
+    return piercingSaved.firstOrNull?.text.trim() ?? '';
   }
 
   /// 指定的接口里先用哪个模型(对话顶栏的下拉里选的);null 或对不上时照接口里填的先后。
@@ -899,6 +930,35 @@ class AppConfig {
   final List<PiercingPrompt> piercingSaved;
   final String piercingName;
 
+  /// 工具调用模式自己的几段(导入的 SillyTavern 预设),和提示词模式的分开;
+  /// [piercingToolName] 是眼前用的那段,空着是「不用预设」。
+  final List<PiercingPrompt> piercingToolSaved;
+  final String piercingToolName;
+
+  /// 按模型单独设的穿甲弹,盖过上面的模式和段。
+  final List<PiercingRule> piercingRules;
+
+  /// 主聊天眼前的模式([piercingModes] 里的一个)。
+  String get piercingMode => piercingDocument
+      ? piercingModeDocument
+      : piercingTool
+      ? piercingModeTool
+      : piercingModePrompt;
+
+  /// [mode] 那张表里名叫 [name] 的那段文字;对不上、文档模式是空串。
+  String piercingSegment(String mode, String name) {
+    final list = switch (mode) {
+      piercingModePrompt => piercingSaved,
+      piercingModeTool => piercingToolSaved,
+      _ => const <PiercingPrompt>[],
+    };
+    return list.where((p) => p.name == name).firstOrNull?.text.trim() ?? '';
+  }
+
+  /// [model] 单独设过的穿甲弹;没设过是 null。
+  PiercingRule? piercingRuleFor(String model) =>
+      piercingRules.where((r) => r.model == model).firstOrNull;
+
   /// 回复要写在工具调用里(穿甲弹开着且是工具调用模式)。
   bool get replyTool => piercing && piercingTool && !piercingDocument;
 
@@ -908,9 +968,18 @@ class AppConfig {
   /// 区域控制的画布宽高对齐到它的倍数(见 [defaultLayoutSnap])。
   final int layoutSnap;
 
-  /// 要注入的穿甲弹文字;关着、没填或用文档模式时为空串(文字只给提示词模式用)。
-  String get piercingText =>
-      piercing && !piercingDocument ? piercingPrompt.trim() : '';
+  /// 要注入的穿甲弹文字;关着、没填或用文档模式时为空串。
+  /// 提示词模式用 [piercingPrompt],工具调用模式用它自己挑的那段。
+  String get piercingText => !piercing
+      ? ''
+      : switch (piercingMode) {
+          piercingModePrompt => piercingPrompt.trim(),
+          piercingModeTool => piercingSegment(
+            piercingModeTool,
+            piercingToolName,
+          ),
+          _ => '',
+        };
 
   /// 对话里附上的大图先缩小、转成 WebP 再发。
   final bool compressImages;
@@ -1012,10 +1081,14 @@ class AppConfig {
     'piercingPrompt': piercingPrompt,
     'piercingDocument': piercingDocument,
     'piercingTool': piercingTool,
-    'piercingSaved': [
-      for (final p in piercingSaved) {'name': p.name, 'text': p.text},
-    ],
+    'piercingSaved': _piercingJson(piercingSaved),
     'piercingName': piercingName,
+    'piercingToolSaved': _piercingJson(piercingToolSaved),
+    'piercingToolName': piercingToolName,
+    'piercingRules': [
+      for (final r in piercingRules)
+        {'model': r.model, 'mode': r.mode, 'name': r.name},
+    ],
     'layoutQuality': layoutQuality,
     'layoutSnap': layoutSnap,
     'compressImages': compressImages,
@@ -1122,6 +1195,9 @@ class AppConfig {
     bool? piercingTool,
     List<PiercingPrompt>? piercingSaved,
     String? piercingName,
+    List<PiercingPrompt>? piercingToolSaved,
+    String? piercingToolName,
+    List<PiercingRule>? piercingRules,
     String? layoutQuality,
     int? layoutSnap,
     bool? compressImages,
@@ -1187,6 +1263,13 @@ class AppConfig {
         ? this.piercingSaved
         : List.unmodifiable(piercingSaved),
     piercingName: piercingName ?? this.piercingName,
+    piercingToolSaved: piercingToolSaved == null
+        ? this.piercingToolSaved
+        : List.unmodifiable(piercingToolSaved),
+    piercingToolName: piercingToolName ?? this.piercingToolName,
+    piercingRules: piercingRules == null
+        ? this.piercingRules
+        : List.unmodifiable(piercingRules),
     layoutQuality: layoutQuality ?? this.layoutQuality,
     layoutSnap: layoutSnap ?? this.layoutSnap,
     compressImages: compressImages ?? this.compressImages,

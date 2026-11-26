@@ -522,13 +522,6 @@ extension StudioContext on StudioViewModel {
     void Function(LlmUsage)? onUsage,
     void Function(LlmCut)? onCut,
   }) {
-    // 穿甲弹的模式:主聊天照设置里的,副聊天自己设([piercingMode])。
-    final docMode = piercingMode == null
-        ? cfg.piercingDocument
-        : piercingMode == piercingModeDocument;
-    final toolMode = piercingMode == null
-        ? cfg.replyTool
-        : piercingMode == piercingModeTool;
     // 外接工具(MCP):只有对话带([tools]),润色、反推、出点子、联网搜索不带。
     // 走原生函数调用还是文字标签由 `streamChat` 按接口定,这里两样都备好。
     final mcpTools = tools && !webSearch
@@ -536,60 +529,84 @@ extension StudioContext on StudioViewModel {
         : const <LlmTool>[];
     final mcpPrompt = mcpTextPrompt(mcpTools);
     // 穿甲弹:开着时接在系统提示最前面。对话、润色、反推都经过这里,
-    // 它们的第一条都是系统提示。副聊天有自己的开关([piercing])。
-    // 文档模式只给对话:[document] 是这场对话的穿甲弹开关。润色、反推要的是原样的结果,
-    // 不走文档模式。穿甲弹的文字照旧接在系统提示前面,不写进文档。
-    final pierce = piercing ?? cfg.piercingText;
-    final system = messages.isNotEmpty && messages.first['role'] == 'system';
-    final asDocument = document && system && docMode;
-    // 穿甲弹里写了对话标记:开头那段照旧接在系统提示前面,几轮对话拆成真正的消息,
-    // 排在聊天记录前后(见 preset_dialogue.dart)。Preset 的系统提示原样留着。
-    final dialogue = system ? presetDialogue(pierce) : null;
-    final lead = dialogue?.lead ?? pierce;
-    final placed = dialogue == null
-        ? null
-        : withPresetDialogue(
-            dialogue,
-            messages.sublist(1),
-            closing: _dialogueReminder,
-          );
-    if (placed != null) {
-      // 图是按第几条消息挂的(系统提示算第 0 条),消息挪了位置图跟着挪。
-      images = {
-        for (final MapEntry(:key, :value) in images.entries)
-          key == 0 ? 0 : placed.at[key - 1] + 1: value,
-      };
+    // 它们的第一条都是系统提示。副聊天有自己的开关、模式和段([piercing]、[piercingMode])。
+    // [document] 是这场对话的穿甲弹开关:文档模式、工具调用模式、按模型单独设的
+    // (`AppConfig.piercingRules`,2026-11-26 用户要求)都只给对话;润色、反推要原样的结果。
+    final baseMode = piercingMode ?? cfg.piercingMode;
+    final baseText = piercing ?? cfg.piercingText;
+    ({String text, String mode}) planFor(String model) {
+      final rule = document ? cfg.piercingRuleFor(model) : null;
+      return rule == null
+          ? (text: baseText, mode: baseMode)
+          : (text: cfg.piercingSegment(rule.mode, rule.name), mode: rule.mode);
     }
-    // 说给用户的话用什么语言:接在系统提示最后,盖得过前面的要求(见 [replyLanguageRule])。
-    final sent = !system
-        ? messages
-        : [
-            {
-              'role': 'system',
-              'content': [
-                if (lead.isNotEmpty) lead,
-                messages.first['content'],
-                // 对话才带:穿甲弹、导入的酒馆预设常把模型说成别的软件(要它出 HTML 小剧场)。
-                if (tools) pennaIdentityRule,
-                // 回复语言放最后,盖得过前面的要求。
-                replyLanguageRule(cfg.language),
-              ].join('\n\n'),
-            },
-            ...placed?.messages ?? messages.skip(1),
-          ];
-    // Google 接口能把文档当文件收;别的接口收不了文本文件,文档包进消息里。
-    final asFile = documentRequest(sent, images, asFile: true);
-    final inText = documentRequest(sent, images, asFile: false);
-    final plain = (messages: sent, images: images);
+
+    final system = messages.isNotEmpty && messages.first['role'] == 'system';
+    final firstImages = images;
+    // 同一段穿甲弹的几个模型共用一份消息。
+    final built =
+        <
+          String,
+          ({
+            List<Map<String, String>> messages,
+            Map<int, List<LlmImage>> images,
+          })
+        >{};
+    ({List<Map<String, String>> messages, Map<int, List<LlmImage>> images})
+    bodyFor(String pierce) => built[pierce] ??= () {
+      // 穿甲弹里写了对话标记:开头那段照旧接在系统提示前面,几轮对话拆成真正的消息,
+      // 排在聊天记录前后(见 preset_dialogue.dart)。Preset 的系统提示原样留着。
+      final dialogue = system ? presetDialogue(pierce) : null;
+      final lead = dialogue?.lead ?? pierce;
+      final placed = dialogue == null
+          ? null
+          : withPresetDialogue(
+              dialogue,
+              messages.sublist(1),
+              closing: _dialogueReminder,
+            );
+      // 图是按第几条消息挂的(系统提示算第 0 条),消息挪了位置图跟着挪。
+      final moved = placed == null
+          ? firstImages
+          : {
+              for (final MapEntry(:key, :value) in firstImages.entries)
+                key == 0 ? 0 : placed.at[key - 1] + 1: value,
+            };
+      // 说给用户的话用什么语言:接在系统提示最后,盖得过前面的要求(见 [replyLanguageRule])。
+      final sent = !system
+          ? messages
+          : [
+              {
+                'role': 'system',
+                'content': [
+                  if (lead.isNotEmpty) lead,
+                  messages.first['content'],
+                  // 对话才带:穿甲弹、导入的酒馆预设常把模型说成别的软件(要它出 HTML 小剧场)。
+                  if (tools) pennaIdentityRule,
+                  // 回复语言放最后,盖得过前面的要求。
+                  replyLanguageRule(cfg.language),
+                ].join('\n\n'),
+              },
+              ...placed?.messages ?? messages.skip(1),
+            ];
+      return (messages: sent, images: moved);
+    }();
+
     // 一个接口填了好几个模型时,每个模型各算一个,名字后面带上模型名好区分。
     String nameOf(LlmProfile llm, String model) =>
         llm.models.length > 1 ? '${llm.name} · $model' : llm.name;
     LlmRequest request(LlmProfile llm, String model) {
-      final body = !asDocument
-          ? plain
-          : llm.protocol == protocolGoogle
-          ? asFile
-          : inText;
+      final plan = planFor(model);
+      // 文档模式的穿甲弹不带字,只把对话写成文档。Google 接口能把文档当文件收;
+      // 别的接口收不了文本文件,文档包进消息里。
+      final plain = bodyFor(plan.text);
+      final body = document && system && plan.mode == piercingModeDocument
+          ? documentRequest(
+              plain.messages,
+              plain.images,
+              asFile: llm.protocol == protocolGoogle,
+            )
+          : plain;
       return LlmRequest(
         protocol: llm.protocol,
         baseUrl: llm.baseUrl,
@@ -619,7 +636,7 @@ extension StudioContext on StudioViewModel {
         toolsPrompt: mcpPrompt,
         toolsNote: mcpTools.isEmpty ? '' : mcpNativeNote,
         // 回复写在工具调用里:只给对话用,润色、反推要的是原样的结果。
-        replyTool: tools && toolMode,
+        replyTool: tools && document && plan.mode == piercingModeTool,
         thoughts: tools,
         token: llm.protocol == protocolGrok
             ? () => grokAccessToken(config, llm.id)

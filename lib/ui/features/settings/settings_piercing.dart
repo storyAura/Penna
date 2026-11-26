@@ -12,6 +12,7 @@ import '../../../l10n/l10n.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import 'settings_agent_sections.dart' show hintStyle;
+import 'settings_piercing_rules.dart';
 import 'settings_sections.dart';
 
 /// 穿甲弹的三种模式:提示词、文档、工具调用(2026-11-25 用户要求工具调用从 Preset 挪过来)。
@@ -171,8 +172,7 @@ class _PiercingCardState extends State<PiercingCard> {
       for (final p in cfg.piercingSaved)
         if (p.name != cfg.piercingName) p,
     ];
-    // 工具调用模式删掉后回到「不用预设」。
-    final next = cfg.piercingTool ? null : left.firstOrNull;
+    final next = left.firstOrNull;
     service.update(
       cfg.copyWith(
         piercingSaved: left,
@@ -215,7 +215,11 @@ class _PiercingCardState extends State<PiercingCard> {
         RegExp(r'\.json$', caseSensitive: false),
         '',
       );
-      _add(name, text);
+      if (service.config.piercingTool) {
+        _addTool(name, text);
+      } else {
+        _add(name, text);
+      }
       setState(() => _preview = true);
       showToast(context, tr('已导入「{0}」', [name]));
     } on FormatException {
@@ -241,24 +245,58 @@ class _PiercingCardState extends State<PiercingCard> {
     }
   }
 
-  /// 换模式。工具调用是一种规范的做法,本身不用写字(2026-11-25 用户纠正):换过去时
-  /// 不带提示词,导入过 SillyTavern 预设的可以再挑一个;换回提示词模式时没挑就用第一段。
+  /// 换模式。提示词和工具调用各有一张表、各挑各的(2026-11-26 用户要求分开设),
+  /// 换来换去不动对方挑的;换回提示词模式时没挑就用第一段。
   void _mode(PiercingMode m) {
     var cfg = service.config;
     if (_dirty) cfg = _saved(cfg, _draft);
     cfg = withPiercingMode(cfg, m);
-    if (m == PiercingMode.tool) {
-      cfg = cfg.copyWith(piercingName: '', piercingPrompt: '');
-    } else if (cfg.piercingName.isEmpty && cfg.piercingSaved.isNotEmpty) {
+    if (m == PiercingMode.prompt &&
+        cfg.piercingName.isEmpty &&
+        cfg.piercingSaved.isNotEmpty) {
       cfg = withPiercing(cfg, cfg.piercingSaved.first.name);
     }
     service.update(cfg);
     _show(cfg.piercingPrompt);
   }
 
+  /// 工具调用模式导入的 SillyTavern 预设:存进它自己那张表并挑上。
+  void _addTool(String name, String text) {
+    final cfg = service.config;
+    final taken = {for (final p in cfg.piercingToolSaved) p.name};
+    var fresh = name;
+    for (var n = 2; taken.contains(fresh); n++) {
+      fresh = '$name $n';
+    }
+    service.update(
+      cfg.copyWith(
+        piercingToolSaved: [
+          ...cfg.piercingToolSaved,
+          (name: fresh, text: text),
+        ],
+        piercingToolName: fresh,
+      ),
+    );
+  }
+
+  void _deleteTool() {
+    final cfg = service.config;
+    service.update(
+      cfg.copyWith(
+        piercingToolSaved: [
+          for (final p in cfg.piercingToolSaved)
+            if (p.name != cfg.piercingToolName) p,
+        ],
+        piercingToolName: '',
+      ),
+    );
+  }
+
   /// 工具调用模式:默认不带预设;导入的 SillyTavern 预设能挑一个用、预览、删掉,不编辑。
   List<Widget> _toolMode(AppConfig cfg, Color small) {
-    final picked = cfg.piercingName.isNotEmpty;
+    final picked = cfg.piercingToolSaved.any(
+      (p) => p.name == cfg.piercingToolName,
+    );
     return [
       gap,
       Wrap(
@@ -268,18 +306,16 @@ class _PiercingCardState extends State<PiercingCard> {
           PennaChip(
             label: tr('不用预设'),
             selected: !picked,
-            onTap: () {
-              service.update(
-                service.config.copyWith(piercingName: '', piercingPrompt: ''),
-              );
-              _show('');
-            },
+            onTap: () =>
+                service.update(service.config.copyWith(piercingToolName: '')),
           ),
-          for (final p in cfg.piercingSaved)
+          for (final p in cfg.piercingToolSaved)
             PennaChip(
               label: p.name,
-              selected: p.name == cfg.piercingName,
-              onTap: () => _switch(p.name),
+              selected: p.name == cfg.piercingToolName,
+              onTap: () => service.update(
+                service.config.copyWith(piercingToolName: p.name),
+              ),
             ),
         ],
       ),
@@ -307,14 +343,16 @@ class _PiercingCardState extends State<PiercingCard> {
               label: tr('删除'),
               icon: Icons.delete_outline,
               background: small,
-              onPressed: _delete,
+              onPressed: _deleteTool,
             ),
           ],
         ],
       ),
       if (picked && _preview) ...[
         gap,
-        PiercingPreview(text: cfg.piercingPrompt),
+        PiercingPreview(
+          text: cfg.piercingSegment(piercingModeTool, cfg.piercingToolName),
+        ),
       ],
     ];
   }
@@ -474,6 +512,10 @@ class _PiercingCardState extends State<PiercingCard> {
             ),
             if (_preview) ...[gap, PiercingPreview(text: _draft)],
           ],
+          gap,
+          const Divider(height: 1),
+          gap,
+          PiercingRules(service: service),
         ],
       ),
     );

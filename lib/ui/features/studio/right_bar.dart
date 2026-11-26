@@ -3,6 +3,7 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
+import '../../../data/models/app_config.dart';
 import '../../../data/services/config_service.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/motion.dart';
@@ -270,11 +271,17 @@ class _RightBarState extends State<RightBar> {
     );
   }
 
-  /// 闪电:存了不止一段穿甲弹时弹菜单挑一段(2026-11-25 用户要求快速切换),
-  /// 否则直接开关。
+  /// 闪电:眼前这个模式存了不止一段时弹菜单挑一段(2026-11-25 用户要求快速切换),
+  /// 否则直接开关。提示词和工具调用各挑各的表(工具调用多一个「不用预设」)。
   Future<void> _piercing(BuildContext context) async {
     final cfg = widget.config.config;
-    if (cfg.piercingSaved.length < 2) {
+    final tool = cfg.piercingMode == piercingModeTool;
+    final list = switch (cfg.piercingMode) {
+      piercingModePrompt => cfg.piercingSaved,
+      piercingModeTool => cfg.piercingToolSaved,
+      _ => const <PiercingPrompt>[],
+    };
+    if (list.length < (tool ? 1 : 2)) {
       widget.config.update(cfg.copyWith(piercing: !cfg.piercing));
       // 文档、工具调用模式不填内容也能用。
       if (!cfg.piercing &&
@@ -287,12 +294,18 @@ class _RightBarState extends State<RightBar> {
     }
     final box = context.findRenderObject()! as RenderBox;
     final off = tr('关闭穿甲弹');
-    String label(String name) =>
-        cfg.piercing && name == cfg.piercingName ? '✓ $name' : name;
+    final none = tr('不用预设');
+    final current = tool ? cfg.piercingToolName : cfg.piercingName;
+    String label(String name, [String? shown]) =>
+        cfg.piercing && name == current ? '✓ ${shown ?? name}' : shown ?? name;
     final picked = await popMenu(
       context,
       box.localToGlobal(Offset(0, box.size.height)),
-      [for (final p in cfg.piercingSaved) label(p.name), if (cfg.piercing) off],
+      [
+        if (tool) label('', none),
+        for (final p in list) label(p.name),
+        if (cfg.piercing) off,
+      ],
     );
     if (picked == null || !mounted) return;
     final now = widget.config.config;
@@ -301,7 +314,14 @@ class _RightBarState extends State<RightBar> {
       return;
     }
     final name = picked.startsWith('✓ ') ? picked.substring(2) : picked;
-    widget.config.update(withPiercing(now, name).copyWith(piercing: true));
+    widget.config.update(
+      tool
+          ? now.copyWith(
+              piercing: true,
+              piercingToolName: name == none ? '' : name,
+            )
+          : withPiercing(now, name).copyWith(piercing: true),
+    );
   }
 
   /// 一列图标,贴在最右边。
@@ -350,7 +370,13 @@ class _RightBarState extends State<RightBar> {
             builder: (context) => _StripButton(
               tooltip: piercing
                   ? tr('穿甲弹:{0}', [
-                      cfg.piercingName.isEmpty ? tr('开') : cfg.piercingName,
+                      switch (cfg.piercingMode) {
+                        piercingModeTool when cfg.piercingToolName.isEmpty =>
+                          tr('不用预设'),
+                        piercingModeTool => cfg.piercingToolName,
+                        _ when cfg.piercingName.isEmpty => tr('开'),
+                        _ => cfg.piercingName,
+                      },
                     ])
                   : tr('穿甲弹:关'),
               selected: piercing,

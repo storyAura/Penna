@@ -216,9 +216,11 @@ Preset 决定 Agent 的写作风格。内置「MOSS 视觉」「MiniMax H3 视�
 | --- | --- |
 | 「提示词」 | 把下面这段话接在系统提示最前面 |
 | 「文档」 | 不用这段话(输入框藏起来),对话里用户的每条话写成一份 Markdown 文档通过接口传过去(Gemini 等 Google 接口作为文件上传,其余接口放进消息),并要求模型把回复也写成文档传回来,界面照常显示文档内容 |
-| 「工具调用」 | 一种规范的做法,不用写字:要求模型把回复写进 `reply` 工具的参数;适用于 OpenAI 兼容和 Google 接口,接口不支持时自动改用普通回复,「模型日志」里记着这次走没走工具。默认「不用预设」;导入的 SillyTavern 预设会列在旁边,点一个就随请求一起发,可预览、删除 |
+| 「工具调用」 | 一种规范的做法,不用写字:要求模型把回复写进 `reply` 工具的参数;适用于 OpenAI 兼容和 Google 接口,接口不支持时自动改用普通回复,「模型日志」里记着这次走没走工具。默认「不用预设」;在这个模式下导入的 SillyTavern 预设列在旁边(和提示词模式的各段分开存、分开挑),点一个就随请求一起发,可预览、删除 |
 
 提示词模式下穿甲弹可以存好几段:上方一排是存下的各段,点一段换过去,「+ 新建」加一段,右边的按钮改名、删除;侧栏的闪电图标也能快速切换。提示词里各占一行的 `<<user>>`、`<<assistant>>` 把后面的文字当成事先说好的一轮对话,发请求时拆成真正的一轮一轮消息,`<<history>>` 标出聊天记录的位置。「导入文本」读 `.txt` / `.md` 进输入框;「导入 SillyTavern 预设」选一个 SillyTavern(酒馆)的 Chat Completion 预设 JSON,启用的条目按顺序拼成一段、条目的角色和聊天记录的位置写成对话标记,存成以文件名命名的一段并打开预览(采样参数、角色卡与世界书的占位、扩展脚本不导入,`{{user}}` 这类宏原样保留);「预览」列出发给模型的顺序:系统提示、事先说好的几轮、聊天记录、用户这次的话。改完点「保存」生效,「导出」存成 `.txt`。
+
+卡片最下面是「按模型」:点「+ 添加模型」从启用的接口里选一个模型,再给它挑模式和用哪一段;穿甲弹开着时,发给这个模型的请求按这里的设置走,盖过上面的模式和段(主聊天和副聊天都认),其余模型照旧。右边的垃圾桶删掉这一条。
 
 ### Skills
 
@@ -334,7 +336,7 @@ Agent 记下一条时,回复下方出现「已加入 PennaSoul 记录」,点「�
 | 批量导入角色 | 写一个 JSON 数组,每个角色一个对象:`{"Name": "名字", "ip": "作品", "Alias": "别名1, 别名2", "Intro": "简介", "Traits": "长相的英文标签或描述", "Clothing": "默认服装", "Clothing-2": "第二套", "Clothing-2-name": "第二套的名字"}`。存成 `.json` 后让用户在「角色库」顶栏点导入;同名的更新,空着的项不盖掉原来的。不必直接改 `my_characters.json` |
 | 整理档案库 | `archive.json` 是一个数组,每条 `{"id", "time"(ISO 时间), "category"(系列名), "title", "text"(带【标注】的全文), "kind"("prompt" / "layout" / "manga"), "image"(预览图路径,可省)}`;改 `category` 就是改系列名、合并系列;顺序就是界面上的顺序,新的在前。`id` 不能重复 |
 | 加记事本 | `notebooks.json` 是一个数组,每个本子 `{"id", "name", "notes": [{"id", "title", "text"}]}`,`id` 在各自的列表里不重复;也可以直接在对话里让 Penna 的 Agent 存 |
-| 换穿甲弹 | `config.json` 里 `piercingSaved` 是 `[{"name", "text"}]`,`piercingName` 是用着的那段、`piercingPrompt` 是它的文字,`piercing` 是开关,`piercingDocument` / `piercingTool` 是文档 / 工具调用模式(都为 false 是提示词模式)。SillyTavern 预设不用手转,在界面上点「导入 SillyTavern 预设」 |
+| 换穿甲弹 | `config.json` 里 `piercingSaved` 是 `[{"name", "text"}]`,`piercingName` 是用着的那段、`piercingPrompt` 是它的文字,`piercing` 是开关,`piercingDocument` / `piercingTool` 是文档 / 工具调用模式(都为 false 是提示词模式);工具调用模式的段另存在 `piercingToolSaved`、用着的是 `piercingToolName`(空的是不用预设);按模型的设置是 `piercingRules`:`[{"model", "mode": "prompt|document|tool", "name"}]`。SillyTavern 预设不用手转,在界面上点「导入 SillyTavern 预设」 |
 | 加 ComfyUI 工作流 | `config.json` 的 `comfy.flows` 是 `[{"id", "name", "text"(工作流 JSON 原文,字符串)}]`,`comfy.flowId` 是用着的那个;更稳妥的是让用户在「设置 → ComfyUI」点「导入工作流」 |
 | 加 Skill | 在 `skills\<文件夹名>\`(名字里不能带点)里放 `SKILL.md`(开头的 YAML 写 `name` 和 `description`,正文是写法说明),同一文件夹里的 `.md` / `.txt` 是按需加载的模块;或者打成 `.zip` 让用户在「设置 → Skills → 添加 Skill」里拖入 |
 | 查 Agent 为什么被拦 | 读 `blocked-*.json`(被拒的请求原文)和 `error.log`,不需要关掉 Penna |
