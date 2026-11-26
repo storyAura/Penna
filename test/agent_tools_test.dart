@@ -1408,6 +1408,15 @@ void main() {
     expect(anime.first.systemPrompt, animePreset.systemPrompt);
     expect(anime.first.temperature, 0.5);
     expect(anime.first.systemPrompt, contains('不缩成角色名'));
+    expect(anime.first.systemPrompt, contains('3. 互动'));
+    // 测试版发过的第 2 版没改过的也换。
+    expect(
+      AppConfig.fromJson({
+        'presets': [preset('anime', animePromptV2)],
+        'presetsVersion': 4,
+      }).presets.single.systemPrompt,
+      animePreset.systemPrompt,
+    );
     expect(
       AppConfig.fromJson({
         'presets': [preset('anime', '我改过的')],
