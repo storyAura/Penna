@@ -1184,17 +1184,28 @@ void main() {
     expect(await moveComfyImages(to, to), 0);
   });
 
-  test('云端的原图另存进 下载\\Penna\\<时刻>,同一单同一个文件夹', () async {
+  test('云端的原图另存进 Penna_Image\\<yy_mm_dd>,当天同一个文件夹,换位置连图搬走', () async {
     final root = await Directory.systemTemp.createTemp('penna-dl');
     addTearDown(() => root.delete(recursive: true));
+    final sep = Platform.pathSeparator;
+    final from = '${root.path}${sep}a';
     final at = DateTime(2026, 11, 26, 9, 5, 3);
     final bytes = Uint8List.fromList([1, 2, 3]);
-    final a = saveCloudCopy(root.path, 'Penna_00001_.png', bytes, at);
-    final b = saveCloudCopy(root.path, 'sub/Penna_00001_.png', bytes, at);
-    final sep = Platform.pathSeparator;
-    expect(a.parent.path, '${root.path}${sep}Penna${sep}2026-11-26_09-05-03');
+    final a = saveCloudCopy(from, 'Penna_00001_.png', bytes, at);
+    final b = saveCloudCopy(
+      from,
+      'sub/Penna_00001_.png',
+      bytes,
+      DateTime(2026, 11, 26, 23, 59),
+    );
+    expect(a.parent.path, '$from${sep}26_11_26');
     expect(b.path, endsWith('${sep}Penna_00001_ (1).png'));
     expect(a.readAsBytesSync(), bytes);
+    expect(await cloudImageDir('D:${sep}x'), 'D:${sep}x${sep}Penna_Image');
+    final to = '${root.path}${sep}b';
+    expect(await moveCloudImages(from, to), 2);
+    expect(Directory('$to${sep}26_11_26').listSync().length, 2);
+    expect(Directory(a.parent.path).existsSync(), isFalse);
     expect(isLocalComfy('http://127.0.0.1:8188'), isTrue);
     expect(isLocalComfy('http://[::1]:8188'), isTrue);
     expect(isLocalComfy('https://u.example.com'), isFalse);

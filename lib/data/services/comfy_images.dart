@@ -37,19 +37,18 @@ File saveComfyImage(String dir, String name, Uint8List bytes, DateTime time) {
   }
 }
 
-/// 云端出的原图另存一份到 [downloads]\Penna\<出图时刻>\,文件名照 ComfyUI 的
-/// (2026-11-26 用户要求)。同一单的几张时刻一样,进同一个文件夹;重名加 (1)、(2)…
-File saveCloudCopy(
-  String downloads,
-  String name,
-  Uint8List bytes,
-  DateTime time,
-) {
+/// 云端原图的大文件夹:[picked]\Penna_Image,[picked] 空的是「下载」。
+Future<String> cloudImageDir(String picked) async =>
+    '${picked.isEmpty ? (await downloadsDir()).path : picked}'
+    '${Platform.pathSeparator}Penna_Image';
+
+/// 云端出的原图另存一份到 [root]\<yy_mm_dd>\,当天的图都在一个文件夹,
+/// 文件名照 ComfyUI 的(2026-11-28 用户要求);重名加 (1)、(2)…
+File saveCloudCopy(String root, String name, Uint8List bytes, DateTime time) {
   String two(int n) => n.toString().padLeft(2, '0');
   final sep = Platform.pathSeparator;
   final dir =
-      '$downloads${sep}Penna$sep${time.year}-${two(time.month)}-${two(time.day)}_'
-      '${two(time.hour)}-${two(time.minute)}-${two(time.second)}';
+      '$root$sep${two(time.year % 100)}_${two(time.month)}_${two(time.day)}';
   Directory(dir).createSync(recursive: true);
   name = name.split(RegExp(r'[\/]')).last;
   final dot = name.lastIndexOf('.');
@@ -83,6 +82,34 @@ Future<int> moveComfyImages(String from, String to) async {
       await entity.delete();
     }
     moved++;
+  }
+  return moved;
+}
+
+/// 换云端原图的位置:把 [from] 里各天的文件夹连图搬进 [to],返回搬了几张。重名的留在原处。
+Future<int> moveCloudImages(String from, String to) async {
+  final source = Directory(from);
+  if (!source.existsSync() || _same(from, to)) return 0;
+  final sep = Platform.pathSeparator;
+  var moved = 0;
+  await for (final day in source.list()) {
+    if (day is! Directory) continue;
+    final into =
+        '$to$sep${day.uri.pathSegments.lastWhere((s) => s.isNotEmpty)}';
+    await Directory(into).create(recursive: true);
+    await for (final file in day.list()) {
+      if (file is! File) continue;
+      final target = File('$into$sep${file.uri.pathSegments.last}');
+      if (target.existsSync()) continue;
+      try {
+        await file.rename(target.path);
+      } on FileSystemException {
+        await file.copy(target.path);
+        await file.delete();
+      }
+      moved++;
+    }
+    if (day.listSync().isEmpty) await day.delete();
   }
   return moved;
 }

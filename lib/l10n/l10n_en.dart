@@ -1845,8 +1845,7 @@ const en = <String, String>{
   '页签上选中的几页按顺序出图': 'Generate the pages selected in the tabs, in order',
   '第 {0} 次重试:{1}': 'Retry {0}: {1}',
   '云端出图存到本地': 'Save cloud images locally',
-  '原图存进「下载\\Penna」,每单一个文件夹':
-      'Originals go to Downloads\\Penna, one folder per job',
+  '原图按天分文件夹': 'Originals saved in one folder per day',
   '重试次数': 'Retries',
   '不重试': 'No retry',
   '副聊天单独的穿甲弹': 'Side chat Armor-Piercing',

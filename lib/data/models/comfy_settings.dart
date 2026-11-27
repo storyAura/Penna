@@ -98,6 +98,7 @@ class ComfySettings {
     this.imageDir = '',
     this.autoGenerate = true,
     this.cloudDownload = false,
+    this.cloudDir = '',
     this.orientation = orientationKeep,
     this.outputDirs = const {},
     this.sizes = comfyDefaultSizes,
@@ -207,6 +208,7 @@ class ComfySettings {
       imageDir: m['imageDir'] as String? ?? '',
       autoGenerate: m['autoGenerate'] as bool? ?? true,
       cloudDownload: m['cloudDownload'] as bool? ?? false,
+      cloudDir: m['cloudDir'] as String? ?? '',
       orientation: orientations.contains(m['orientation'])
           ? m['orientation'] as String
           : orientationKeep,
@@ -278,8 +280,12 @@ class ComfySettings {
   /// Agent 写了出图标签就直接出;关掉时回复下面出一个「出图」按钮,用户点了才出。
   final bool autoGenerate;
 
-  /// 云端(不是本机地址)出的原图另存进「下载\Penna\<出图时刻>」(2026-11-26 用户要求)。
+  /// 云端(不是本机地址)出的原图另存进「[cloudDir]\Penna_Image\<yy_mm_dd>」
+  /// (2026-11-26 用户要求,11-28 改成按天、能换位置)。
   final bool cloudDownload;
+
+  /// 云端原图的 Penna_Image 文件夹放在哪;空的是「下载」。
+  final String cloudDir;
 
   /// Agent 出图时画面是横是竖,见 [orientations]。
   final String orientation;
@@ -357,6 +363,7 @@ class ComfySettings {
     'imageDir': imageDir,
     'autoGenerate': autoGenerate,
     'cloudDownload': cloudDownload,
+    if (cloudDir.isNotEmpty) 'cloudDir': cloudDir,
     'orientation': orientation,
     if (outputDirs.isNotEmpty) 'outputDirs': outputDirs,
     'standardSeen': standardSeen,
@@ -385,6 +392,7 @@ class ComfySettings {
     String? imageDir,
     bool? autoGenerate,
     bool? cloudDownload,
+    String? cloudDir,
     String? orientation,
     Map<String, String>? outputDirs,
     List<({int width, int height})>? sizes,
@@ -407,6 +415,7 @@ class ComfySettings {
     imageDir: imageDir ?? this.imageDir,
     autoGenerate: autoGenerate ?? this.autoGenerate,
     cloudDownload: cloudDownload ?? this.cloudDownload,
+    cloudDir: cloudDir ?? this.cloudDir,
     orientation: orientation ?? this.orientation,
     outputDirs: outputDirs == null
         ? this.outputDirs

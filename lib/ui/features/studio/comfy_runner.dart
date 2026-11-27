@@ -272,9 +272,9 @@ class ComfyRunner extends ChangeNotifier {
       if (run != _run) return (images: none, error: null);
       final now = DateTime.now();
       saved = [];
-      // 云端出的原图另存进「下载\Penna\<时刻>」;本机的 ComfyUI 自己的 output 里就有。
+      // 云端出的原图另存进「Penna_Image\<yy_mm_dd>」;本机的 ComfyUI 自己的 output 里就有。
       final downloads = comfy.cloudDownload && !isLocalComfy(comfy.server.url)
-          ? (await downloadsDir()).path
+          ? await cloudImageDir(comfy.cloudDir)
           : null;
       for (final image in out) {
         final small = await _forDisk(image);

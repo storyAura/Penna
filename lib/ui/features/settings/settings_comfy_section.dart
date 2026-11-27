@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/harness/comfyui.dart';
 import '../../../data/models/app_config.dart';
+import '../../../data/services/comfy_images.dart';
 import '../../../data/services/config_service.dart';
 import '../../../l10n/l10n.dart';
 import '../../core/theme.dart';
@@ -28,6 +29,41 @@ class ComfySection extends StatefulWidget {
 
 class _ComfySectionState extends State<ComfySection> {
   bool _busy = false;
+
+  /// 云端原图存在哪(Penna_Image 那一层);「下载」要异步取,取到前是 null。
+  String? _cloudPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _readCloudPath();
+  }
+
+  Future<void> _readCloudPath() async {
+    final path = await cloudImageDir(_comfy.cloudDir);
+    if (mounted) setState(() => _cloudPath = path);
+  }
+
+  /// 换云端原图的位置:选一个文件夹,在里面建 Penna_Image,已有的图一起搬过去。
+  Future<void> _moveCloud() async {
+    final picked = await getDirectoryPath();
+    if (picked == null) return;
+    final from = await cloudImageDir(_comfy.cloudDir);
+    final to = await cloudImageDir(picked);
+    setState(() => _busy = true);
+    try {
+      final moved = await moveCloudImages(from, to);
+      _put(_comfy.copyWith(cloudDir: picked));
+      await _readCloudPath();
+      if (mounted) showToast(context, tr('已换位置,搬过去 {0} 张图', [moved]));
+    } on FileSystemException catch (e) {
+      if (mounted) {
+        showToast(context, tr('没搬完:{0}', [e.message]), warn: true);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   ConfigService get _service => widget.service;
   ComfySettings get _comfy => _service.config.comfy;
@@ -155,8 +191,8 @@ class _ComfySectionState extends State<ComfySection> {
     }
   }
 
-  void _openFolder() {
-    final dir = widget.runner.imageDir;
+  void _openFolder([String? path]) {
+    final dir = path ?? widget.runner.imageDir;
     Directory(dir).createSync(recursive: true);
     Process.run(Platform.isWindows ? 'explorer' : 'xdg-open', [dir]);
   }
@@ -209,21 +245,49 @@ class _ComfySectionState extends State<ComfySection> {
         gap,
         PennaCard(
           padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(tr('云端出图存到本地'), style: titleStyle),
-                    Text(tr('原图存进「下载\\Penna」,每单一个文件夹'), style: hintStyle),
-                  ],
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(tr('云端出图存到本地'), style: titleStyle),
+                        Text(tr('原图按天分文件夹'), style: hintStyle),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: _comfy.cloudDownload,
+                    onChanged: (v) => _put(_comfy.copyWith(cloudDownload: v)),
+                  ),
+                ],
+              ),
+              if (_comfy.cloudDownload && _cloudPath != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(_cloudPath!, style: hintStyle)),
+                      PennaButton(
+                        label: tr('打开'),
+                        icon: Icons.folder_open_outlined,
+                        borderColor: PennaColors.border,
+                        onPressed: () => _openFolder(_cloudPath),
+                      ),
+                      const SizedBox(width: 6),
+                      PennaButton(
+                        label: tr('更换位置'),
+                        icon: Icons.drive_file_move_outlined,
+                        tooltip: tr('已有的图一起搬过去'),
+                        borderColor: PennaColors.border,
+                        onPressed: _busy ? null : _moveCloud,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              Switch(
-                value: _comfy.cloudDownload,
-                onChanged: (v) => _put(_comfy.copyWith(cloudDownload: v)),
-              ),
             ],
           ),
         ),
